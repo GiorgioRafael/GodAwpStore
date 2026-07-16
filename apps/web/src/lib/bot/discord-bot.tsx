@@ -12,10 +12,10 @@ import {
   Actions,
   Button,
   Card,
-  CardLink,
   CardText,
   Chat,
   Divider,
+  LinkButton,
   Select,
   SelectOption,
   toCardElement,
@@ -77,7 +77,9 @@ function createBot() {
       for (const card of cards) await event.channel.post(card);
     } catch (error) {
       logBotError("catalog", error);
-      await event.channel.post(errorCard("Não foi possível carregar a loja agora. Tente novamente em instantes."));
+      await event.channel.post(
+        errorCard("🛠️ A loja está se preparando agora. ✨ Tente novamente em alguns instantes! ⏳"),
+      );
     }
   });
 
@@ -86,7 +88,7 @@ function createBot() {
       const selected = findCatalogProduct(await service.listCatalog(), event.value);
       const card = selected
         ? selectedProductCard(selected)
-        : errorCard("Esse produto não está mais disponível no catálogo.");
+        : errorCard("🔎 Esse produto não está mais disponível no catálogo. 🛍️ Escolha outro item! ✨");
       await replyPrivately(event.raw, card, () =>
         event.thread
           ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
@@ -94,7 +96,9 @@ function createBot() {
       );
     } catch (error) {
       logBotError("product_selection", error);
-      const card = errorCard("Não foi possível carregar esse produto agora. Tente novamente em instantes.");
+      const card = errorCard(
+        "🛠️ Não conseguimos carregar esse produto agora. ✨ Tente novamente em alguns instantes! ⏳",
+      );
       await replyPrivately(event.raw, card, () =>
         event.thread
           ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
@@ -108,7 +112,7 @@ function createBot() {
       const context = readDiscordInteraction(event.raw, event.user.userId);
       if (!context.interactionId || !context.guildId || !context.userId || !event.value) {
         const card = errorCard(
-          "A compra precisa ser iniciada dentro de um servidor Discord usando o botão da loja.",
+          "🏰 A compra precisa ser iniciada dentro do servidor Discord usando o botão da loja. 🛍️",
         );
         await replyPrivately(event.raw, card, () =>
           event.thread
@@ -142,7 +146,9 @@ function createBot() {
       );
     } catch (error) {
       logBotError("purchase", error);
-      const card = errorCard("Não foi possível criar o pedido. Nenhum item foi entregue ou revelado.");
+      const card = errorCard(
+        "🛡️ Não foi possível criar o pedido. Fique tranquilo: nenhum item foi entregue ou revelado. 🔒",
+      );
       await replyPrivately(event.raw, card, () =>
         event.thread
           ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
@@ -159,27 +165,45 @@ export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
 
   if (!products.length) {
     return [
-      <Card key="empty-catalog" title="GWStore">
-        <CardText>O catálogo ainda não tem produtos ativos.</CardText>
+      <Card key="empty-catalog" title="🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️">
+        <CardText>😴 Nosso catálogo está descansando e ainda não tem produtos ativos.</CardText>
+        <CardText>🔔 Volte em breve para conferir as novidades! 💜</CardText>
       </Card>,
     ];
   }
 
   const pages = chunk(products, DISCORD_SELECT_OPTION_LIMIT);
   return pages.map((page, index) => (
-    <Card key={`catalog-${index}`} title={pages.length > 1 ? `GWStore · Produtos ${index + 1}/${pages.length}` : "GWStore · Produtos"}>
-      <CardText>Selecione um produto na lista abaixo para ver os detalhes e continuar a compra.</CardText>
-      <CardText>Somente você verá as próximas etapas e o link do pagamento.</CardText>
+    <Card
+      key={`catalog-${index}`}
+      title={
+        pages.length > 1
+          ? `🛍️✨ GWSTORE • PRODUTOS ${index + 1}/${pages.length} ✨🛍️`
+          : "🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️"
+      }
+      subtitle="🌱 Grow a Garden 2 • ⚡ Compra rápida, privada e segura"
+    >
+      <CardText>👋💜 **Bem-vindo(a) à GWStore!** 💜👋</CardText>
+      <CardText>🎮 Escolha seu produto favorito e prepare-se para turbinar sua conta! 🚀✨</CardText>
+      <CardText>🔒 Somente **você** verá os detalhes, o pedido e o link de pagamento. 🛡️</CardText>
+      <CardText>💠 Pagamento rápido e seguro via **Pix com LivePix**. ⚡✅</CardText>
       <Divider />
+      <CardText>👇🛒 **Abra a lista abaixo e selecione seu produto:**</CardText>
       <Actions>
-        <Select id="select_product" label="Produtos" placeholder="Escolha um produto">
+        <Select
+          id="select_product"
+          label="🛒 Catálogo de produtos"
+          placeholder="✨ Clique aqui e escolha seu produto ✨"
+        >
           {page.map(({ game, substore, product }) => (
             <SelectOption
               key={product.id}
-              label={truncateSelectText(`${product.name} — ${formatBrl(product.priceCents)}`)}
+              label={truncateSelectText(
+                `${productEmoji(product.name)} ${product.name} • ${formatBrl(product.priceCents)}`,
+              )}
               value={product.id}
               description={truncateSelectText(
-                `${game.name} · ${substore.title} · ${stockLabel(product.availableStock)}`,
+                `🎮 ${game.name} • 🏪 ${substore.name} • 📦 ${stockLabel(product.availableStock)}`,
               )}
             />
           ))}
@@ -191,11 +215,15 @@ export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
 
 function helpCard() {
   return (
-    <Card title="Ajuda · GWStore">
-      <CardText>Use **/loja** e selecione um produto na lista.</CardText>
-      <CardText>Confira os detalhes privados e clique em **Comprar com Pix**.</CardText>
-      <CardText>Após a confirmação, o bot cria um ticket privado para você e os administradores.</CardText>
-      <CardText>Nenhum segredo de estoque é revelado antes da confirmação do pagamento.</CardText>
+    <Card title="🆘✨ AJUDA • GWSTORE ✨🆘" subtitle="💜 Comprar é rápido, privado e seguro!">
+      <CardText>1️⃣ Digite **/loja** para abrir nosso catálogo. 🛍️</CardText>
+      <CardText>2️⃣ Escolha um produto na lista suspensa. 👇🎁</CardText>
+      <CardText>3️⃣ Confira preço e estoque e clique em **💠 Comprar com Pix ⚡**.</CardText>
+      <CardText>4️⃣ Pague com segurança pelo checkout da **LivePix**. 🔒✅</CardText>
+      <CardText>5️⃣ Após a confirmação, abrimos um ticket privado com você e os administradores. 🎫👑</CardText>
+      <Divider />
+      <CardText>🛡️ Nenhum dado protegido do estoque é revelado antes da confirmação do pagamento.</CardText>
+      <CardText>💬 Precisou de ajuda? Fale com a equipe no seu ticket! 🤝💜</CardText>
     </Card>
   );
 }
@@ -206,21 +234,30 @@ type CatalogSelection = {
   product: BotCatalogProduct;
 };
 
-function selectedProductCard({ game, substore, product }: CatalogSelection) {
+export function selectedProductCard({ game, substore, product }: CatalogSelection) {
+  const emoji = productEmoji(product.name);
   return (
-    <Card title={product.name} subtitle={`${game.name} · ${substore.title}`} imageUrl={substore.imageUrl ?? undefined}>
+    <Card
+      title={`${emoji}✨ ${product.name} ✨${emoji}`}
+      subtitle={`🎮 ${game.name} • 🏪 ${substore.title}`}
+      imageUrl={substore.imageUrl ?? undefined}
+    >
+      <CardText>🎉 **Você escolheu um produto incrível!** 🎉</CardText>
       {product.description ? <CardText>{product.description}</CardText> : null}
-      <CardText>Preço: **{formatBrl(product.priceCents)}**</CardText>
-      <CardText>Estoque: **{stockLabel(product.availableStock)}**</CardText>
+      <Divider />
+      <CardText>💰💠 **Preço no Pix:** {formatBrl(product.priceCents)}</CardText>
+      <CardText>📦✅ **Estoque disponível:** {stockLabel(product.availableStock)}</CardText>
+      <CardText>🚀🎫 **Entrega:** atendimento manual em ticket privado após a confirmação.</CardText>
+      <CardText>🔐🛡️ Seu pedido e seu pagamento ficam visíveis somente para você.</CardText>
       <Divider />
       {product.availableStock > 0 ? (
         <Actions>
           <Button id="buy" value={product.id} style="primary">
-            Comprar com Pix
+            💠 Comprar com Pix ⚡
           </Button>
         </Actions>
       ) : (
-        <CardText>Esse produto está sem estoque no momento.</CardText>
+        <CardText>😔💨 **Produto esgotado no momento.** Volte em breve! 🔔✨</CardText>
       )}
     </Card>
   );
@@ -301,40 +338,53 @@ async function replyPrivately(raw: unknown, card: ChatElement, fallback: () => P
   }
 }
 
-function purchaseResultCard(result: PurchaseResult, checkoutUrl: string | null = null) {
+export function purchaseResultCard(result: PurchaseResult, checkoutUrl: string | null = null) {
   if (result.kind === "created" || result.kind === "duplicate") {
     return (
-      <Card title={result.kind === "created" ? "Pedido criado" : "Pedido já registrado"}>
+      <Card
+        title={
+          result.kind === "created"
+            ? "✅🎉 PEDIDO CRIADO COM SUCESSO! 🎉✅"
+            : "♻️✅ PEDIDO JÁ REGISTRADO ✅♻️"
+        }
+        subtitle="💜 GWStore • Pagamento seguro com LivePix"
+      >
+        <CardText>🛍️ **Produto escolhido:**</CardText>
         <CardText>
-          **{result.productName}** · {formatBrl(result.priceCents)}
+          {productEmoji(result.productName)} **{result.productName}** • 💰 **{formatBrl(result.priceCents)}**
         </CardText>
-        <CardText>ID do pedido: `{result.orderId}`</CardText>
+        <CardText>🧾 **ID do pedido:** `{result.orderId}`</CardText>
         <Divider />
-        <CardText>Status: **aguardando pagamento**. Pague pelo checkout da LivePix abaixo.</CardText>
+        <CardText>⏳💠 **Status:** aguardando pagamento via Pix.</CardText>
+        <CardText>👇⚡ Clique no botão abaixo para abrir o checkout seguro:</CardText>
         {checkoutUrl ? (
           <Actions>
-            <CardLink url={checkoutUrl}>Pagar com Pix</CardLink>
+            <LinkButton url={checkoutUrl}>💠 PAGAR AGORA COM PIX ⚡</LinkButton>
           </Actions>
         ) : null}
-        <CardText>O ticket privado será criado automaticamente após a confirmação do pagamento.</CardText>
+        <Divider />
+        <CardText>🎫🔔 Após a confirmação, criaremos automaticamente seu **ticket privado**.</CardText>
+        <CardText>👤🤝 Somente você e os administradores terão acesso ao atendimento.</CardText>
+        <CardText>🔒✨ Compra protegida do início ao fim pela **GWStore**.</CardText>
       </Card>
     );
   }
 
   const message = {
-    invalid_request: "A solicitação de compra é inválida.",
-    guild_not_authorized: "Este servidor ainda não está autorizado a vender pela GWStore.",
-    product_unavailable: "Esse produto não está mais disponível no catálogo.",
-    out_of_stock: "Esse produto está sem estoque no momento.",
-    interaction_conflict: "Essa interação já foi usada em outro pedido.",
+    invalid_request: "🧩 A solicitação de compra é inválida. Abra a loja novamente com **/loja**. 🛍️",
+    guild_not_authorized: "⛔🏰 Este servidor ainda não está autorizado a vender pela GWStore.",
+    product_unavailable: "🔎🎁 Esse produto não está mais disponível no catálogo.",
+    out_of_stock: "😔📦 Esse produto ficou sem estoque. Escolha outro item na **/loja**! ✨",
+    interaction_conflict: "♻️🧾 Essa interação já foi usada em outro pedido.",
   }[result.kind];
   return errorCard(message);
 }
 
 function errorCard(message: string) {
   return (
-    <Card title="Não foi possível continuar">
+    <Card title="❌🚨 OPS! NÃO FOI POSSÍVEL CONTINUAR 🚨❌" subtitle="💜 A equipe GWStore está aqui para ajudar">
       <CardText>{message}</CardText>
+      <CardText>🔄 Tente abrir a loja novamente com **/loja**. 🛍️✨</CardText>
     </Card>
   );
 }
@@ -344,7 +394,27 @@ function formatBrl(cents: number) {
 }
 
 function stockLabel(availableStock: number) {
-  return availableStock === 1 ? "1 unidade" : `${availableStock} unidades`;
+  return availableStock === 1
+    ? "1 unidade"
+    : `${new Intl.NumberFormat("pt-BR").format(availableStock)} unidades`;
+}
+
+function productEmoji(productName: string) {
+  const normalized = productName.toLocaleLowerCase("en-US");
+  if (normalized.includes("super watering")) return "💦🌈";
+  if (normalized.includes("super sprinkler")) return "🌧️💜";
+  if (normalized.includes("sun bloom") || normalized.includes("sunbloom")) return "🌻☀️";
+  if (normalized.includes("dragon") && normalized.includes("breath")) return "🐉🔥";
+  if (normalized.includes("ghost pepper")) return "🌶️👻";
+  if (normalized.includes("moon bloom") || normalized.includes("moon blossom")) return "🌙🌸";
+  if (normalized.includes("venom")) return "🕷️🧪";
+  if (normalized.includes("hypno")) return "🌀🌺";
+  if (normalized.includes("serpent")) return "🐍❄️";
+  if (normalized.includes("unicórnio") || normalized.includes("unicorn")) return "🦄🌈";
+  if (normalized.includes("dragonfly")) return "🧚✨";
+  if (normalized.includes("raccoon")) return "🦝🌟";
+  if (normalized.includes("sheckles")) return "💵💰";
+  return "🎁✨";
 }
 
 function truncateSelectText(text: string) {

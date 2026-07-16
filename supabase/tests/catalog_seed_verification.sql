@@ -1,5 +1,6 @@
--- Verifies the versioned Grow a Garden 2 seed against a local migrated database.
--- The seed is deliberately applied twice to prove stable IDs and no duplicates.
+-- Verifies the versioned Grow a Garden 2 catalog against a local migrated database.
+-- The base seed and the live inventory overlay are applied twice to prove stable
+-- IDs, final prices, and no duplicates.
 
 begin;
 
@@ -23,11 +24,12 @@ values
   ('seeds', '2x-moon-bloom', 100, 'active'),
   ('seeds', '2x-venom-spitter', 100, 'active'),
   ('seeds', '2x-hypno-bloom', 100, 'active'),
-  ('seeds', '1x-dragon-breath', 200, 'active'),
+  ('seeds', '1x-dragon-breath', 40, 'active'),
   ('seeds', '3x-dragon-breath', 500, 'active'),
-  ('seeds', '1x-sunbloom', 900, 'active'),
-  ('gears', '10x-super-watering-can', 100, 'active'),
-  ('gears', '10x-super-sprinkler', 100, 'active'),
+  ('seeds', '1x-sunbloom', 400, 'active'),
+  ('seeds', 'ghost-pepper', 10, 'active'),
+  ('gears', '10x-super-watering-can', 5, 'active'),
+  ('gears', '10x-super-sprinkler', 2, 'active'),
   ('pets-exclusivos', 'serpent-ice', 0, 'inactive'),
   ('pets-exclusivos', '1x-unicornio', 200, 'active'),
   ('pets-exclusivos', '1x-dragonfly', 200, 'active'),
@@ -69,6 +71,8 @@ where game.slug = 'grow-a-garden-2'
 
 \ir ../migrations/20260716000200_seed_grow_a_garden_2_catalog.sql
 \ir ../migrations/20260716000200_seed_grow_a_garden_2_catalog.sql
+\ir ../migrations/20260716000500_sync_live_inventory_catalog.sql
+\ir ../migrations/20260716000500_sync_live_inventory_catalog.sql
 
 do $$
 declare
@@ -112,7 +116,7 @@ begin
         and product.archived_at is null
     )
   ) then
-    raise exception 'One or more Grow a Garden 2 products do not match catalog v1';
+    raise exception 'One or more Grow a Garden 2 products do not match the current catalog';
   end if;
 
   select count(*)
@@ -171,19 +175,19 @@ begin
    and current_rows.slug = original.slug
    and current_rows.id = original.id;
 
-  -- If the test starts after normal migrations, all 18 rows already exist and
-  -- both reapplications must preserve every ID. A pre-seed schema is supported
+  -- If the test starts after normal migrations, all 19 rows already exist and
+  -- every reapplication must preserve every ID. A pre-seed schema is supported
   -- too: the exact final row count still proves the second run did not duplicate.
   if v_original_ids > 0 and v_preserved_ids <> v_original_ids then
     raise exception 'Reapplying catalog v1 changed one or more stable row IDs';
   end if;
 
-  if v_current_ids <> 18 then
-    raise exception 'Grow a Garden 2 catalog v1 must contain 18 versioned rows';
+  if v_current_ids <> 19 then
+    raise exception 'Grow a Garden 2 current catalog must contain 19 versioned rows';
   end if;
 end
 $$;
 
 rollback;
 
-select 'Grow a Garden 2 catalog v1 verification passed' as result;
+select 'Grow a Garden 2 current catalog verification passed' as result;
