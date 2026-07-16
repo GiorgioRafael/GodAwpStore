@@ -251,9 +251,17 @@ $$;
 insert into storage.objects (bucket_id, name)
 values ('catalog-media', 'integration/transactional-audit.png');
 
+-- Supabase Storage deliberately blocks raw SQL deletes unless the same
+-- transaction flag used by its Storage API is enabled. This keeps the test
+-- aligned with the production deletion path while still exercising our
+-- transactional audit trigger.
+select set_config('storage.allow_delete_query', 'true', true);
+
 delete from storage.objects
 where bucket_id = 'catalog-media'
   and name = 'integration/transactional-audit.png';
+
+select set_config('storage.allow_delete_query', 'false', true);
 
 do $$
 declare
