@@ -1,0 +1,356 @@
+import "server-only";
+
+import { requireAdmin } from "@/lib/auth";
+import type { JsonObject, Tables, Views } from "@/lib/supabase/database.types";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+
+export type DashboardSummary = {
+  gamesCount: number;
+  substoresCount: number;
+  productsCount: number;
+  availableUnitsCount: number;
+  lowStockProductsCount: number;
+  guildsCount: number;
+  ordersCount: number;
+  deliveredOrdersCount: number;
+  ledgerBalanceCents: number;
+  pendingPayoutsCents: number;
+};
+
+export type GameRow = Pick<
+  Tables<"games">,
+  | "id"
+  | "name"
+  | "slug"
+  | "status"
+  | "description"
+  | "image_url"
+  | "sort_order"
+  | "archived_at"
+  | "created_at"
+  | "updated_at"
+>;
+
+export type SubstoreRow = Pick<
+  Tables<"substores">,
+  | "id"
+  | "game_id"
+  | "name"
+  | "slug"
+  | "title"
+  | "description"
+  | "color_hex"
+  | "image_url"
+  | "thumbnail_url"
+  | "author_name"
+  | "author_icon_url"
+  | "footer_text"
+  | "footer_icon_url"
+  | "status"
+  | "sort_order"
+  | "archived_at"
+  | "created_at"
+  | "updated_at"
+> & { games: Pick<Tables<"games">, "name"> | null };
+
+export type ProductRow = Pick<
+  Tables<"products">,
+  | "id"
+  | "substore_id"
+  | "name"
+  | "slug"
+  | "description"
+  | "minimum_price_cents"
+  | "image_url"
+  | "status"
+  | "sort_order"
+  | "low_stock_threshold"
+  | "archived_at"
+  | "created_at"
+  | "updated_at"
+> & {
+  substores: (Pick<Tables<"substores">, "name"> & {
+    games: Pick<Tables<"games">, "name"> | null;
+  }) | null;
+};
+
+export type ProductStockRow = Views<"product_stock_summary">;
+
+export type InventoryUnitRow = Pick<
+  Tables<"inventory_units">,
+  | "id"
+  | "product_id"
+  | "batch_id"
+  | "status"
+  | "reservation_expires_at"
+  | "delivered_at"
+  | "revoked_at"
+  | "revocation_reason"
+  | "created_at"
+  | "updated_at"
+> & {
+  products: Pick<Tables<"products">, "name"> | null;
+  inventory_batches: Pick<Tables<"inventory_batches">, "source" | "import_method"> | null;
+};
+
+export type InventoryBatchRow = Pick<
+  Tables<"inventory_batches">,
+  "id" | "product_id" | "source" | "unit_count" | "archived_at" | "created_at"
+> & {
+  import_method: "manual" | "txt" | "csv";
+  products: Pick<Tables<"products">, "name"> | null;
+};
+
+export type WhitelistRow = Pick<
+  Tables<"whitelist_entries">,
+  | "id"
+  | "discord_id"
+  | "label"
+  | "notes"
+  | "is_active"
+  | "commission_override_bps"
+  | "archived_at"
+  | "created_at"
+  | "updated_at"
+>;
+
+export type AuditRow = Pick<
+  Tables<"audit_events">,
+  | "id"
+  | "actor_discord_user_id"
+  | "action"
+  | "entity_type"
+  | "entity_id"
+  | "created_at"
+> & { metadata: JsonObject };
+
+async function client() {
+  await requireAdmin();
+  const supabase = await createServerSupabaseClient();
+  if (!supabase) throw new Error("Supabase não configurado.");
+  return supabase;
+}
+
+function toSafeNumber(value: unknown): number {
+  const number = typeof value === "number" ? value : Number(value ?? 0);
+  return Number.isSafeInteger(number) ? number : 0;
+}
+
+function assertQuerySucceeded(error: { message: string } | null, operation: string): void {
+  if (error) throw new Error(`Não foi possível ${operation}.`);
+}
+
+function toImportMethod(value: string): InventoryBatchRow["import_method"] {
+  if (value === "manual" || value === "txt" || value === "csv") return value;
+  throw new Error("O lote possui um método de importação inválido.");
+}
+
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const supabase = await client();
+  const { data, error } = await supabase.from("admin_dashboard_summary").select("*").single();
+  assertQuerySucceeded(error, "carregar o resumo administrativo");
+  if (!data) throw new Error("O resumo administrativo não retornou dados.");
+
+  return {
+    gamesCount: toSafeNumber(data.games_count),
+    substoresCount: toSafeNumber(data.substores_count),
+    productsCount: toSafeNumber(data.products_count),
+    availableUnitsCount: toSafeNumber(data.available_units_count),
+    lowStockProductsCount: toSafeNumber(data.low_stock_products_count),
+    guildsCount: toSafeNumber(data.guilds_count),
+    ordersCount: toSafeNumber(data.orders_count),
+    deliveredOrdersCount: toSafeNumber(data.delivered_orders_count),
+    ledgerBalanceCents: toSafeNumber(data.ledger_balance_cents),
+    pendingPayoutsCents: toSafeNumber(data.pending_payouts_cents),
+  };
+}
+
+export async function listGames(): Promise<GameRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase.from("games").select("*").order("sort_order").order("name");
+  assertQuerySucceeded(error, "carregar os jogos");
+  return data ?? [];
+}
+
+export async function listSubstores(): Promise<SubstoreRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from("substores")
+    .select("*, games(name)")
+    .order("sort_order")
+    .order("name");
+  assertQuerySucceeded(error, "carregar as sublojas");
+  return data ?? [];
+}
+
+export async function listProducts(): Promise<ProductRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from("products")
+    .select("*, substores(name, games(name))")
+    .order("sort_order")
+    .order("name");
+  assertQuerySucceeded(error, "carregar os produtos");
+  return data ?? [];
+}
+
+export async function listProductStock(options?: { lowOnly?: boolean }): Promise<ProductStockRow[]> {
+  const supabase = await client();
+  let query = supabase.from("product_stock_summary").select("*").order("product_name");
+  if (options?.lowOnly) query = query.eq("is_low_stock", true);
+  const { data, error } = await query;
+  assertQuerySucceeded(error, "carregar o resumo do estoque");
+  return (data ?? []).map((row) => ({
+    ...row,
+    available_count: toSafeNumber(row.available_count),
+    reserved_count: toSafeNumber(row.reserved_count),
+    delivered_count: toSafeNumber(row.delivered_count),
+    quarantined_count: toSafeNumber(row.quarantined_count),
+    revoked_count: toSafeNumber(row.revoked_count),
+    total_count: toSafeNumber(row.total_count),
+  }));
+}
+
+export async function listInventoryUnits(limit = 100): Promise<InventoryUnitRow[]> {
+  const supabase = await client();
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const { data, error } = await supabase
+    .from("inventory_units")
+    .select(
+      "id,product_id,batch_id,status,reservation_expires_at,delivered_at,revoked_at,revocation_reason,created_at,updated_at,products(name),inventory_batches(source,import_method)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+  assertQuerySucceeded(error, "carregar as unidades do estoque");
+  return data ?? [];
+}
+
+export async function listInventoryBatches(limit = 100): Promise<InventoryBatchRow[]> {
+  const supabase = await client();
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const { data, error } = await supabase
+    .from("inventory_batches")
+    .select("id,product_id,source,import_method,unit_count,archived_at,created_at,products(name)")
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+  assertQuerySucceeded(error, "carregar os lotes do estoque");
+  return (data ?? []).map((row) => ({
+    ...row,
+    import_method: toImportMethod(row.import_method),
+    unit_count: toSafeNumber(row.unit_count),
+  }));
+}
+
+export async function listWhitelist(): Promise<WhitelistRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from("whitelist_entries")
+    .select("*")
+    .order("is_active", { ascending: false })
+    .order("created_at", { ascending: false });
+  assertQuerySucceeded(error, "carregar a whitelist");
+  return data ?? [];
+}
+
+export async function getPlatformSettings() {
+  const supabase = await client();
+  const { data, error } = await supabase.from("platform_settings").select("*").eq("id", 1).single();
+  assertQuerySucceeded(error, "carregar as configurações globais");
+  return data;
+}
+
+export async function listAuditEvents(limit = 100): Promise<AuditRow[]> {
+  const supabase = await client();
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const { data, error } = await supabase
+    .from("audit_events")
+    .select("id,actor_discord_user_id,action,entity_type,entity_id,metadata,created_at")
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+  assertQuerySucceeded(error, "carregar a auditoria");
+  return (data ?? []).map((event) => ({
+    ...event,
+    metadata: isJsonObject(event.metadata) ? event.metadata : {},
+  }));
+}
+
+type OperationalTable =
+  | "guilds"
+  | "orders"
+  | "ledger_entries"
+  | "payouts"
+  | "whitelist_balances";
+
+type OperationalRows =
+  | Tables<"guilds">[]
+  | Tables<"orders">[]
+  | Tables<"ledger_entries">[]
+  | Tables<"payouts">[]
+  | Views<"whitelist_balances">[];
+
+export function listOperationalRows(table: "guilds", limit?: number): Promise<Tables<"guilds">[]>;
+export function listOperationalRows(table: "orders", limit?: number): Promise<Tables<"orders">[]>;
+export function listOperationalRows(
+  table: "ledger_entries",
+  limit?: number,
+): Promise<Tables<"ledger_entries">[]>;
+export function listOperationalRows(table: "payouts", limit?: number): Promise<Tables<"payouts">[]>;
+export function listOperationalRows(
+  table: "whitelist_balances",
+  limit?: number,
+): Promise<Views<"whitelist_balances">[]>;
+export async function listOperationalRows(
+  table: OperationalTable,
+  limit = 100,
+): Promise<OperationalRows> {
+  const supabase = await client();
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+
+  if (table === "whitelist_balances") {
+    const { data, error } = await supabase.from(table).select("*").limit(safeLimit);
+    assertQuerySucceeded(error, `carregar ${table}`);
+    return data ?? [];
+  }
+
+  if (table === "guilds") {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+    assertQuerySucceeded(error, `carregar ${table}`);
+    return data ?? [];
+  }
+
+  if (table === "orders") {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+    assertQuerySucceeded(error, `carregar ${table}`);
+    return data ?? [];
+  }
+
+  if (table === "payouts") {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(safeLimit);
+    assertQuerySucceeded(error, `carregar ${table}`);
+    return data ?? [];
+  }
+
+  const { data, error } = await supabase
+    .from("ledger_entries")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+  assertQuerySucceeded(error, `carregar ${table}`);
+  return data ?? [];
+}

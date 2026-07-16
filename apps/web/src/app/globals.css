@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  --background: #080807;
+  --surface: #11110f;
+  --surface-elevated: #171714;
+  --surface-muted: #0d0d0b;
+  --foreground: #f5f3e9;
+  --muted: #9b998e;
+  --muted-strong: #c8c4b8;
+  --border: #2a2923;
+  --border-strong: #3a382e;
+  --gold: #d4a64a;
+  --gold-bright: #edc66f;
+  --gold-muted: #8d6b2f;
+  --danger: #ef6f6c;
+  --success: #65c98b;
+  --warning: #e4ad55;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-strong: var(--muted-strong);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-gold: var(--gold);
+  --color-gold-bright: var(--gold-bright);
+  --color-gold-muted: var(--gold-muted);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.34);
+  --shadow-gold: 0 0 0 1px rgba(212, 166, 74, 0.1), 0 12px 35px rgba(212, 166, 74, 0.08);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: dark;
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(212, 166, 74, 0.28);
+  color: #fff8df;
+}
+
+:focus-visible {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: 3px;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
