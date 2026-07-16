@@ -47,9 +47,10 @@ export type ExistingOrder = {
 };
 
 export type OrderCreation = {
-  id: string;
+  id: string | null;
   status: "awaiting_payment";
   created: boolean;
+  outOfStock: boolean;
 };
 
 export interface BotCommerceRepository {
@@ -71,4 +72,11 @@ export interface BotCommerceRepository {
 
 export type PurchaseResult =
   | { kind: "created" | "duplicate"; orderId: string; productName: string; priceCents: number }
-  | { kind: "invalid_request" | "product_unavailable" | "out_of_stock" | "interaction_conflict" };
+  | {
+      kind:
+        | "invalid_request"
+        | "guild_not_authorized"
+        | "product_unavailable"
+        | "out_of_stock"
+        | "interaction_conflict";
+    };

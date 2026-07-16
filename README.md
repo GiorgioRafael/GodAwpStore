@@ -3,8 +3,9 @@
 Painel administrativo da GWStore para gerenciar catálogo, estoque digital,
 whitelist, comissão e a base operacional das futuras lojas no Discord.
 
-Esta versão inclui a aplicação web, o modelo de dados e o bot Discord de catálogo
-e criação de pedidos. O PIX e a entrega automática continuam pendentes.
+Esta versão inclui a aplicação web, o modelo de dados, o bot Discord, checkout
+Pix pela LivePix e ticket privado após a confirmação do pagamento. A entrega do
+conteúdo do estoque continua manual dentro do ticket.
 
 ## Tecnologias
 
@@ -29,6 +30,7 @@ supabase/         configuração, migrações e testes do banco
 - npm 11 ou mais recente;
 - um projeto Supabase;
 - uma aplicação no Discord Developer Portal.
+- uma aplicação OAuth criada nas configurações da LivePix.
 
 Docker é necessário somente para executar a pilha Supabase inteiramente local.
 Também é possível aplicar as migrações diretamente a um projeto Supabase remoto.
@@ -129,6 +131,8 @@ Configure estas variáveis server-only em `apps/web/.env.local` e na Vercel:
 DISCORD_APPLICATION_ID=...
 DISCORD_PUBLIC_KEY=...
 DISCORD_BOT_TOKEN=...
+LIVEPIX_CLIENT_ID=...
+LIVEPIX_CLIENT_SECRET=...
 ```
 
 No Discord Developer Portal:
@@ -136,7 +140,12 @@ No Discord Developer Portal:
 1. defina **Interactions Endpoint URL** como
    `https://gwstore.vercel.app/api/webhooks/discord`;
 2. convide o bot com os escopos `bot` e `applications.commands`;
-3. conceda pelo menos permissão para visualizar o servidor e enviar mensagens.
+3. conceda `View Channels`, `Send Messages`, `Embed Links` e `Manage Channels`.
+
+`Manage Channels` é necessário para o bot criar o ticket privado após o
+pagamento. O canal nega acesso a `@everyone`, libera o comprador e o bot, e os
+administradores continuam com acesso pelo comportamento nativo da permissão
+`Administrator` do Discord.
 
 Registre `/loja` e `/ajuda` globalmente com um `PUT` idempotente:
 
@@ -150,11 +159,47 @@ será limitado ao servidor e aparecerá imediatamente. Sem essa variável, o
 registro é global e pode levar algum tempo para se propagar.
 
 `/loja` consulta catálogo, preços e quantidade `available` no Supabase. O botão
-**Comprar** revalida produto e estoque no servidor e cria um pedido
-`awaiting_payment`. Repetições do mesmo clique usam
+**Comprar** revalida produto e estoque no servidor, cria um pedido
+`awaiting_payment` e devolve o link oficial do checkout LivePix. Repetições do mesmo clique usam
 `orders.payment_reference = discord:<interaction-id>` e o índice único existente,
-evitando pedidos duplicados. Enquanto o PIX não estiver configurado, nenhuma
-unidade é reservada, revelada ou entregue.
+evitando pedidos duplicados. Nenhuma unidade é revelada ou entregue pelo bot.
+
+## Pix com LivePix
+
+A integração usa OAuth2 `client_credentials` porque a loja recebe pagamentos na
+própria conta LivePix. Esse fluxo não usa callback de autorização OAuth e solicita
+somente `payments:write` e `payments:read` durante a operação. O escopo `webhooks`
+é usado apenas uma vez, na configuração da URL de notificações.
+
+No painel da aplicação LivePix, configure **URL de notificações** como:
+
+```text
+https://gwstore.vercel.app/api/webhooks/livepix
+```
+
+O campo **URL de redirecionamento** da aplicação pertence ao fluxo OAuth de
+contas de terceiros e pode permanecer vazio neste projeto. Cada cobrança envia
+seu próprio retorno HTTPS no formato:
+
+```text
+https://gwstore.vercel.app/pagamento/ID-DO-PEDIDO
+```
+
+O retorno do navegador nunca aprova o pedido. O webhook é apenas um aviso: o
+servidor confere `clientId`, localiza a referência registrada e consulta o
+pagamento pela API autenticada da LivePix. ID, comprovante, referência, valor,
+moeda e data precisam coincidir antes da transação marcar o pedido como pago.
+Redeliveries são deduplicadas no banco.
+
+Após a confirmação, uma lease transacional impede dois workers de criarem dois
+canais. O bot cria ou recupera o canal pelo marcador do pedido, publica a mensagem
+de confirmação e persiste o ID do ticket. Falhas devolvem erro temporário para a
+LivePix repetir a notificação e liberam o pedido para uma nova tentativa.
+
+A criação do pedido e a reserva de uma unidade de estoque acontecem na mesma
+transação, somente para servidores ativos na whitelist. Ao confirmar o pagamento,
+o banco valida a reserva e registra lucro líquido e comissão uma única vez, mesmo
+se a LivePix reenviar o webhook.
 
 ## Verificações
 

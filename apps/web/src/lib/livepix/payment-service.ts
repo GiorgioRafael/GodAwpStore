@@ -1,0 +1,171 @@
+import "server-only";
+
+import type { LivePixCheckout, LivePixPayment } from "./client";
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type PayableOrder = {
+  id: string;
+  status: string;
+  amountCents: number;
+  currency: string;
+};
+
+export type StoredCheckout = {
+  orderId: string;
+  providerReference: string;
+  checkoutUrl: string;
+};
+
+export type PaymentConfirmation = {
+  orderId: string;
+  discordGuildId: string;
+  buyerDiscordId: string;
+  productName: string;
+  paidAmountCents: number;
+  orderStatus: string;
+  firstConfirmation: boolean;
+  ticketChannelId: string | null;
+  ticketStatus: string;
+};
+
+export type DiscordTicketClaim = {
+  orderId: string;
+  claimed: boolean;
+  discordGuildId: string;
+  buyerDiscordId: string;
+  productName: string;
+  paidAmountCents: number;
+  ticketStatus: string;
+  existingChannelId: string | null;
+};
+
+export interface LivePixPaymentRepository {
+  findCheckoutByOrder(orderId: string): Promise<StoredCheckout | null>;
+  findCheckoutByReference(providerReference: string): Promise<StoredCheckout | null>;
+  findPayableOrder(orderId: string): Promise<PayableOrder | null>;
+  registerCheckout(input: StoredCheckout): Promise<StoredCheckout>;
+  confirmPayment(input: {
+    providerPaymentId: string;
+    providerProof: string;
+    providerReference: string;
+    amountCents: number;
+    currency: string;
+    providerCreatedAt: string;
+    reconciliationSha256: string;
+  }): Promise<PaymentConfirmation>;
+  claimTicket(orderId: string): Promise<DiscordTicketClaim>;
+  completeTicket(orderId: string, channelId: string): Promise<void>;
+  failTicket(orderId: string): Promise<void>;
+}
+
+type PaymentClient = {
+  createPayment(input: { amountCents: number; redirectUrl: string }): Promise<LivePixCheckout>;
+  getPayment(paymentId: string): Promise<LivePixPayment>;
+};
+
+export class LivePixPaymentService {
+  constructor(
+    private readonly repository: LivePixPaymentRepository,
+    private readonly client: PaymentClient,
+  ) {}
+
+  async createCheckout(orderId: string, siteUrl: string): Promise<StoredCheckout> {
+    assertUuid(orderId);
+    const existing = await this.repository.findCheckoutByOrder(orderId);
+    if (existing) return existing;
+
+    const order = await this.repository.findPayableOrder(orderId);
+    if (!order || order.status !== "awaiting_payment" || order.currency !== "BRL") {
+      throw new Error("O pedido não está disponível para pagamento.");
+    }
+    if (!Number.isSafeInteger(order.amountCents) || order.amountCents < 100) {
+      throw new Error("O valor do pedido não é aceito pela LivePix.");
+    }
+
+    const origin = readOrigin(siteUrl);
+    const checkout = await this.client.createPayment({
+      amountCents: order.amountCents,
+      redirectUrl: `${origin}/pagamento/${order.id}`,
+    });
+    try {
+      return await this.repository.registerCheckout({
+        orderId: order.id,
+        providerReference: checkout.reference,
+        checkoutUrl: checkout.checkoutUrl,
+      });
+    } catch (error) {
+      const concurrent = await this.repository.findCheckoutByOrder(order.id);
+      if (concurrent) return concurrent;
+      throw error;
+    }
+  }
+
+  async reconcilePayment(input: {
+    providerPaymentId: string;
+    providerReference: string;
+  }): Promise<PaymentConfirmation | null> {
+    const checkout = await this.repository.findCheckoutByReference(input.providerReference);
+    if (!checkout) return null;
+
+    const payment = await this.client.getPayment(input.providerPaymentId);
+    if (payment.id !== input.providerPaymentId || payment.reference !== checkout.providerReference) {
+      throw new Error("O pagamento LivePix não corresponde ao checkout registrado.");
+    }
+
+    return this.repository.confirmPayment({
+      providerPaymentId: payment.id,
+      providerProof: payment.proof,
+      providerReference: payment.reference,
+      amountCents: payment.amountCents,
+      currency: payment.currency,
+      providerCreatedAt: payment.createdAt,
+      reconciliationSha256: await reconciliationDigest(payment),
+    });
+  }
+
+  claimTicket(orderId: string) {
+    return this.repository.claimTicket(orderId);
+  }
+
+  completeTicket(orderId: string, channelId: string) {
+    return this.repository.completeTicket(orderId, channelId);
+  }
+
+  failTicket(orderId: string) {
+    return this.repository.failTicket(orderId);
+  }
+}
+
+async function reconciliationDigest(payment: LivePixPayment) {
+  const canonical = [
+    payment.id,
+    payment.proof,
+    payment.reference,
+    String(payment.amountCents),
+    payment.currency,
+    payment.createdAt,
+  ].join("\n");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function assertUuid(value: string) {
+  if (!UUID_PATTERN.test(value)) throw new Error("ID do pedido inválido.");
+}
+
+function readOrigin(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("URL pública da GWStore inválida.");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("URL pública da GWStore inválida.");
+  }
+  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
+    throw new Error("URL pública da GWStore deve usar HTTPS em produção.");
+  }
+  return url.origin;
+}

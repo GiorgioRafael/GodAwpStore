@@ -220,48 +220,27 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     buyerDiscordId: string;
     commissionBps: number;
   }): Promise<OrderCreation> {
-    const { data, error } = await this.client
-      .from("orders")
-      .insert({
-        guild_id: input.guildId,
-        seller_whitelist_entry_id: input.whitelistEntryId,
-        product_id: input.product.id,
-        buyer_discord_id: input.buyerDiscordId,
-        status: "awaiting_payment",
-        currency_code: "BRL",
-        sale_price_cents: input.product.minimumPriceCents,
-        minimum_price_cents: input.product.minimumPriceCents,
-        commission_bps: input.commissionBps,
-        payment_reference: interactionReference(input.interactionId),
-      })
-      .select("id,status")
-      .single();
-
-    if (error?.code === "23505") {
-      const existing = await this.findOrderByInteraction(input.interactionId);
-      if (
-        existing &&
-        existing.buyerDiscordId === input.buyerDiscordId &&
-        existing.productId === input.product.id
-      ) {
-        return { id: existing.id, status: "awaiting_payment", created: false };
-      }
+    if (!input.whitelistEntryId) {
+      throw new Error("Servidor sem vendedor autorizado.");
     }
+    const { data, error } = await this.client
+      .rpc("create_bot_order_with_reservation", {
+        p_interaction_id: input.interactionId,
+        p_guild_id: input.guildId,
+        p_whitelist_entry_id: input.whitelistEntryId,
+        p_product_id: input.product.id,
+        p_buyer_discord_id: input.buyerDiscordId,
+        p_sale_price_cents: input.product.minimumPriceCents,
+        p_commission_bps: input.commissionBps,
+      })
+      .single();
     assertQuery(error, "criação do pedido");
-
-    await this.client.from("audit_events").insert({
-      action: "bot.order.create",
-      entity_type: "order",
-      entity_id: data.id,
-      metadata: {
-        buyer_discord_id: input.buyerDiscordId,
-        guild_id: input.guildId,
-        product_id: input.product.id,
-        source: "discord_http_interaction",
-      },
-    });
-
-    return { id: data.id, status: "awaiting_payment", created: true };
+    return {
+      id: data.created_order_id,
+      status: "awaiting_payment",
+      created: data.was_created,
+      outOfStock: data.out_of_stock,
+    };
   }
 }
 

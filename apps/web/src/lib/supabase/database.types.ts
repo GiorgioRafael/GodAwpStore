@@ -1,6 +1,6 @@
 /**
  * TypeScript representation of the public schema created by
- * `supabase/migrations/20260716000100_initial_admin_schema.sql`.
+ * migrations in `supabase/migrations`.
  *
  * Keep this file in sync with the migrations. It intentionally includes the
  * encrypted inventory columns so the server-only service-role client can use
@@ -193,11 +193,39 @@ type OrderRow = {
   minimum_price_cents: number;
   commission_bps: number;
   payment_reference: string | null;
+  payment_provider: string;
+  payment_provider_reference: string | null;
+  payment_provider_checkout_id: string | null;
+  payment_checkout_url: string | null;
+  payment_provider_proof_id: string | null;
+  payment_status: Database["public"]["Enums"]["payment_status"];
+  payment_expires_at: string | null;
+  payment_provider_created_at: string | null;
+  discord_ticket_channel_id: string | null;
+  discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+  discord_ticket_claimed_at: string | null;
   paid_at: string | null;
   delivered_at: string | null;
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type PaymentWebhookEventRow = {
+  id: string;
+  provider: string;
+  event_type: string;
+  provider_checkout_id: string;
+  provider_reference: string;
+  provider_proof_id: string;
+  amount_cents: number;
+  currency_code: string;
+  provider_created_at: string;
+  reconciliation_sha256: string;
+  order_id: string | null;
+  state_changed: boolean;
+  received_at: string;
+  processed_at: string | null;
 };
 
 type PayoutRow = {
@@ -422,6 +450,30 @@ export type Database = {
           >,
         ];
       };
+      payment_webhook_events: {
+        Row: PaymentWebhookEventRow;
+        Insert: InsertRow<
+          PaymentWebhookEventRow,
+          | "provider"
+          | "event_type"
+          | "provider_checkout_id"
+          | "provider_reference"
+          | "provider_proof_id"
+          | "amount_cents"
+          | "currency_code"
+          | "provider_created_at"
+          | "reconciliation_sha256"
+        >;
+        Update: UpdateRow<PaymentWebhookEventRow>;
+        Relationships: [
+          Relationship<
+            "payment_webhook_events_order_id_fkey",
+            ["order_id"],
+            "orders",
+            ["id"]
+          >,
+        ];
+      };
       payouts: {
         Row: PayoutRow;
         Insert: InsertRow<PayoutRow, "whitelist_entry_id" | "amount_cents">;
@@ -564,6 +616,84 @@ export type Database = {
           updated_at: string;
         }[];
       };
+      register_livepix_checkout: {
+        Args: {
+          p_order_id: string;
+          p_provider_reference: string;
+          p_checkout_url: string;
+          p_expires_at?: string | null;
+        };
+        Returns: {
+          registered_order_id: string;
+          provider_reference: string;
+          checkout_url: string;
+          was_created: boolean;
+        }[];
+      };
+      confirm_livepix_payment: {
+        Args: {
+          p_provider_checkout_id: string;
+          p_provider_proof_id: string;
+          p_provider_reference: string;
+          p_amount_cents: number;
+          p_currency_code: string;
+          p_provider_created_at: string;
+          p_reconciliation_sha256: string;
+        };
+        Returns: {
+          processed_order_id: string;
+          discord_guild_id: string;
+          buyer_discord_id: string;
+          product_name: string;
+          paid_amount_cents: number;
+          resulting_order_status: Database["public"]["Enums"]["order_status"];
+          first_confirmation: boolean;
+          existing_ticket_channel_id: string | null;
+          ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+        }[];
+      };
+      claim_discord_ticket: {
+        Args: { p_order_id: string };
+        Returns: {
+          claimed_order_id: string;
+          claimed: boolean;
+          discord_guild_id: string;
+          buyer_discord_id: string;
+          product_name: string;
+          paid_amount_cents: number;
+          ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+          existing_channel_id: string | null;
+        }[];
+      };
+      complete_discord_ticket: {
+        Args: { p_order_id: string; p_channel_id: string };
+        Returns: {
+          completed_order_id: string;
+          channel_id: string;
+          was_completed: boolean;
+        }[];
+      };
+      fail_discord_ticket: {
+        Args: { p_order_id: string };
+        Returns: { failed_order_id: string; was_failed: boolean }[];
+      };
+      create_bot_order_with_reservation: {
+        Args: {
+          p_interaction_id: string;
+          p_guild_id: string;
+          p_whitelist_entry_id: string;
+          p_product_id: string;
+          p_buyer_discord_id: string;
+          p_sale_price_cents: number;
+          p_commission_bps: number;
+        };
+        Returns: {
+          created_order_id: string | null;
+          resulting_status: Database["public"]["Enums"]["order_status"];
+          was_created: boolean;
+          out_of_stock: boolean;
+        }[];
+      };
     };
     Enums: {
       catalog_status: "active" | "inactive" | "archived";
@@ -583,6 +713,20 @@ export type Database = {
         | "cancelled"
         | "expired"
         | "refunded"
+        | "failed";
+      payment_status:
+        | "uninitialized"
+        | "pending"
+        | "paid"
+        | "expired"
+        | "cancelled"
+        | "refunded"
+        | "failed";
+      discord_ticket_status:
+        | "not_created"
+        | "creating"
+        | "open"
+        | "closed"
         | "failed";
       payout_status:
         | "requested"

@@ -559,3 +559,5 @@ reset role;
 rollback;
 
 select 'GodAwpStore transactional integration checks passed' as result;
+
+\ir payment_workflow_verification.sql

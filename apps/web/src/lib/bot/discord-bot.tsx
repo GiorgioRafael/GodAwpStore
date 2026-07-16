@@ -6,8 +6,12 @@ import {
   DiscordInteractionResponseFlag,
 } from "@chat-adapter/discord";
 import { createMemoryState } from "@chat-adapter/state-memory";
-import { Actions, Button, Card, CardText, Chat, Divider, type ChatElement } from "chat";
+import { Actions, Button, Card, CardLink, CardText, Chat, Divider, type ChatElement } from "chat";
 
+import { getSiteUrl } from "@/lib/env";
+import { getLivePixClient } from "@/lib/livepix/client";
+import { LivePixPaymentService } from "@/lib/livepix/payment-service";
+import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
@@ -78,7 +82,16 @@ function createBot() {
         productId: event.value,
         guild,
       });
-      await event.thread.post(purchaseResultCard(result));
+      const checkoutUrl =
+        result.kind === "created" || result.kind === "duplicate"
+          ? (
+              await new LivePixPaymentService(
+                new SupabaseLivePixPaymentRepository(),
+                getLivePixClient(),
+              ).createCheckout(result.orderId, getSiteUrl())
+            ).checkoutUrl
+          : null;
+      await event.thread.post(purchaseResultCard(result, checkoutUrl));
     } catch (error) {
       logBotError("purchase", error);
       await event.thread.post(errorCard("Não foi possível criar o pedido. Nenhum item foi entregue ou revelado."));
@@ -145,13 +158,14 @@ function helpCard() {
   return (
     <Card title="Ajuda · GWStore">
       <CardText>Use **/loja** para ver produtos, preços e estoque em tempo real.</CardText>
-      <CardText>Clique em **Comprar** para abrir um pedido. O Pix ainda será configurado.</CardText>
+      <CardText>Clique em **Comprar** para abrir o checkout Pix seguro da LivePix.</CardText>
+      <CardText>Após a confirmação, o bot cria um ticket privado para você e os administradores.</CardText>
       <CardText>Nenhum segredo de estoque é revelado antes da confirmação do pagamento.</CardText>
     </Card>
   );
 }
 
-function purchaseResultCard(result: PurchaseResult) {
+function purchaseResultCard(result: PurchaseResult, checkoutUrl: string | null = null) {
   if (result.kind === "created" || result.kind === "duplicate") {
     return (
       <Card title={result.kind === "created" ? "Pedido criado" : "Pedido já registrado"}>
@@ -160,16 +174,20 @@ function purchaseResultCard(result: PurchaseResult) {
         </CardText>
         <CardText>ID do pedido: `{result.orderId}`</CardText>
         <Divider />
-        <CardText>
-          Status: **aguardando pagamento**. O Pix será configurado depois; nenhuma unidade do estoque foi
-          entregue ou revelada.
-        </CardText>
+        <CardText>Status: **aguardando pagamento**. Pague pelo checkout da LivePix abaixo.</CardText>
+        {checkoutUrl ? (
+          <Actions>
+            <CardLink url={checkoutUrl}>Pagar com Pix</CardLink>
+          </Actions>
+        ) : null}
+        <CardText>O ticket privado será criado automaticamente após a confirmação do pagamento.</CardText>
       </Card>
     );
   }
 
   const message = {
     invalid_request: "A solicitação de compra é inválida.",
+    guild_not_authorized: "Este servidor ainda não está autorizado a vender pela GWStore.",
     product_unavailable: "Esse produto não está mais disponível no catálogo.",
     out_of_stock: "Esse produto está sem estoque no momento.",
     interaction_conflict: "Essa interação já foi usada em outro pedido.",

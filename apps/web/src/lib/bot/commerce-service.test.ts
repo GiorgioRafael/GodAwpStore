@@ -24,7 +24,7 @@ function repository(overrides: Partial<BotCommerceRepository> = {}) {
   const base: BotCommerceRepository = {
     listCatalog: vi.fn(async () => []),
     findOrderByInteraction: vi.fn(async () => null),
-    ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: null })),
+    ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: "whitelist-row" })),
     findPurchasableProduct: vi.fn(async () => product),
     countAvailableStock: vi.fn(async () => 2),
     getCommissionBps: vi.fn(async () => 1_000),
@@ -32,6 +32,7 @@ function repository(overrides: Partial<BotCommerceRepository> = {}) {
       id: "order-row",
       status: "awaiting_payment" as const,
       created: true,
+      outOfStock: false,
     })),
   };
   return { ...base, ...overrides };
@@ -57,6 +58,16 @@ describe("BotCommerceService", () => {
     expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
   });
 
+  it("bloqueia servidores cujo proprietário não está na allowlist", async () => {
+    const repo = repository({
+      ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: null })),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase(input)).resolves.toEqual({ kind: "guild_not_authorized" });
+    expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
+  });
+
   it("cria pedido awaiting_payment com preço e comissão vindos do servidor", async () => {
     const repo = repository();
     const service = new BotCommerceService(repo);
@@ -70,11 +81,25 @@ describe("BotCommerceService", () => {
     expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith({
       interactionId: input.interactionId,
       guildId: "guild-row",
-      whitelistEntryId: null,
+      whitelistEntryId: "whitelist-row",
       product,
       buyerDiscordId: input.buyerDiscordId,
       commissionBps: 1_000,
     });
+  });
+
+  it("trata a perda atômica da última unidade como estoque esgotado", async () => {
+    const repo = repository({
+      createAwaitingPaymentOrder: vi.fn(async () => ({
+        id: null,
+        status: "awaiting_payment" as const,
+        created: false,
+        outOfStock: true,
+      })),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase(input)).resolves.toEqual({ kind: "out_of_stock" });
   });
 
   it("trata a repetição da mesma interação como idempotente", async () => {

@@ -33,9 +33,17 @@ export function getSupabaseServerConfig(): SupabaseServerConfig | null {
 
 export function getSiteUrl(requestOrigin?: string): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (process.env.NODE_ENV === "production") {
+    if (!configured) throw new Error("NEXT_PUBLIC_SITE_URL não configurada em produção.");
+    const productionUrl = new URL(configured);
+    if (productionUrl.protocol !== "https:") {
+      throw new Error("NEXT_PUBLIC_SITE_URL deve usar HTTPS em produção.");
+    }
+    return productionUrl.origin;
+  }
   const candidates = [
     configured,
-    process.env.NODE_ENV === "production" ? undefined : requestOrigin,
+    requestOrigin,
   ];
 
   for (const candidate of candidates) {

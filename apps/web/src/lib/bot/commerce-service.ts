@@ -61,6 +61,9 @@ export class BotCommerceService {
     if (!product) {
       return { kind: "product_unavailable" };
     }
+    if (!guild.whitelistEntryId) {
+      return { kind: "guild_not_authorized" };
+    }
 
     const availableStock = await this.repository.countAvailableStock(product.id);
     if (availableStock < 1) {
@@ -76,6 +79,9 @@ export class BotCommerceService {
       buyerDiscordId: input.buyerDiscordId,
       commissionBps,
     });
+    if (order.outOfStock || !order.id) {
+      return { kind: "out_of_stock" };
+    }
 
     return {
       kind: order.created ? "created" : "duplicate",
