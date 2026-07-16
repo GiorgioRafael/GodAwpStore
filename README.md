@@ -3,8 +3,8 @@
 Painel administrativo da GWStore para gerenciar catálogo, estoque digital,
 whitelist, comissão e a base operacional das futuras lojas no Discord.
 
-Esta primeira versão inclui a aplicação web e o modelo de dados. O bot, o PIX, a
-entrega pelo Discord e o deploy na Vercel não fazem parte desta etapa.
+Esta versão inclui a aplicação web, o modelo de dados e o bot Discord de catálogo
+e criação de pedidos. O PIX e a entrega automática continuam pendentes.
 
 ## Tecnologias
 
@@ -99,8 +99,8 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-Abra <http://localhost:3000>. O catálogo começa vazio; o projeto não possui seed
-de demonstração.
+Abra <http://localhost:3000>. O seed inicial cadastra o catálogo Grow a Garden 2;
+o estoque precisa ser importado separadamente antes das compras.
 
 ## Importação de estoque
 
@@ -115,6 +115,46 @@ de demonstração.
 O conteúdo é criptografado com AES-256-GCM antes de ser enviado ao banco. Um HMAC
 independente permite detectar duplicidades sem persistir o texto aberto. A
 revelação posterior é mascarada por padrão e sempre gera auditoria.
+
+## Bot Discord
+
+O endpoint `POST /api/webhooks/discord` usa **Discord HTTP Interactions** com o
+Vercel Chat SDK. Ele atende slash commands e botões sem Gateway WebSocket, cron ou
+função de longa duração, portanto não depende do Vercel Pro. Requisições são
+validadas com a assinatura Ed25519 do Discord antes de qualquer processamento.
+
+Configure estas variáveis server-only em `apps/web/.env.local` e na Vercel:
+
+```text
+DISCORD_APPLICATION_ID=...
+DISCORD_PUBLIC_KEY=...
+DISCORD_BOT_TOKEN=...
+```
+
+No Discord Developer Portal:
+
+1. defina **Interactions Endpoint URL** como
+   `https://gwstore.vercel.app/api/webhooks/discord`;
+2. convide o bot com os escopos `bot` e `applications.commands`;
+3. conceda pelo menos permissão para visualizar o servidor e enviar mensagens.
+
+Registre `/loja` e `/ajuda` globalmente com um `PUT` idempotente:
+
+```powershell
+cd apps/web
+npm.cmd run discord:commands
+```
+
+Para desenvolvimento, preencha `DISCORD_GUILD_ID` antes do comando; o registro
+será limitado ao servidor e aparecerá imediatamente. Sem essa variável, o
+registro é global e pode levar algum tempo para se propagar.
+
+`/loja` consulta catálogo, preços e quantidade `available` no Supabase. O botão
+**Comprar** revalida produto e estoque no servidor e cria um pedido
+`awaiting_payment`. Repetições do mesmo clique usam
+`orders.payment_reference = discord:<interaction-id>` e o índice único existente,
+evitando pedidos duplicados. Enquanto o PIX não estiver configurado, nenhuma
+unidade é reservada, revelada ou entregue.
 
 ## Verificações
 
@@ -151,20 +191,12 @@ do banco a cada push para `main` e em pull requests.
 
 Consulte também [SECURITY.md](SECURITY.md) antes de tratar dados reais.
 
-## Deploy futuro na Vercel
+## Deploy na Vercel
 
-O projeto é compatível com Vercel, mas nenhum deploy é realizado nesta versão.
-Quando chegar essa etapa:
+Ao criar ou atualizar o deploy:
 
 1. configure o diretório raiz do projeto para o monorepo;
 2. replique todas as variáveis de ambiente;
 3. atualize `NEXT_PUBLIC_SITE_URL`;
 4. adicione o callback HTTPS à lista do Supabase;
 5. mantenha as chaves server-only fora de ambientes de Preview não confiáveis.
-
-## Integração futura com o bot
-
-O bot deverá reutilizar `packages/domain` e o mesmo PostgreSQL. O cliente Discord
-nunca receberá a chave de criptografia nem consultará unidades em texto aberto.
-Pedidos, ledger e saques já possuem uma fundação de dados, mas não executam
-pagamentos ou entregas nesta etapa.

@@ -73,3 +73,8 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/integration.sql
+
+      - name: Validar catálogo versionado
+        env:
+          PGPASSWORD: postgres
+        run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/catalog_seed_verification.sql

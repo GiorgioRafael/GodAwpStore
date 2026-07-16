@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@godawp/domain"],
+  // The Discord adapter includes optional Gateway compression modules. Keep it
+  // as a native Node dependency; this bot only uses signed HTTP Interactions.
+  serverExternalPackages: ["@chat-adapter/discord"],
   poweredByHeader: false,
   async headers() {
     return [
