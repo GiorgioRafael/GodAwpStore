@@ -13,6 +13,14 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth";
+import { BotCommerceService } from "@/lib/bot/commerce-service";
+import {
+  listDiscordTextChannels,
+  publishDiscordStorefront,
+  readStorefrontConfiguration,
+  withStorefrontConfiguration,
+} from "@/lib/bot/discord-storefront";
+import { SupabaseBotCommerceRepository } from "@/lib/bot/supabase-repository";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type AdminActionState = {
@@ -26,6 +34,10 @@ const inventoryStatusChangeSchema = z.object({
   unitId: uuidSchema,
   status: z.enum(["available", "quarantined", "revoked"]),
   reason: z.string().trim().max(1_000).nullable(),
+});
+const discordStorefrontSchema = z.object({
+  guildId: uuidSchema,
+  channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
 });
 
 function text(formData: FormData, name: string): string {
@@ -323,6 +335,98 @@ export async function savePlatformSettingsAction(
   revalidatePath("/configuracoes");
   revalidatePath("/whitelist");
   return { ok: true, message: "Configurações atualizadas." };
+}
+
+export async function publishDiscordStorefrontAction(
+  _previousState: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  const parsed = discordStorefrontSchema.safeParse({
+    guildId: text(formData, "guildId"),
+    channelId: text(formData, "channelId"),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Selecione um servidor e um canal de texto válidos.",
+      fieldErrors: errorsFromZod(parsed.error),
+    };
+  }
+
+  try {
+    const { supabase } = await actionContext();
+    const { data: guild, error: guildError } = await supabase
+      .from("guilds")
+      .select("id,discord_guild_id,name,configuration")
+      .eq("id", parsed.data.guildId)
+      .eq("status", "active")
+      .is("archived_at", null)
+      .maybeSingle();
+    if (guildError) return databaseFailure(guildError.code);
+    if (!guild) return { ok: false, message: "Servidor Discord ativo não encontrado." };
+
+    const channels = await listDiscordTextChannels(guild.discord_guild_id);
+    const channel = channels.find((item) => item.id === parsed.data.channelId);
+    if (!channel) {
+      return {
+        ok: false,
+        message: "O canal selecionado não pertence ao servidor ou o bot não consegue acessá-lo.",
+        fieldErrors: { channelId: ["Selecione outro canal de texto."] },
+      };
+    }
+
+    const catalog = await new BotCommerceService(
+      new SupabaseBotCommerceRepository(),
+    ).listCatalog();
+    const published = await publishDiscordStorefront({
+      channel,
+      catalog,
+      previous: readStorefrontConfiguration(guild.configuration),
+    });
+
+    const { error: updateError } = await supabase
+      .from("guilds")
+      .update({
+        configuration: withStorefrontConfiguration(
+          guild.configuration,
+          published.configuration,
+        ),
+      })
+      .eq("id", guild.id);
+    if (updateError) return databaseFailure(updateError.code);
+
+    revalidatePath("/configuracoes");
+    return published.pinError
+      ? {
+          ok: true,
+          message:
+            "Vitrine publicada, mas não foi possível fixá-la. Dê ao bot a permissão Fixar mensagens e salve novamente.",
+        }
+      : {
+          ok: true,
+          message: `Vitrine publicada e fixada em #${published.configuration.channel_name}.`,
+        };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    console.error(`[admin:discord-storefront] ${message}`);
+    return {
+      ok: false,
+      message: storefrontActionError(message),
+    };
+  }
+}
+
+function storefrontActionError(message: string) {
+  if (message.includes("DISCORD_BOT_TOKEN")) {
+    return "O bot Discord ainda não está configurado no servidor.";
+  }
+  if (message.startsWith("Discord recusou") || message.startsWith("Resposta")) {
+    return message;
+  }
+  if (message.includes("catálogo") || message.includes("consultar")) {
+    return "Não foi possível carregar o catálogo para publicar a vitrine.";
+  }
+  return "Não foi possível publicar a vitrine agora. Tente novamente.";
 }
 
 export async function archiveRecordAction(

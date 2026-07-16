@@ -216,12 +216,13 @@ export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
 function helpCard() {
   return (
     <Card title="🆘✨ AJUDA • GWSTORE ✨🆘" subtitle="💜 Comprar é rápido, privado e seguro!">
-      <CardText>1️⃣ Digite **/loja** para abrir nosso catálogo. 🛍️</CardText>
-      <CardText>2️⃣ Escolha um produto na lista suspensa. 👇🎁</CardText>
+      <CardText>1️⃣ Vá até o canal da loja e abra a **lista fixa de produtos**. 📌🛍️</CardText>
+      <CardText>2️⃣ Escolha um produto no menu suspenso. 👇🎁</CardText>
       <CardText>3️⃣ Confira preço e estoque e clique em **💠 Comprar com Pix ⚡**.</CardText>
       <CardText>4️⃣ Pague com segurança pelo checkout da **LivePix**. 🔒✅</CardText>
       <CardText>5️⃣ Após a confirmação, abrimos um ticket privado com você e os administradores. 🎫👑</CardText>
       <Divider />
+      <CardText>🔄 Não encontrou a vitrine? Digite **/loja** para abrir o catálogo alternativo.</CardText>
       <CardText>🛡️ Nenhum dado protegido do estoque é revelado antes da confirmação do pagamento.</CardText>
       <CardText>💬 Precisou de ajuda? Fale com a equipe no seu ticket! 🤝💜</CardText>
     </Card>

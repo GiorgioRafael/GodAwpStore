@@ -3,10 +3,18 @@ import { DatabaseZap, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
 
 import { Notice } from "@/components/admin/notice";
 import { PageHeader } from "@/components/admin/page-header";
+import {
+  DiscordStorefrontForm,
+  type DiscordStorefrontGuildOption,
+} from "@/components/admin/discord-storefront-form";
 import { PlatformSettingsForm } from "@/components/admin/platform-settings-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { getPlatformSettings } from "@/lib/data/admin-repository";
+import {
+  listDiscordTextChannels,
+  readStorefrontConfiguration,
+} from "@/lib/bot/discord-storefront";
+import { getPlatformSettings, listOperationalRows } from "@/lib/data/admin-repository";
 
 export const metadata: Metadata = { title: "Configurações" };
 
@@ -29,7 +37,39 @@ const securityRequirements = [
 ];
 
 export default async function SettingsPage() {
-  const settings = await getPlatformSettings();
+  const [settings, guildRows] = await Promise.all([
+    getPlatformSettings(),
+    listOperationalRows("guilds", 500),
+  ]);
+  const guilds = await Promise.all(
+    guildRows
+      .filter((guild) => guild.status === "active" && !guild.archived_at)
+      .map(async (guild): Promise<DiscordStorefrontGuildOption> => {
+        try {
+          return {
+            id: guild.id,
+            discordGuildId: guild.discord_guild_id,
+            name: guild.name,
+            channels: await listDiscordTextChannels(guild.discord_guild_id),
+            current: readStorefrontConfiguration(guild.configuration),
+            channelLoadError: null,
+          };
+        } catch (error) {
+          console.error(
+            `[settings:discord-channels] ${error instanceof Error ? error.message : "erro desconhecido"}`,
+          );
+          return {
+            id: guild.id,
+            discordGuildId: guild.discord_guild_id,
+            name: guild.name,
+            channels: [],
+            current: readStorefrontConfiguration(guild.configuration),
+            channelLoadError:
+              "Não foi possível carregar os canais. Confira se o bot está no servidor e possui acesso aos canais de texto.",
+          };
+        }
+      }),
+  );
   const parsedCommission = Number(settings?.global_commission_bps ?? 3_000);
   const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 3_000;
   const updatedAt = settings?.updated_at ?? null;
@@ -87,6 +127,8 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <DiscordStorefrontForm guilds={guilds} />
     </div>
   );
 }
