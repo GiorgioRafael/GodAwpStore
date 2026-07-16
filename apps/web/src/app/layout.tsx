@@ -14,11 +14,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "GodAwpStore Admin",
-    template: "%s · GodAwpStore",
+    default: "GWStore Admin",
+    template: "%s · GWStore",
   },
-  description: "Painel administrativo seguro da GodAwpStore.",
-  applicationName: "GodAwpStore Admin",
+  description: "Painel administrativo seguro da GWStore.",
+  applicationName: "GWStore Admin",
   robots: {
     index: false,
     follow: false,

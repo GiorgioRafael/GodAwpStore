@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 
 import AccessDeniedPage from "@/app/(auth)/acesso-negado/page";
 import LoginPage from "@/app/(auth)/login/page";
+import { AuthShell } from "@/components/layout/auth-shell";
 
 describe("páginas de autenticação", () => {
   it("oferece login Discord na página inicial de acesso", async () => {
-    render(await LoginPage({ searchParams: Promise.resolve({}) }));
+    render(
+      <AuthShell>{await LoginPage({ searchParams: Promise.resolve({}) })}</AuthShell>,
+    );
 
+    expect(screen.getByRole("link", { name: "GWStore — início" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Entre no painel" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Continuar com Discord/i })).toHaveAttribute(
       "href",

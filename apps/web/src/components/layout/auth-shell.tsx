@@ -11,7 +11,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
       <div aria-hidden="true" className="absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(255,255,255,.5)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.5)_1px,transparent_1px)] [background-size:44px_44px]" />
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-8 flex justify-center">
-          <Brand />
+          <Brand prominent />
         </div>
         {children}
         <p className="mt-6 text-center text-xs leading-5 text-muted/75">

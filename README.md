@@ -1,6 +1,6 @@
-# GodAwpStore Admin
+# GWStore Admin
 
-Painel administrativo da GodAwpStore para gerenciar catálogo, estoque digital,
+Painel administrativo da GWStore para gerenciar catálogo, estoque digital,
 whitelist, comissão e a base operacional das futuras lojas no Discord.
 
 Esta primeira versão inclui a aplicação web e o modelo de dados. O bot, o PIX, a
