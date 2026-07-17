@@ -70,7 +70,7 @@ export interface LivePixPaymentRepository {
 
 type PaymentClient = {
   createPayment(input: { amountCents: number; redirectUrl: string }): Promise<LivePixCheckout>;
-  getPayment(paymentId: string): Promise<LivePixPayment>;
+  getPaymentByReference(reference: string): Promise<LivePixPayment>;
 };
 
 export class LivePixPaymentService {
@@ -135,7 +135,7 @@ export class LivePixPaymentService {
     const checkout = await this.repository.findCheckoutByReference(input.providerReference);
     if (!checkout) return null;
 
-    const payment = await this.client.getPayment(input.providerPaymentId);
+    const payment = await this.client.getPaymentByReference(input.providerReference);
     if (payment.id !== input.providerPaymentId || payment.reference !== checkout.providerReference) {
       throw new Error("O pagamento LivePix não corresponde ao checkout registrado.");
     }

@@ -56,7 +56,7 @@ function client() {
       reference: "provider-ref",
       checkoutUrl: "https://checkout.livepix.gg/provider-ref",
     })),
-    getPayment: vi.fn(async () => ({
+    getPaymentByReference: vi.fn(async () => ({
       id: "provider-payment-id",
       proof: "pix-proof",
       reference: "provider-ref",
@@ -129,6 +129,7 @@ describe("LivePixPaymentService", () => {
         reconciliationSha256: expect.stringMatching(/^[0-9a-f]{64}$/),
       }),
     );
+    expect(api.getPaymentByReference).toHaveBeenCalledWith("provider-ref");
   });
 
   it("ignora webhook de referência que não pertence à loja", async () => {
@@ -139,6 +140,6 @@ describe("LivePixPaymentService", () => {
     await expect(
       service.reconcilePayment({ providerPaymentId: "unknown", providerReference: "unknown" }),
     ).resolves.toBeNull();
-    expect(api.getPayment).not.toHaveBeenCalled();
+    expect(api.getPaymentByReference).not.toHaveBeenCalled();
   });
 });

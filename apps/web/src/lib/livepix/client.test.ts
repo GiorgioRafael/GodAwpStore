@@ -55,25 +55,25 @@ describe("LivePixClient", () => {
     });
   });
 
-  it("consulta e valida o pagamento recebido", async () => {
+  it("consulta e valida o pagamento recebido pela referência", async () => {
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(Response.json({ access_token: "token-value", expires_in: 3_600 }))
       .mockResolvedValueOnce(
         Response.json({
-          data: {
+          data: [{
             id: "provider-payment-id",
             proof: "pix-proof",
             reference: "provider-reference",
             amount: 500,
             currency: "BRL",
             createdAt: "2026-07-16T12:00:00-03:00",
-          },
+          }],
         }),
       );
     const client = new LivePixClient(config, fetcher);
 
-    await expect(client.getPayment("provider-payment-id")).resolves.toEqual({
+    await expect(client.getPaymentByReference("provider-reference")).resolves.toEqual({
       id: "provider-payment-id",
       proof: "pix-proof",
       reference: "provider-reference",
@@ -81,6 +81,29 @@ describe("LivePixClient", () => {
       currency: "BRL",
       createdAt: "2026-07-16T12:00:00-03:00",
     });
+    expect(String(fetcher.mock.calls[1]?.[0])).toBe(
+      "https://api.example/v2/payments?reference=provider-reference&currency=BRL&page=1&limit=2",
+    );
+  });
+
+  it("falha de forma fechada quando a referência não é única", async () => {
+    const payment = {
+      id: "provider-payment-id",
+      proof: "pix-proof",
+      reference: "provider-reference",
+      amount: 500,
+      currency: "BRL",
+      createdAt: "2026-07-16T12:00:00-03:00",
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ access_token: "token-value", expires_in: 3_600 }))
+      .mockResolvedValueOnce(Response.json({ data: [payment, { ...payment, id: "duplicate" }] }));
+    const client = new LivePixClient(config, fetcher);
+
+    await expect(client.getPaymentByReference("provider-reference")).rejects.toThrow(
+      "pagamento único",
+    );
   });
 
   it("colapsa emissões OAuth concorrentes no mesmo processo", async () => {

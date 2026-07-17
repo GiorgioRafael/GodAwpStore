@@ -79,45 +79,36 @@ export class LivePixClient {
     return { reference, checkoutUrl };
   }
 
-  async getPayment(paymentId: string): Promise<LivePixPayment> {
-    const normalizedId = paymentId.trim();
-    if (!normalizedId || normalizedId.length > 255) {
-      throw new Error("Identificador de pagamento LivePix inválido.");
+  async getPaymentByReference(reference: string): Promise<LivePixPayment> {
+    const normalizedReference = reference.trim();
+    if (!normalizedReference || normalizedReference.length > 255) {
+      throw new Error("Referência de pagamento LivePix inválida.");
     }
 
-    const response = await this.authorizedFetch(`/v2/payments/${encodeURIComponent(normalizedId)}`);
+    const query = new URLSearchParams({
+      reference: normalizedReference,
+      currency: "BRL",
+      page: "1",
+      limit: "2",
+    });
+    const response = await this.authorizedFetch(`/v2/payments?${query}`);
     if (!response.ok) {
-      throw providerError("consultar o pagamento", response.status);
+      throw providerError("consultar o pagamento por referência", response.status);
     }
 
     const body: unknown = await response.json();
-    const data = readObject(readObject(body)?.data);
-    const id = readNonEmptyString(data?.id);
-    const proof = readNonEmptyString(data?.proof);
-    const reference = readNonEmptyString(data?.reference);
-    const currency = readNonEmptyString(data?.currency);
-    const createdAt = readNonEmptyString(data?.createdAt);
-    const amountCents = data?.amount;
-    if (
-      !id ||
-      !proof ||
-      !reference ||
-      currency !== "BRL" ||
-      !createdAt ||
-      !Number.isSafeInteger(amountCents) ||
-      Number(amountCents) < 1
-    ) {
+    const data = readObject(body)?.data;
+    if (!Array.isArray(data)) {
       throw new Error("A LivePix retornou dados de pagamento inválidos.");
     }
 
-    return {
-      id,
-      proof,
-      reference,
-      amountCents: Number(amountCents),
-      currency,
-      createdAt,
-    };
+    const matches = data.map(readPayment).filter(
+      (payment) => payment.reference === normalizedReference,
+    );
+    if (matches.length !== 1) {
+      throw new Error("A LivePix não retornou um pagamento único para a referência.");
+    }
+    return matches[0];
   }
 
   private async authorizedFetch(path: string, init: RequestInit = {}) {
@@ -226,4 +217,34 @@ function readObject(value: unknown): Record<string, unknown> | null {
 
 function readNonEmptyString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readPayment(value: unknown): LivePixPayment {
+  const data = readObject(value);
+  const id = readNonEmptyString(data?.id);
+  const proof = readNonEmptyString(data?.proof);
+  const reference = readNonEmptyString(data?.reference);
+  const currency = readNonEmptyString(data?.currency);
+  const createdAt = readNonEmptyString(data?.createdAt);
+  const amountCents = data?.amount;
+  if (
+    !id ||
+    !proof ||
+    !reference ||
+    currency !== "BRL" ||
+    !createdAt ||
+    !Number.isSafeInteger(amountCents) ||
+    Number(amountCents) < 1
+  ) {
+    throw new Error("A LivePix retornou dados de pagamento inválidos.");
+  }
+
+  return {
+    id,
+    proof,
+    reference,
+    amountCents: Number(amountCents),
+    currency,
+    createdAt,
+  };
 }
