@@ -227,6 +227,8 @@ Consulte também [SECURITY.md](SECURITY.md) antes de tratar dados reais.
 
 ## Deploy na Vercel
 
+Com a integração Git ativa, cada push na branch `main` inicia um deployment de produção.
+
 Ao criar ou atualizar o deploy:
 
 1. configure o diretório raiz do projeto para o monorepo;
