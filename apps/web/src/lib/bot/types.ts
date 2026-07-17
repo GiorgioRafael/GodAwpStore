@@ -1,3 +1,5 @@
+import type { BoosterDiscountConfiguration } from "./booster-discount";
+
 export type BotCatalogProduct = {
   id: string;
   name: string;
@@ -31,6 +33,7 @@ export type DiscordGuildIdentity = {
 export type RegisteredGuild = {
   id: string;
   whitelistEntryId: string | null;
+  boosterDiscount: BoosterDiscountConfiguration;
 };
 
 export type PurchasableProduct = {
@@ -45,7 +48,11 @@ export type ExistingOrder = {
   productId: string;
   quantity: number;
   unitPriceCents: number;
+  subtotalPriceCents: number;
   salePriceCents: number;
+  discountBps: number;
+  discountAmountCents: number;
+  discountReason: "server_booster" | null;
   status: string;
 };
 
@@ -70,7 +77,11 @@ export interface BotCommerceRepository {
     product: PurchasableProduct;
     buyerDiscordId: string;
     quantity: number;
+    subtotalPriceCents: number;
     totalPriceCents: number;
+    discountBps: number;
+    discountAmountCents: number;
+    discountReason: "server_booster" | null;
     commissionBps: number;
   }): Promise<OrderCreation>;
 }
@@ -82,7 +93,11 @@ export type PurchaseResult =
       productName: string;
       quantity: number;
       unitPriceCents: number;
+      subtotalPriceCents: number;
       totalPriceCents: number;
+      discountBps: number;
+      discountAmountCents: number;
+      discountReason: "server_booster" | null;
     }
   | {
       kind: "quantity_below_minimum";

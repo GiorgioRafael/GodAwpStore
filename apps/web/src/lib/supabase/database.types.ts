@@ -191,8 +191,12 @@ type OrderRow = {
   quantity: number;
   status: Database["public"]["Enums"]["order_status"];
   currency_code: string;
+  subtotal_price_cents: number;
   sale_price_cents: number;
   minimum_price_cents: number;
+  discount_bps: number;
+  discount_amount_cents: number;
+  discount_reason: string | null;
   commission_bps: number;
   payment_reference: string | null;
   payment_provider: string;
@@ -439,6 +443,7 @@ export type Database = {
           | "guild_id"
           | "product_id"
           | "buyer_discord_id"
+          | "subtotal_price_cents"
           | "sale_price_cents"
           | "minimum_price_cents"
           | "commission_bps"
@@ -766,7 +771,11 @@ export type Database = {
           p_product_id: string;
           p_buyer_discord_id: string;
           p_quantity: number;
+          p_subtotal_price_cents: number;
           p_sale_price_cents: number;
+          p_discount_bps: number;
+          p_discount_amount_cents: number;
+          p_discount_reason: string | null;
           p_commission_bps: number;
         };
         Returns: {

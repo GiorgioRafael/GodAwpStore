@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { LoaderCircle, MessageSquareText, RefreshCw, ShieldCheck, Waypoints } from "lucide-react";
+import { Gem, LoaderCircle, MessageSquareText, RefreshCw, ShieldCheck, Waypoints } from "lucide-react";
 
 import { publishDiscordStorefrontAction } from "@/app/actions/admin";
 import {
@@ -9,12 +9,17 @@ import {
   fieldError,
   initialAdminActionState,
 } from "@/components/admin/action-feedback";
-import { formatDateTime } from "@/components/admin/admin-format";
+import {
+  formatCentsForInput,
+  formatCommissionForInput,
+  formatDateTime,
+} from "@/components/admin/admin-format";
 import { Notice } from "@/components/admin/notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Field, Select } from "@/components/ui/form-field";
+import { Field, Input, Select } from "@/components/ui/form-field";
+import type { BoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import type {
   DiscordStorefrontChannel,
   DiscordStorefrontConfiguration,
@@ -26,6 +31,7 @@ export type DiscordStorefrontGuildOption = {
   name: string;
   channels: DiscordStorefrontChannel[];
   current: DiscordStorefrontConfiguration | null;
+  boosterDiscount: BoosterDiscountConfiguration;
   channelLoadError: string | null;
 };
 
@@ -39,6 +45,10 @@ export function DiscordStorefrontForm({
   const [selectedChannelId, setSelectedChannelId] = useState(
     preferredChannelId(initialGuild),
   );
+  const initialDiscount = discountFormValues(initialGuild);
+  const [boosterDiscountEnabled, setBoosterDiscountEnabled] = useState(initialDiscount.enabled);
+  const [boosterDiscountPercent, setBoosterDiscountPercent] = useState(initialDiscount.percent);
+  const [boosterMinimumSubtotal, setBoosterMinimumSubtotal] = useState(initialDiscount.minimum);
   const [state, formAction, pending] = useActionState(
     publishDiscordStorefrontAction,
     initialAdminActionState,
@@ -53,6 +63,10 @@ export function DiscordStorefrontForm({
     const guild = guilds.find((item) => item.id === guildId) ?? null;
     setSelectedGuildId(guildId);
     setSelectedChannelId(preferredChannelId(guild));
+    const discount = discountFormValues(guild);
+    setBoosterDiscountEnabled(discount.enabled);
+    setBoosterDiscountPercent(discount.percent);
+    setBoosterMinimumSubtotal(discount.minimum);
   }
 
   const canPublish = Boolean(selectedGuild && selectedChannelId && !selectedGuild.channelLoadError);
@@ -138,6 +152,82 @@ export function DiscordStorefrontForm({
               <Notice>{selectedGuild.channelLoadError}</Notice>
             ) : null}
 
+            <div className="space-y-4 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
+                    <Gem aria-hidden="true" className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Desconto para Nitro Boosters</p>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      O bot confirma o boost diretamente no servidor antes de calcular o Pix.
+                    </p>
+                  </div>
+                </div>
+                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-muted-strong">
+                  <input
+                    type="checkbox"
+                    name="boosterDiscountEnabled"
+                    checked={boosterDiscountEnabled}
+                    onChange={(event) => setBoosterDiscountEnabled(event.target.checked)}
+                    className="size-4 accent-[#d7ad42]"
+                  />
+                  Ativo
+                </label>
+              </div>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field
+                  label="Percentual de desconto"
+                  htmlFor={`${formId}-booster-percent`}
+                  hint="Até 90%"
+                  error={
+                    fieldError(state, "boosterDiscountPercent") ??
+                    fieldError(state, "boosterDiscountBps")
+                  }
+                >
+                  <div className="relative">
+                    <Input
+                      id={`${formId}-booster-percent`}
+                      name="boosterDiscountPercent"
+                      inputMode="decimal"
+                      value={boosterDiscountPercent}
+                      onChange={(event) => setBoosterDiscountPercent(event.target.value)}
+                      className="pr-10"
+                      required
+                    />
+                    <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">%</span>
+                  </div>
+                </Field>
+                <Field
+                  label="Compra mínima para desconto"
+                  htmlFor={`${formId}-booster-minimum`}
+                  hint="Subtotal antes do desconto"
+                  error={
+                    fieldError(state, "boosterMinimumSubtotal") ??
+                    fieldError(state, "boosterMinimumSubtotalCents")
+                  }
+                >
+                  <div className="relative">
+                    <span aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">R$</span>
+                    <Input
+                      id={`${formId}-booster-minimum`}
+                      name="boosterMinimumSubtotal"
+                      inputMode="decimal"
+                      value={boosterMinimumSubtotal}
+                      onChange={(event) => setBoosterMinimumSubtotal(event.target.value)}
+                      className="pl-10"
+                      required
+                    />
+                  </div>
+                </Field>
+              </div>
+              <p className="text-xs leading-5 text-muted">
+                Regra inicial: <strong>5% acima de R$ 50,00</strong>. O subtotal, o desconto e o total final ficam registrados no pedido.
+              </p>
+            </div>
+
             <div className="grid gap-3 md:grid-cols-3">
               <FlowItem
                 icon={MessageSquareText}
@@ -184,14 +274,23 @@ export function DiscordStorefrontForm({
               {pending
                 ? "Publicando..."
                 : selectedGuild?.current
-                  ? "Atualizar vitrine"
-                  : "Publicar vitrine"}
+                  ? "Salvar e atualizar"
+                  : "Salvar e publicar"}
             </Button>
           </CardFooter>
         </form>
       )}
     </Card>
   );
+}
+
+function discountFormValues(guild: DiscordStorefrontGuildOption | null) {
+  const discount = guild?.boosterDiscount;
+  return {
+    enabled: discount?.enabled ?? true,
+    percent: formatCommissionForInput(discount?.discount_bps ?? 500),
+    minimum: formatCentsForInput(discount?.minimum_subtotal_cents ?? 5_000),
+  };
 }
 
 function preferredChannelId(guild: DiscordStorefrontGuildOption | null) {

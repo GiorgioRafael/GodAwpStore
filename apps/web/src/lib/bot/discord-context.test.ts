@@ -21,6 +21,7 @@ describe("Discord interaction context", () => {
       interactionId: "123456789012345678",
       guildId: "223456789012345678",
       userId: "423456789012345678",
+      isServerBooster: false,
     });
   });
 
@@ -29,7 +30,24 @@ describe("Discord interaction context", () => {
       interactionId: null,
       guildId: null,
       userId: null,
+      isServerBooster: false,
     });
+  });
+
+  it("reconhece o Nitro Booster pelo premium_since assinado pelo Discord", () => {
+    expect(
+      readDiscordInteraction(
+        {
+          id: "123456789012345678",
+          guild_id: "223456789012345678",
+          member: {
+            user: { id: "323456789012345678" },
+            premium_since: "2026-07-01T12:00:00.000Z",
+          },
+        },
+        "",
+      ).isServerBooster,
+    ).toBe(true);
   });
 
   it("busca nome e proprietário do servidor sem expor o token", async () => {

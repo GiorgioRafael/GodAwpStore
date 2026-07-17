@@ -18,14 +18,25 @@ const input = {
   buyerDiscordId: "423456789012345678",
   productId: product.id,
   quantity: 1,
+  isServerBooster: false,
   guild,
+};
+
+const boosterDiscount = {
+  enabled: true,
+  discount_bps: 500,
+  minimum_subtotal_cents: 5_000,
 };
 
 function repository(overrides: Partial<BotCommerceRepository> = {}) {
   const base: BotCommerceRepository = {
     listCatalog: vi.fn(async () => []),
     findOrderByInteraction: vi.fn(async () => null),
-    ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: "whitelist-row" })),
+    ensureGuild: vi.fn(async () => ({
+      id: "guild-row",
+      whitelistEntryId: "whitelist-row",
+      boosterDiscount,
+    })),
     findPurchasableProduct: vi.fn(async () => product),
     countAvailableStock: vi.fn(async () => 2),
     getCommissionBps: vi.fn(async () => 1_000),
@@ -61,7 +72,11 @@ describe("BotCommerceService", () => {
 
   it("bloqueia servidores cujo proprietário não está na allowlist", async () => {
     const repo = repository({
-      ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: null })),
+      ensureGuild: vi.fn(async () => ({
+        id: "guild-row",
+        whitelistEntryId: null,
+        boosterDiscount,
+      })),
     });
     const service = new BotCommerceService(repo);
 
@@ -79,7 +94,11 @@ describe("BotCommerceService", () => {
       productName: "Dragon Breath",
       quantity: 1,
       unitPriceCents: 200,
+      subtotalPriceCents: 200,
       totalPriceCents: 200,
+      discountBps: 0,
+      discountAmountCents: 0,
+      discountReason: null,
     });
     expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith({
       interactionId: input.interactionId,
@@ -88,7 +107,11 @@ describe("BotCommerceService", () => {
       product,
       buyerDiscordId: input.buyerDiscordId,
       quantity: 1,
+      subtotalPriceCents: 200,
       totalPriceCents: 200,
+      discountBps: 0,
+      discountAmountCents: 0,
+      discountReason: null,
       commissionBps: 1_000,
     });
   });
@@ -116,7 +139,11 @@ describe("BotCommerceService", () => {
         productId: input.productId,
         quantity: 1,
         unitPriceCents: 200,
+        subtotalPriceCents: 200,
         salePriceCents: 200,
+        discountBps: 0,
+        discountAmountCents: 0,
+        discountReason: null,
         status: "awaiting_payment",
       })),
     });
@@ -128,7 +155,11 @@ describe("BotCommerceService", () => {
       productName: product.name,
       quantity: 1,
       unitPriceCents: 200,
+      subtotalPriceCents: 200,
       totalPriceCents: 200,
+      discountBps: 0,
+      discountAmountCents: 0,
+      discountReason: null,
     });
     expect(repo.ensureGuild).not.toHaveBeenCalled();
     expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
@@ -142,7 +173,11 @@ describe("BotCommerceService", () => {
         productId: input.productId,
         quantity: 1,
         unitPriceCents: 200,
+        subtotalPriceCents: 200,
         salePriceCents: 200,
+        discountBps: 0,
+        discountAmountCents: 0,
+        discountReason: null,
         status: "awaiting_payment",
       })),
     });
@@ -181,6 +216,34 @@ describe("BotCommerceService", () => {
     });
     expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith(
       expect.objectContaining({ quantity: 50, totalPriceCents: 100 }),
+    );
+  });
+
+  it("aplica 5% para booster quando o subtotal atinge R$ 50", async () => {
+    const boosterProduct = { ...product, minimumPriceCents: 2_500 };
+    const repo = repository({
+      findPurchasableProduct: vi.fn(async () => boosterProduct),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.purchase({ ...input, quantity: 2, isServerBooster: true }),
+    ).resolves.toMatchObject({
+      kind: "created",
+      subtotalPriceCents: 5_000,
+      discountBps: 500,
+      discountAmountCents: 250,
+      discountReason: "server_booster",
+      totalPriceCents: 4_750,
+    });
+    expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subtotalPriceCents: 5_000,
+        discountBps: 500,
+        discountAmountCents: 250,
+        discountReason: "server_booster",
+        totalPriceCents: 4_750,
+      }),
     );
   });
 

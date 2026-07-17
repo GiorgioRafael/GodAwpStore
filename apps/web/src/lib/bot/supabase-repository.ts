@@ -10,6 +10,7 @@ import type {
   PurchasableProduct,
   RegisteredGuild,
 } from "./types";
+import { readBoosterDiscountConfiguration } from "./booster-discount";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
 
@@ -90,7 +91,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
   async findOrderByInteraction(interactionId: string): Promise<ExistingOrder | null> {
     const { data, error } = await this.client
       .from("orders")
-      .select("id,buyer_discord_id,product_id,quantity,minimum_price_cents,sale_price_cents,status")
+      .select("id,buyer_discord_id,product_id,quantity,minimum_price_cents,subtotal_price_cents,sale_price_cents,discount_bps,discount_amount_cents,discount_reason,status")
       .eq("payment_reference", interactionReference(interactionId))
       .maybeSingle();
     assertQuery(error, "pedido existente");
@@ -102,7 +103,11 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
           productId: data.product_id,
           quantity: safeInteger(data.quantity),
           unitPriceCents: safeInteger(data.minimum_price_cents),
+          subtotalPriceCents: safeInteger(data.subtotal_price_cents),
           salePriceCents: safeInteger(data.sale_price_cents),
+          discountBps: safeInteger(data.discount_bps),
+          discountAmountCents: safeInteger(data.discount_amount_cents),
+          discountReason: data.discount_reason === "server_booster" ? "server_booster" : null,
           status: data.status,
         }
       : null;
@@ -136,7 +141,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     };
 
     const query = existing
-      ? this.client.from("guilds").update(record).eq("id", existing.id).select("id,whitelist_entry_id").single()
+      ? this.client.from("guilds").update(record).eq("id", existing.id).select("id,whitelist_entry_id,configuration").single()
       : this.client
           .from("guilds")
           .insert({
@@ -144,12 +149,16 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
             discord_guild_id: identity.discordGuildId,
             joined_at: now,
           })
-          .select("id,whitelist_entry_id")
+          .select("id,whitelist_entry_id,configuration")
           .single();
     const { data, error } = await query;
     assertQuery(error, "registro do servidor");
 
-    return { id: data.id, whitelistEntryId: data.whitelist_entry_id };
+    return {
+      id: data.id,
+      whitelistEntryId: data.whitelist_entry_id,
+      boosterDiscount: readBoosterDiscountConfiguration(data.configuration),
+    };
   }
 
   async findPurchasableProduct(productId: string): Promise<PurchasableProduct | null> {
@@ -227,7 +236,11 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     product: PurchasableProduct;
     buyerDiscordId: string;
     quantity: number;
+    subtotalPriceCents: number;
     totalPriceCents: number;
+    discountBps: number;
+    discountAmountCents: number;
+    discountReason: "server_booster" | null;
     commissionBps: number;
   }): Promise<OrderCreation> {
     if (!input.whitelistEntryId) {
@@ -241,7 +254,11 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         p_product_id: input.product.id,
         p_buyer_discord_id: input.buyerDiscordId,
         p_quantity: input.quantity,
+        p_subtotal_price_cents: input.subtotalPriceCents,
         p_sale_price_cents: input.totalPriceCents,
+        p_discount_bps: input.discountBps,
+        p_discount_amount_cents: input.discountAmountCents,
+        p_discount_reason: input.discountReason,
         p_commission_bps: input.commissionBps,
       })
       .single();

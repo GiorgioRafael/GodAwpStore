@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { requireAdmin } from "@/lib/auth";
 import { BotCommerceService } from "@/lib/bot/commerce-service";
+import { withBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
   listDiscordTextChannels,
   publishDiscordStorefront,
@@ -41,6 +42,20 @@ const inventoryStatusChangeSchema = z.object({
 const discordStorefrontSchema = z.object({
   guildId: uuidSchema,
   channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
+  boosterDiscountEnabled: z.boolean(),
+  boosterDiscountBps: z.number().int().min(1, "Informe um desconto maior que zero.").max(9_000, "O desconto máximo é 90%."),
+  boosterMinimumSubtotalCents: z.number().int().min(100, "A compra mínima deve ser de pelo menos R$ 1,00."),
+}).superRefine((value, context) => {
+  const discountedMinimum = Number(
+    BigInt(value.boosterMinimumSubtotalCents) * BigInt(10_000 - value.boosterDiscountBps) / 10_000n,
+  );
+  if (discountedMinimum < 100) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["boosterMinimumSubtotalCents"],
+      message: "A compra mínima precisa manter o Pix final em pelo menos R$ 1,00.",
+    });
+  }
 });
 
 function text(formData: FormData, name: string): string {
@@ -390,15 +405,29 @@ export async function publishDiscordStorefrontAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
+  let boosterMinimumSubtotalCents = Number.NaN;
+  try {
+    boosterMinimumSubtotalCents = parseBrlToCents(text(formData, "boosterMinimumSubtotal"));
+  } catch {
+    // A validação abaixo devolve a mensagem no campo correto.
+  }
   const parsed = discordStorefrontSchema.safeParse({
     guildId: text(formData, "guildId"),
     channelId: text(formData, "channelId"),
+    boosterDiscountEnabled: formData.get("boosterDiscountEnabled") === "on",
+    boosterDiscountBps: percentageToBps(text(formData, "boosterDiscountPercent")),
+    boosterMinimumSubtotalCents,
   });
   if (!parsed.success) {
     return {
       ok: false,
-      message: "Selecione um servidor e um canal de texto válidos.",
-      fieldErrors: errorsFromZod(parsed.error),
+      message: "Revise o canal e as regras de desconto para boosters.",
+      fieldErrors: {
+        ...errorsFromZod(parsed.error),
+        ...(!Number.isFinite(boosterMinimumSubtotalCents)
+          ? { boosterMinimumSubtotal: ["Informe um valor como 50,00."] }
+          : {}),
+      },
     };
   }
 
@@ -438,9 +467,16 @@ export async function publishDiscordStorefrontAction(
     const { data: updatedGuild, error: updateError } = await supabase
       .from("guilds")
       .update({
-        configuration: withStorefrontConfiguration(
-          guild.configuration,
-          published.configuration,
+        configuration: withBoosterDiscountConfiguration(
+          withStorefrontConfiguration(
+            guild.configuration,
+            published.configuration,
+          ),
+          {
+            enabled: parsed.data.boosterDiscountEnabled,
+            discount_bps: parsed.data.boosterDiscountBps,
+            minimum_subtotal_cents: parsed.data.boosterMinimumSubtotalCents,
+          },
         ),
       })
       .eq("id", guild.id)
@@ -452,7 +488,7 @@ export async function publishDiscordStorefrontAction(
     revalidatePath("/configuracoes");
     return {
       ok: true,
-      message: `Vitrine publicada em #${published.configuration.channel_name}.`,
+      message: `Vitrine e desconto de boosters atualizados em #${published.configuration.channel_name}.`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

@@ -5,7 +5,7 @@ const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 type DiscordInteractionPayload = {
   id?: unknown;
   guild_id?: unknown;
-  member?: { user?: { id?: unknown } };
+  member?: { user?: { id?: unknown }; premium_since?: unknown };
   user?: { id?: unknown };
 };
 
@@ -15,8 +15,9 @@ export function readDiscordInteraction(raw: unknown, normalizedUserId: string) {
   const guildId = asSnowflake(interaction?.guild_id);
   const rawUserId = asSnowflake(interaction?.member?.user?.id) ?? asSnowflake(interaction?.user?.id);
   const userId = asSnowflake(normalizedUserId) ?? rawUserId;
+  const isServerBooster = isIsoDateTime(interaction?.member?.premium_since);
 
-  return { interactionId, guildId, userId };
+  return { interactionId, guildId, userId, isServerBooster };
 }
 
 export async function fetchDiscordGuildIdentity(
@@ -59,6 +60,10 @@ export async function fetchDiscordGuildIdentity(
 
 function asSnowflake(value: unknown) {
   return typeof value === "string" && SNOWFLAKE_PATTERN.test(value) ? value : null;
+}
+
+function isIsoDateTime(value: unknown) {
+  return typeof value === "string" && value.trim() !== "" && !Number.isNaN(Date.parse(value));
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

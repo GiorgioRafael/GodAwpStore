@@ -9,6 +9,7 @@ import {
   LIVEPIX_MINIMUM_BRL_CENTS,
   minimumLivePixQuantity,
 } from "@/lib/livepix/limits";
+import { applyBoosterDiscount } from "./booster-discount";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
@@ -33,6 +34,7 @@ export class BotCommerceService {
     buyerDiscordId: string;
     productId: string;
     quantity: number;
+    isServerBooster: boolean;
     guild: DiscordGuildIdentity;
   }): Promise<PurchaseResult> {
     if (
@@ -64,7 +66,11 @@ export class BotCommerceService {
         productName: product?.name ?? "Produto",
         quantity: existing.quantity,
         unitPriceCents: existing.unitPriceCents,
+        subtotalPriceCents: existing.subtotalPriceCents,
         totalPriceCents: existing.salePriceCents,
+        discountBps: existing.discountBps,
+        discountAmountCents: existing.discountAmountCents,
+        discountReason: existing.discountReason,
       };
     }
 
@@ -81,11 +87,18 @@ export class BotCommerceService {
     }
 
     const minimumQuantity = minimumLivePixQuantity(product.minimumPriceCents);
-    const totalPriceCents = calculateOrderTotalCents(product.minimumPriceCents, input.quantity);
-    if (!minimumQuantity || totalPriceCents === null) {
+    const subtotalPriceCents = calculateOrderTotalCents(product.minimumPriceCents, input.quantity);
+    const pricing = subtotalPriceCents === null
+      ? null
+      : applyBoosterDiscount(
+          subtotalPriceCents,
+          guild.boosterDiscount,
+          input.isServerBooster,
+        );
+    if (!minimumQuantity || !pricing) {
       return { kind: "invalid_quantity" };
     }
-    if (totalPriceCents < LIVEPIX_MINIMUM_BRL_CENTS) {
+    if (pricing.totalPriceCents < LIVEPIX_MINIMUM_BRL_CENTS) {
       return {
         kind: "quantity_below_minimum",
         minimumQuantity,
@@ -108,7 +121,11 @@ export class BotCommerceService {
       product,
       buyerDiscordId: input.buyerDiscordId,
       quantity: input.quantity,
-      totalPriceCents,
+      subtotalPriceCents: pricing.subtotalPriceCents,
+      totalPriceCents: pricing.totalPriceCents,
+      discountBps: pricing.discountBps,
+      discountAmountCents: pricing.discountAmountCents,
+      discountReason: pricing.discountReason,
       commissionBps,
     });
     if (order.outOfStock || !order.id) {
@@ -121,7 +138,11 @@ export class BotCommerceService {
       productName: product.name,
       quantity: input.quantity,
       unitPriceCents: product.minimumPriceCents,
-      totalPriceCents,
+      subtotalPriceCents: pricing.subtotalPriceCents,
+      totalPriceCents: pricing.totalPriceCents,
+      discountBps: pricing.discountBps,
+      discountAmountCents: pricing.discountAmountCents,
+      discountReason: pricing.discountReason,
     };
   }
 }

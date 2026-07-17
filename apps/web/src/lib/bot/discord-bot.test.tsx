@@ -211,7 +211,11 @@ describe("Discord catalog cards", () => {
         productName: "Dragon's Breath",
         quantity: 3,
         unitPriceCents: 40,
+        subtotalPriceCents: 120,
         totalPriceCents: 120,
+        discountBps: 0,
+        discountAmountCents: 0,
+        discountReason: null,
       },
       "https://checkout.livepix.gg/payment-reference",
     );
@@ -231,6 +235,37 @@ describe("Discord catalog cards", () => {
     expect(String(request?.body)).toContain("🐉🔥");
     expect(String(request?.body)).toContain("3 unidades");
     expect(String(request?.body)).toContain("R$ 1,20");
+  });
+
+  it("mostra subtotal e desconto de booster no checkout privado", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+    const card = purchaseResultCard({
+      kind: "created",
+      orderId: "cddc0f6c-d177-4435-9bf7-476380f0654c",
+      productName: "Sun Bloom",
+      quantity: 2,
+      unitPriceCents: 2_500,
+      subtotalPriceCents: 5_000,
+      totalPriceCents: 4_750,
+      discountBps: 500,
+      discountAmountCents: 250,
+      discountReason: "server_booster",
+    });
+
+    await postDiscordEphemeral(
+      {
+        application_id: "123456789012345678",
+        token: "interaction-token-for-test-123456",
+      },
+      card,
+      fetcher,
+    );
+
+    const body = String(fetcher.mock.calls[0]?.[1]?.body);
+    expect(body).toContain("Desconto Nitro Booster (5%)");
+    expect(body).toContain("R$ 50,00");
+    expect(body).toContain("R$ 47,50");
   });
 
   it("conclui a resposta adiada do modal editando a mensagem privada original", async () => {

@@ -14,6 +14,7 @@ import {
   listDiscordTextChannels,
   readStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
+import { readBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import { getPlatformSettings, listOperationalRows } from "@/lib/data/admin-repository";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -52,6 +53,7 @@ export default async function SettingsPage() {
             name: guild.name,
             channels: await listDiscordTextChannels(guild.discord_guild_id),
             current: readStorefrontConfiguration(guild.configuration),
+            boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError: null,
           };
         } catch (error) {
@@ -64,6 +66,7 @@ export default async function SettingsPage() {
             name: guild.name,
             channels: [],
             current: readStorefrontConfiguration(guild.configuration),
+            boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError:
               "Não foi possível carregar os canais. Confira se o bot está no servidor e possui acesso aos canais de texto.",
           };

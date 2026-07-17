@@ -235,6 +235,7 @@ export async function completeDiscordQuantityPurchase(raw: unknown) {
         buyerDiscordId: context.userId,
         productId,
         quantity,
+        isServerBooster: context.isServerBooster,
         guild: await fetchDiscordGuildIdentity(context.guildId),
       });
       stockChanged = result.kind === "created";
@@ -505,6 +506,14 @@ export function purchaseResultCard(result: PurchaseResult, checkoutUrl: string |
           {productEmoji(result.productName)} **{result.productName}** • 🔢 **{result.quantity} unidade{result.quantity === 1 ? "" : "s"}**
         </CardText>
         <CardText>🏷️ **Preço unitário:** {formatBrl(result.unitPriceCents)}</CardText>
+        {result.discountReason === "server_booster" ? (
+          <CardText>🧾 **Subtotal:** {formatBrl(result.subtotalPriceCents)}</CardText>
+        ) : null}
+        {result.discountReason === "server_booster" ? (
+          <CardText>
+            🚀💎 **Desconto Nitro Booster ({formatPercentage(result.discountBps)}):** -{formatBrl(result.discountAmountCents)}
+          </CardText>
+        ) : null}
         <CardText>💰💠 **Total no Pix:** **{formatBrl(result.totalPriceCents)}**</CardText>
         <CardText>🧾 **ID do pedido:** `{result.orderId}`</CardText>
         <Divider />
@@ -547,6 +556,12 @@ function errorCard(message: string) {
 
 function formatBrl(cents: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(cents / 100);
+}
+
+function formatPercentage(bps: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 2,
+  }).format(bps / 100) + "%";
 }
 
 function stockLabel(availableStock: number) {
