@@ -130,6 +130,7 @@ insert into public.products (
   slug,
   description,
   minimum_price_cents,
+  stock_quantity,
   status,
   low_stock_threshold,
   created_by
@@ -141,6 +142,7 @@ values (
   'integration-product',
   null,
   1000,
+  2,
   'active',
   1,
   '10000000-0000-4000-8000-000000000001'
@@ -373,7 +375,7 @@ begin
   from public.product_stock_summary
   where product_id = '50000000-0000-4000-8000-000000000001';
 
-  if available_units <> 1 or total_units <> 2 then
+  if available_units <> 2 or total_units <> 2 then
     raise exception 'stock summary mismatch: available %, total %', available_units, total_units;
   end if;
 

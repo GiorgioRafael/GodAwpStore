@@ -219,6 +219,7 @@ export async function createNativeDiscordQuantityResponse(
 
 export async function completeDiscordQuantityPurchase(raw: unknown) {
   let card: ChatElement;
+  let stockChanged = false;
   try {
     const context = readDiscordInteraction(raw, "");
     const productId = readQuantityModalProductId(raw);
@@ -236,6 +237,7 @@ export async function completeDiscordQuantityPurchase(raw: unknown) {
         quantity,
         guild: await fetchDiscordGuildIdentity(context.guildId),
       });
+      stockChanged = result.kind === "created";
       const checkoutUrl =
         result.kind === "created" || result.kind === "duplicate"
           ? (
@@ -255,6 +257,7 @@ export async function completeDiscordQuantityPurchase(raw: unknown) {
   }
 
   await updateDiscordEphemeralResponse(raw, card);
+  return stockChanged;
 }
 
 export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {

@@ -1,5 +1,4 @@
 import {
-  Boxes,
   ClipboardList,
   Coins,
   Gamepad2,
@@ -37,7 +36,6 @@ export const navigationGroups: NavigationGroup[] = [
       { label: "Jogos", href: "/catalogo/jogos", icon: Gamepad2 },
       { label: "Sublojas", href: "/catalogo/sublojas", icon: Store },
       { label: "Produtos", href: "/catalogo/produtos", icon: Tags },
-      { label: "Estoque", href: "/estoque", icon: Boxes },
     ],
   },
   {
@@ -67,7 +65,6 @@ export const navigationGroups: NavigationGroup[] = [
 export const mobileNavigation: NavigationItem[] = [
   { label: "Início", href: "/", icon: LayoutDashboard },
   { label: "Produtos", href: "/catalogo/produtos", icon: PackageCheck },
-  { label: "Estoque", href: "/estoque", icon: Boxes },
   { label: "Pedidos", href: "/pedidos", icon: WalletCards },
 ];
 

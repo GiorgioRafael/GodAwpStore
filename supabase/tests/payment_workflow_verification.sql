@@ -105,6 +105,11 @@ from public.products as product
 where product.slug = '2x-moon-bloom'
   and product.archived_at is null;
 
+update public.products
+set stock_quantity = 2
+where slug = '2x-moon-bloom'
+  and archived_at is null;
+
 insert into public.inventory_units (
   id,
   product_id,
@@ -163,13 +168,13 @@ begin
   if not exists (
     select 1
     from public.orders as order_row
-    join public.inventory_units as unit on unit.id = order_row.inventory_unit_id
+    join public.products as product on product.id = order_row.product_id
     where order_row.id = '62000000-0000-4000-8000-000000000001'
       and order_row.quantity = 1
-      and unit.product_id = order_row.product_id
-      and unit.status = 'reserved'
+      and order_row.inventory_unit_id is null
+      and product.stock_quantity = 1
   ) then
-    raise exception 'bot order did not atomically reserve inventory';
+    raise exception 'bot order did not atomically reserve aggregate stock';
   end if;
 
   select *

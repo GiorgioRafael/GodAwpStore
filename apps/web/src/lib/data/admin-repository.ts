@@ -71,6 +71,7 @@ export type ProductRow = Pick<
   | "slug"
   | "description"
   | "minimum_price_cents"
+  | "stock_quantity"
   | "image_url"
   | "status"
   | "sort_order"

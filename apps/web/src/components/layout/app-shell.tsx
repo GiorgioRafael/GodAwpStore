@@ -221,7 +221,7 @@ export function AppShell({ children, identity }: { children: ReactNode; identity
 
       <nav
         aria-label="Atalhos móveis"
-        className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border-strong bg-[#12120f]/95 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,.55)] backdrop-blur-xl lg:hidden"
+        className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-4 rounded-2xl border border-border-strong bg-[#12120f]/95 p-1.5 shadow-[0_18px_50px_rgba(0,0,0,.55)] backdrop-blur-xl lg:hidden"
       >
         {mobileNavigation.map((item) => {
           const Icon = item.icon;

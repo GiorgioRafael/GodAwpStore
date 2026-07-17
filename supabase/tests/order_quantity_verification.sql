@@ -1,4 +1,4 @@
--- Transactional verification for LivePix minimum amount and exact multi-unit reservation.
+-- Transactional verification for LivePix minimum amount and aggregate stock reservation.
 
 begin;
 
@@ -53,6 +53,7 @@ insert into public.products (
   name,
   slug,
   minimum_price_cents,
+  stock_quantity,
   status,
   low_stock_threshold
 )
@@ -62,37 +63,10 @@ values (
   'Dynamic price product',
   'dynamic-price-product',
   2,
+  50,
   'active',
   1
 );
-
-insert into public.inventory_batches (id, product_id, source, import_method, unit_count)
-values (
-  '71500000-0000-4000-8000-000000000001',
-  '71300000-0000-4000-8000-000000000001',
-  'quantity-test',
-  'manual',
-  50
-);
-
-insert into public.inventory_units (
-  product_id,
-  batch_id,
-  encrypted_payload,
-  iv,
-  auth_tag,
-  fingerprint,
-  status
-)
-select
-  '71300000-0000-4000-8000-000000000001',
-  '71500000-0000-4000-8000-000000000001',
-  decode('01', 'hex'),
-  decode(repeat('00', 12), 'hex'),
-  decode(repeat('00', 16), 'hex'),
-  digest('gwstore-quantity-test-' || fixture.number::text, 'sha256'),
-  'available'
-from generate_series(1, 50) as fixture(number);
 
 do $$
 begin
@@ -152,6 +126,41 @@ from public.create_bot_order_with_reservation(
   1000
 );
 
+-- Replaying the same Discord interaction must not decrement the counter twice.
+select *
+from public.create_bot_order_with_reservation(
+  '720000000000000102',
+  '71000000-0000-4000-8000-000000000001',
+  '70000000-0000-4000-8000-000000000001',
+  '71300000-0000-4000-8000-000000000001',
+  '720000000000000001',
+  20,
+  100,
+  1000
+);
+
+do $$
+declare
+  v_result record;
+begin
+  select * into strict v_result
+  from public.create_bot_order_with_reservation(
+    '720000000000000104',
+    '71000000-0000-4000-8000-000000000001',
+    '70000000-0000-4000-8000-000000000001',
+    '71300000-0000-4000-8000-000000000001',
+    '720000000000000001',
+    31,
+    155,
+    1000
+  );
+
+  if not v_result.out_of_stock or v_result.created_order_id is not null then
+    raise exception 'aggregate stock allowed an oversell';
+  end if;
+end
+$$;
+
 do $$
 declare
   v_first record;
@@ -204,8 +213,9 @@ $$;
 do $$
 declare
   v_order public.orders%rowtype;
+  v_available_stock bigint;
+  v_summary_stock bigint;
   v_link_count integer;
-  v_reserved_count integer;
 begin
   select order_row.*
   into strict v_order
@@ -217,20 +227,24 @@ begin
   from public.order_inventory_units
   where order_id = v_order.id;
 
-  select count(*)::integer
-  into v_reserved_count
-  from public.order_inventory_units as reservation
-  join public.inventory_units as unit on unit.id = reservation.inventory_unit_id
-  where reservation.order_id = v_order.id
-    and unit.product_id = v_order.product_id
-    and unit.status = 'reserved';
+  select stock_quantity
+  into strict v_available_stock
+  from public.products
+  where id = v_order.product_id;
+
+  select available_count
+  into strict v_summary_stock
+  from public.product_stock_summary
+  where product_id = v_order.product_id;
 
   if v_order.quantity <> 20
     or v_order.minimum_price_cents <> 5
     or v_order.sale_price_cents <> 100
-    or v_link_count <> 20
-    or v_reserved_count <> 20 then
-    raise exception 'dynamic-price order did not reserve exactly 20 inventory units';
+    or v_order.inventory_unit_id is not null
+    or v_link_count <> 0
+    or v_available_stock <> 30
+    or v_summary_stock <> 30 then
+    raise exception 'dynamic-price order did not reserve exactly 20 aggregate units';
   end if;
 end
 $$;

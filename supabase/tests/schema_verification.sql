@@ -81,6 +81,33 @@ begin
     select 1
     from information_schema.columns
     where table_schema = 'public'
+      and table_name = 'products'
+      and column_name = 'stock_quantity'
+      and data_type = 'bigint'
+      and is_nullable = 'NO'
+  ) then
+    raise exception 'products.stock_quantity must be a non-null bigint';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'products_stock_quantity_range'
+      and conrelid = 'public.products'::regclass
+  ) then
+    raise exception 'products.stock_quantity range constraint is missing';
+  end if;
+
+  if to_regprocedure(
+    'public.create_bot_order_with_reservation(text,uuid,uuid,uuid,text,integer,bigint,integer)'
+  ) is null then
+    raise exception 'Aggregate stock reservation function is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
       and table_name = 'admin_profiles'
       and column_name = 'authorization_expires_at'
       and data_type = 'timestamp with time zone'

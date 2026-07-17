@@ -7,6 +7,7 @@ import {
   getDiscordBot,
   parseNativeDiscordQuantityInteraction,
 } from "@/lib/bot/discord-bot";
+import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,7 +39,15 @@ export async function POST(request: Request) {
       if (native.interaction.kind === "submit") {
         after(async () => {
           try {
-            await completeDiscordQuantityPurchase(native.raw);
+            const stockChanged = await completeDiscordQuantityPurchase(native.raw);
+            if (stockChanged) {
+              const storefronts = await synchronizePublishedDiscordStorefronts();
+              if (storefronts.failed > 0) {
+                console.error(
+                  `[discord-quantity] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
+                );
+              }
+            }
           } catch (error) {
             const message = error instanceof Error ? error.message : "erro desconhecido";
             console.error(`[discord-quantity] ${message}`);

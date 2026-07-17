@@ -78,6 +78,7 @@ const activeProduct: ProductRow = {
   slug: "awp-asiimov",
   description: "Skin pronta para entrega",
   minimum_price_cents: 10_990,
+  stock_quantity: 100,
   image_url: null,
   status: "active",
   sort_order: 1,
@@ -153,7 +154,7 @@ describe("gestores do catálogo", () => {
     substoreView.unmount();
 
     const productView = render(
-      <ProductsManager products={[]} substores={[]} stockByProduct={{}} />,
+      <ProductsManager products={[]} substores={[]} />,
     );
     expect(screen.getByRole("button", { name: "Novo produto" })).toBeDisabled();
     productView.unmount();
@@ -174,13 +175,27 @@ describe("gestores do catálogo", () => {
       <ProductsManager
         products={[activeProduct]}
         substores={[activeSubstore]}
-        stockByProduct={{}}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Novo produto" }));
     expect(screen.getByRole("heading", { name: "Novo produto" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Subloja" })).toHaveValue(activeSubstore.id);
     expect(screen.getByRole("textbox", { name: "Preço mínimo" })).toBeRequired();
+    expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(0);
+  });
+
+  it("edita o estoque agregado dentro do próprio produto", async () => {
+    const user = userEvent.setup();
+    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} />);
+
+    expect(screen.getByRole("cell", { name: "100" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+
+    expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(100);
+    expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveAttribute(
+      "max",
+      "1000000000",
+    );
   });
 
   it("edita uma whitelist preservando Discord ID e exceção de comissão", async () => {

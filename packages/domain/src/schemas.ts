@@ -113,6 +113,7 @@ export const productInputSchema = z.object({
   slug: slugSchema,
   description: z.string().trim().max(4_096).nullable().default(null),
   minimumPriceCents: moneyCentsSchema,
+  stockQuantity: z.number().int().min(0).max(1_000_000_000).safe().default(0),
   imageUrl: nullableUrlSchema.default(null),
   status: catalogStatusSchema.default("active"),
   sortOrder: z.number().int().nonnegative().safe().default(0),

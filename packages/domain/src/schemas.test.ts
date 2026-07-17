@@ -85,7 +85,7 @@ describe("schemas de catálogo", () => {
     expect(parsed.status).toBe("active");
   });
 
-  it("valida produto com preço mínimo em centavos e estoque calculado fora do input", () => {
+  it("valida produto com preço mínimo e estoque agregado", () => {
     const parsed = productInputSchema.parse({
       substoreId: uuid,
       name: "AWP Asiimov",
@@ -94,9 +94,12 @@ describe("schemas de catálogo", () => {
     });
 
     expect(parsed.minimumPriceCents).toBe(1_000);
+    expect(parsed.stockQuantity).toBe(0);
     expect(parsed.lowStockThreshold).toBe(5);
     expect("availableStock" in parsed).toBe(false);
     expect(productInputSchema.safeParse({ ...parsed, minimumPriceCents: -1 }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...parsed, stockQuantity: -1 }).success).toBe(false);
+    expect(productInputSchema.safeParse({ ...parsed, stockQuantity: 1.5 }).success).toBe(false);
   });
 
   it("rejeita slugs e URLs inválidos", () => {

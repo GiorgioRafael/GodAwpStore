@@ -2,6 +2,7 @@
 
 import {
   gameInputSchema,
+  isoDateTimeSchema,
   parseBrlToCents,
   platformSettingsSchema,
   productInputSchema,
@@ -20,6 +21,7 @@ import {
   readStorefrontConfiguration,
   withStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
+import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import { SupabaseBotCommerceRepository } from "@/lib/bot/supabase-repository";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -218,17 +220,28 @@ export async function saveProductAction(
     slug: text(formData, "slug"),
     description: nullableText(formData, "description"),
     minimumPriceCents,
+    stockQuantity: integer(formData, "stockQuantity"),
     imageUrl: nullableText(formData, "imageUrl"),
     status: text(formData, "status") || "active",
     sortOrder: integer(formData, "sortOrder"),
     lowStockThreshold: integer(formData, "lowStockThreshold", 5),
   });
   const parsedId = text(formData, "id") ? uuidSchema.safeParse(text(formData, "id")) : null;
+  const parsedUpdatedAt = parsedId?.success
+    ? isoDateTimeSchema.safeParse(text(formData, "updatedAt"))
+    : null;
 
   if (!parsed.success || (parsedId && !parsedId.success)) {
     const fieldErrors = parsed.success ? { id: ["ID inválido."] } : errorsFromZod(parsed.error);
     if (!Number.isFinite(minimumPriceCents)) fieldErrors.minimumPrice = ["Informe um valor como 10,00."];
     return { ok: false, message: "Revise os campos do produto.", fieldErrors };
+  }
+  if (parsedId?.success && !parsedUpdatedAt?.success) {
+    return {
+      ok: false,
+      message: "Reabra o produto antes de salvar o estoque.",
+      fieldErrors: { stockQuantity: ["A versão carregada do produto é inválida."] },
+    };
   }
 
   const { identity, supabase } = await actionContext();
@@ -238,6 +251,7 @@ export async function saveProductAction(
     slug: parsed.data.slug,
     description: parsed.data.description,
     minimum_price_cents: parsed.data.minimumPriceCents,
+    stock_quantity: parsed.data.stockQuantity,
     image_url: parsed.data.imageUrl,
     status: parsed.data.status,
     sort_order: parsed.data.sortOrder,
@@ -246,7 +260,13 @@ export async function saveProductAction(
   };
   const id = parsedId?.success ? parsedId.data : null;
   const operation = id
-    ? supabase.from("products").update(record).eq("id", id).select("id").maybeSingle()
+    ? supabase
+        .from("products")
+        .update(record)
+        .eq("id", id)
+        .eq("updated_at", text(formData, "updatedAt"))
+        .select("id")
+        .maybeSingle()
     : supabase
         .from("products")
         .insert({ ...record, created_by: identity.authUserId })
@@ -254,11 +274,39 @@ export async function saveProductAction(
         .single();
   const { data, error } = await operation;
   if (error) return databaseFailure(error.code);
-  if (!data) return { ok: false, message: "Produto não encontrado." };
+  if (!data) {
+    return {
+      ok: false,
+      message: "O estoque mudou durante a edição. Reabra o produto para não sobrescrever uma compra.",
+    };
+  }
   revalidatePath("/catalogo/produtos");
   revalidatePath("/estoque");
   revalidatePath("/dashboard");
-  return { ok: true, message: id ? "Produto atualizado." : "Produto criado." };
+  const savedMessage = id ? "Produto e estoque atualizados." : "Produto e estoque criados.";
+  try {
+    const storefronts = await synchronizePublishedDiscordStorefronts();
+    if (storefronts.failed > 0) {
+      return {
+        ok: true,
+        message: `${savedMessage} ${storefronts.failed} vitrine(s) do Discord não puderam ser atualizadas.`,
+      };
+    }
+    if (storefronts.published > 0) {
+      return {
+        ok: true,
+        message: `${savedMessage} Vitrine do Discord sincronizada.`,
+      };
+    }
+  } catch (syncError) {
+    const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
+    console.error(`[admin:product-storefront-sync] ${message}`);
+    return {
+      ok: true,
+      message: `${savedMessage} A vitrine do Discord não pôde ser atualizada agora.`,
+    };
+  }
+  return { ok: true, message: savedMessage };
 }
 
 export async function saveWhitelistAction(

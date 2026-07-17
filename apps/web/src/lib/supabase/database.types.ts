@@ -124,6 +124,7 @@ type ProductRow = {
   slug: string;
   description: string | null;
   minimum_price_cents: number;
+  stock_quantity: number;
   image_url: string | null;
   status: Database["public"]["Enums"]["catalog_status"];
   sort_order: number;

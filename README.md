@@ -1,6 +1,6 @@
 # GWStore Admin
 
-Painel administrativo da GWStore para gerenciar catálogo, estoque digital,
+Painel administrativo da GWStore para gerenciar catálogo, estoque agregado,
 whitelist, comissão e a base operacional das futuras lojas no Discord.
 
 Esta versão inclui a aplicação web, o modelo de dados, o bot Discord, checkout
@@ -81,16 +81,10 @@ chat ou commitados.
 O `ADMIN_DISCORD_IDS` recebe uma lista separada por vírgulas. Ative o modo
 desenvolvedor do Discord e use **Copiar ID do usuário** para obter o seu snowflake.
 
-Gere duas chaves independentes para o estoque:
-
-```powershell
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-A primeira saída vai em `INVENTORY_ENCRYPTION_KEY` e a segunda em
-`INVENTORY_FINGERPRINT_KEY`. Trocar a chave de criptografia sem uma migração de
-rotação torna unidades já cadastradas ilegíveis.
+As variáveis `INVENTORY_ENCRYPTION_KEY` e `INVENTORY_FINGERPRINT_KEY` existem
+somente para compatibilidade com lotes secretos antigos. O fluxo atual de
+produtos com entrega manual não precisa cadastrar ou criptografar uma linha por
+unidade.
 
 ## 4. Executar
 
@@ -102,21 +96,16 @@ npm.cmd run dev
 ```
 
 Abra <http://localhost:3000>. O seed inicial cadastra o catálogo Grow a Garden 2;
-o estoque precisa ser importado separadamente antes das compras.
+o estoque disponível é informado e editado no próprio formulário do produto.
 
-## Importação de estoque
+## Estoque agregado
 
-- Cadastro manual: um conteúdo secreto por unidade.
-- TXT: uma unidade por linha.
-- CSV: cabeçalho obrigatório `secret`.
-- A prévia valida o lote antes da confirmação.
-- A confirmação é transacional: um erro ou uma duplicidade impede todo o lote.
-- Repetir a mesma confirmação após uma falha de rede reutiliza o resultado anterior.
-- A quantidade de um produto é calculada pelas unidades no estado `available`.
-
-O conteúdo é criptografado com AES-256-GCM antes de ser enviado ao banco. Um HMAC
-independente permite detectar duplicidades sem persistir o texto aberto. A
-revelação posterior é mascarada por padrão e sempre gera auditoria.
+- Cada produto possui uma única quantidade disponível, como `100`, `3200` ou qualquer outro lote.
+- O administrador altera essa quantidade na mesma tela em que edita nome, preço e estado.
+- A reserva de uma compra desconta a quantidade inteira em uma transação atômica.
+- Repetir a mesma interação do Discord não desconta o estoque duas vezes.
+- Salvar um produto ou criar uma compra atualiza automaticamente as vitrines já publicadas no Discord.
+- As tabelas de unidades criptografadas permanecem somente como histórico compatível com pedidos antigos.
 
 ## Bot Discord
 
@@ -158,7 +147,7 @@ Para desenvolvimento, preencha `DISCORD_GUILD_ID` antes do comando; o registro
 será limitado ao servidor e aparecerá imediatamente. Sem essa variável, o
 registro é global e pode levar algum tempo para se propagar.
 
-`/loja` consulta catálogo, preços e quantidade `available` no Supabase. O botão
+`/loja` consulta catálogo, preços e a quantidade agregada disponível no Supabase. O botão
 **Comprar** revalida produto e estoque no servidor, cria um pedido
 `awaiting_payment` e devolve o link oficial do checkout LivePix. Repetições do mesmo clique usam
 `orders.payment_reference = discord:<interaction-id>` e o índice único existente,
@@ -196,9 +185,9 @@ canais. O bot cria ou recupera o canal pelo marcador do pedido, publica a mensag
 de confirmação e persiste o ID do ticket. Falhas devolvem erro temporário para a
 LivePix repetir a notificação e liberam o pedido para uma nova tentativa.
 
-A criação do pedido e a reserva de uma unidade de estoque acontecem na mesma
+A criação do pedido e o desconto da quantidade solicitada acontecem na mesma
 transação, somente para servidores ativos na whitelist. Ao confirmar o pagamento,
-o banco valida a reserva e registra lucro líquido e comissão uma única vez, mesmo
+o banco valida o pedido e registra lucro líquido e comissão uma única vez, mesmo
 se a LivePix reenviar o webhook.
 
 ## Verificações
@@ -229,7 +218,7 @@ do banco a cada push para `main` e em pull requests.
 - Todas as mutações verificam autenticação e autorização no servidor.
 - A lista `ADMIN_DISCORD_IDS` renova uma autorização curta no banco a cada
   requisição; remover um ID impede novas renovações e faz sessões antigas expirarem.
-- A chave `service_role` e as chaves de estoque nunca entram no bundle do navegador.
+- A chave `service_role` nunca entra no bundle do navegador.
 - RLS bloqueia acesso anônimo e restringe dados administrativos.
 - Exclusões operacionais arquivam ou revogam registros em vez de apagar histórico.
 - O ID aleatório de uma unidade não funciona como credencial de acesso.

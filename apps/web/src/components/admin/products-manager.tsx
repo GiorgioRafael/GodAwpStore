@@ -18,12 +18,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form-field";
-import type { ProductRow, ProductStockRow, SubstoreRow } from "@/lib/data/admin-repository";
+import type { ProductRow, SubstoreRow } from "@/lib/data/admin-repository";
 
 interface ProductsManagerProps {
   products: ProductRow[];
   substores: SubstoreRow[];
-  stockByProduct: Record<string, ProductStockRow>;
 }
 
 function ProductForm({
@@ -47,7 +46,7 @@ function ProductForm({
       onClose={onClose}
       size="lg"
       title={product ? "Editar produto" : "Novo produto"}
-      description="Cadastre o item vendável, seu preço mínimo e os parâmetros de estoque."
+      description="Cadastre o item vendável, o preço e a quantidade disponível em um só lugar."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={pending}>
@@ -62,6 +61,7 @@ function ProductForm({
     >
       <form id={formId} action={formAction} className="space-y-5">
         <input type="hidden" name="id" value={product?.id ?? ""} />
+        <input type="hidden" name="updatedAt" value={product?.updated_at ?? ""} />
         <ActionFeedback state={state} />
 
         <Field label="Subloja" htmlFor={`${formId}-substore`} error={fieldError(state, "substoreId")}>
@@ -133,7 +133,7 @@ function ProductForm({
           error={fieldError(state, "imageUrl")}
         />
 
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
           <Field
             label="Preço mínimo"
             htmlFor={`${formId}-price`}
@@ -147,6 +147,24 @@ function ProductForm({
               placeholder="10,00"
               defaultValue={product ? formatCentsForInput(product.minimum_price_cents) : ""}
               pattern="[0-9]+(?:\.[0-9]{3})*(?:,[0-9]{1,2})?"
+              required
+            />
+          </Field>
+          <Field
+            label="Estoque disponível"
+            htmlFor={`${formId}-stock`}
+            hint="unidades"
+            error={fieldError(state, "stockQuantity")}
+          >
+            <Input
+              id={`${formId}-stock`}
+              name="stockQuantity"
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={1_000_000_000}
+              step={1}
+              defaultValue={product?.stock_quantity ?? 0}
               required
             />
           </Field>
@@ -187,7 +205,7 @@ function ProductForm({
   );
 }
 
-export function ProductsManager({ products, substores, stockByProduct }: ProductsManagerProps) {
+export function ProductsManager({ products, substores }: ProductsManagerProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [editor, setEditor] = useState<
@@ -217,7 +235,7 @@ export function ProductsManager({ products, substores, stockByProduct }: Product
       <ResourceManagerShell
         eyebrow="Catálogo"
         title="Produtos"
-        description="Gerencie itens vendáveis, preço mínimo, ordenação e limites de alerta do estoque."
+        description="Gerencie produto, preço e estoque agregado. Ao salvar, a vitrine publicada no Discord é atualizada."
         actionLabel="Novo produto"
         onCreate={() => setEditor({ mode: "create" })}
         createDisabled={!hasAvailableSubstore}
@@ -235,9 +253,8 @@ export function ProductsManager({ products, substores, stockByProduct }: Product
         emptyDescription="Cadastre jogos e sublojas antes de incluir o primeiro produto no catálogo."
       >
         {filteredProducts.map((product) => {
-          const stock = stockByProduct[product.id];
-          const available = stock?.available_count ?? 0;
-          const isLowStock = stock?.is_low_stock ?? (product.status === "active" && available <= product.low_stock_threshold);
+          const available = product.stock_quantity;
+          const isLowStock = product.status === "active" && available <= product.low_stock_threshold;
 
           return (
             <tr key={product.id} className="border-b border-border/80 last:border-0">
