@@ -63,6 +63,7 @@ type PlatformSettingsRow = {
   currency_code: string;
   global_commission_bps: number;
   display_timezone: string;
+  bot_message_config: Json;
   updated_by: string | null;
   created_at: string;
   updated_at: string;

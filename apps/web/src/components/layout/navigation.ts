@@ -1,4 +1,5 @@
 import {
+  Bot,
   ClipboardList,
   Coins,
   Gamepad2,
@@ -51,6 +52,7 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "Whitelist", href: "/whitelist", icon: ShieldCheck },
       { label: "Servidores", href: "/servidores", icon: UsersRound },
+      { label: "Customização do bot", href: "/customizacao-bot", icon: Bot },
     ],
   },
   {

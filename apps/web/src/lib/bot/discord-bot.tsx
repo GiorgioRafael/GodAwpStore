@@ -34,6 +34,14 @@ import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
+import {
+  botMessageLines,
+  DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  interpolateBotMessage,
+  interpolateBotMessageLimited,
+  type BotMessageCustomization,
+} from "./message-customization";
+import { loadBotMessageCustomization } from "./message-customization-server";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
 import type {
   BotCatalogGame,
@@ -77,36 +85,49 @@ function createBot() {
   });
 
   bot.onSlashCommand("/ajuda", async (event) => {
-    await event.channel.post(helpCard());
+    await event.channel.post(helpCard(await loadBotMessageCustomization()));
   });
 
   bot.onSlashCommand("/loja", async (event) => {
+    let customization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION;
     try {
       const context = readDiscordInteraction(event.raw, event.user.userId);
-      if (context.guildId) {
-        try {
-          await service.registerGuild(await fetchDiscordGuildIdentity(context.guildId));
-        } catch (error) {
-          logBotError("guild_registration", error);
-        }
-      }
-
-      const cards = catalogCards(await service.listCatalog());
+      const registrationTask = context.guildId
+        ? fetchDiscordGuildIdentity(context.guildId)
+            .then((identity) => service.registerGuild(identity))
+            .catch((error) => {
+              logBotError("guild_registration", error);
+              return null;
+            })
+        : Promise.resolve(null);
+      const [catalog, loadedCustomization] = await Promise.all([
+        service.listCatalog(),
+        loadBotMessageCustomization(),
+        registrationTask,
+      ]);
+      customization = loadedCustomization;
+      const cards = catalogCards(catalog, customization);
       for (const card of cards) await event.channel.post(card);
     } catch (error) {
       logBotError("catalog", error);
       await event.channel.post(
-        errorCard("🛠️ A loja está se preparando agora. ✨ Tente novamente em alguns instantes! ⏳"),
+        errorCard(customization.error.storeUnavailable, customization),
       );
     }
   });
 
   bot.onAction("select_product", async (event) => {
+    let customization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION;
     try {
-      const selected = findCatalogProduct(await service.listCatalog(), event.value);
+      const [catalog, loadedCustomization] = await Promise.all([
+        service.listCatalog(),
+        loadBotMessageCustomization(),
+      ]);
+      customization = loadedCustomization;
+      const selected = findCatalogProduct(catalog, event.value);
       const card = selected
-        ? selectedProductCard(selected)
-        : errorCard("🔎 Esse produto não está mais disponível no catálogo. 🛍️ Escolha outro item! ✨");
+        ? selectedProductCard(selected, customization)
+        : errorCard(customization.error.productUnavailable, customization);
       await replyPrivately(event.raw, card, () =>
         event.thread
           ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
@@ -115,7 +136,8 @@ function createBot() {
     } catch (error) {
       logBotError("product_selection", error);
       const card = errorCard(
-        "🛠️ Não conseguimos carregar esse produto agora. ✨ Tente novamente em alguns instantes! ⏳",
+        customization.error.productLoadFailure,
+        customization,
       );
       await replyPrivately(event.raw, card, () =>
         event.thread
@@ -171,22 +193,28 @@ export async function createNativeDiscordQuantityResponse(
   productId: string,
   repository: Pick<BotCommerceRepository, "findPurchasableProduct" | "countAvailableStock"> =
     new SupabaseBotCommerceRepository(),
+  customization: BotMessageCustomization | Promise<BotMessageCustomization> =
+    DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
 ) {
-  const [product, availableStock] = await Promise.all([
+  const [product, availableStock, resolvedCustomization] = await Promise.all([
     repository.findPurchasableProduct(productId),
     repository.countAvailableStock(productId),
+    customization,
   ]);
+  customization = resolvedCustomization;
   if (!product) {
-    return discordEphemeralText("🔎🎁 Esse produto não está mais disponível. Abra a loja novamente com /loja.");
+    return discordEphemeralText(customization.quantity.unavailableText);
   }
 
   const minimumQuantity = minimumLivePixQuantity(product.minimumPriceCents);
   if (!minimumQuantity) {
-    return discordEphemeralText("🚫💸 Este produto está sem um preço válido para pagamento.");
+    return discordEphemeralText(customization.quantity.invalidPriceText);
   }
   if (availableStock < minimumQuantity) {
     return discordEphemeralText(
-      `⚠️📦 O estoque atual não alcança as ${minimumQuantity} unidades mínimas para gerar o Pix.`,
+      interpolateBotMessage(customization.quantity.insufficientStockText, {
+        minimum_quantity: minimumQuantity,
+      }),
     );
   }
 
@@ -194,7 +222,7 @@ export async function createNativeDiscordQuantityResponse(
     type: DISCORD_MODAL_RESPONSE,
     data: {
       custom_id: `${QUANTITY_MODAL_PREFIX}${product.id}`,
-      title: "Escolha a quantidade",
+      title: interpolateBotMessageLimited(customization.quantity.modalTitle, {}, 45),
       components: [
         {
           type: 1,
@@ -202,13 +230,24 @@ export async function createNativeDiscordQuantityResponse(
             {
               type: 4,
               custom_id: "quantity",
-              label: `Quantidade (mínimo ${minimumQuantity})`,
+              label: interpolateBotMessageLimited(
+                customization.quantity.inputLabel,
+                { minimum_quantity: minimumQuantity },
+                45,
+              ),
               style: 1,
               min_length: 1,
               max_length: String(MAXIMUM_ORDER_QUANTITY).length,
               required: true,
               value: String(minimumQuantity),
-              placeholder: `De ${minimumQuantity} até ${MAXIMUM_ORDER_QUANTITY}`,
+              placeholder: interpolateBotMessageLimited(
+                customization.quantity.inputPlaceholder,
+                {
+                  minimum_quantity: minimumQuantity,
+                  maximum_quantity: MAXIMUM_ORDER_QUANTITY,
+                },
+                100,
+              ),
             },
           ],
         },
@@ -217,7 +256,10 @@ export async function createNativeDiscordQuantityResponse(
   };
 }
 
-export async function completeDiscordQuantityPurchase(raw: unknown) {
+export async function completeDiscordQuantityPurchase(
+  raw: unknown,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
   let card: ChatElement;
   let stockChanged = false;
   try {
@@ -226,7 +268,8 @@ export async function completeDiscordQuantityPurchase(raw: unknown) {
     const quantity = readQuantityModalValue(raw);
     if (!context.interactionId || !context.guildId || !context.userId || !productId) {
       card = errorCard(
-        "🏰 A compra precisa ser iniciada dentro do servidor Discord usando o botão da loja. 🛍️",
+        customization.error.outsideServer,
+        customization,
       );
     } else {
       const service = new BotCommerceService(new SupabaseBotCommerceRepository());
@@ -248,12 +291,13 @@ export async function completeDiscordQuantityPurchase(raw: unknown) {
               ).createCheckout(result.orderId, getSiteUrl())
             ).checkoutUrl
           : null;
-      card = purchaseResultCard(result, checkoutUrl);
+      card = purchaseResultCard(result, checkoutUrl, customization);
     }
   } catch (error) {
     logBotError("purchase", error);
     card = errorCard(
-      "🛡️ Não foi possível criar o pedido. Fique tranquilo: nenhum item foi entregue ou revelado. 🔒",
+      customization.error.purchaseFailure,
+      customization,
     );
   }
 
@@ -261,14 +305,21 @@ export async function completeDiscordQuantityPurchase(raw: unknown) {
   return stockChanged;
 }
 
-export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
+export function catalogCards(
+  catalog: BotCatalogGame[],
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+): ChatElement[] {
   const products = flattenCatalog(catalog);
+  const message = customization.storefront;
 
   if (!products.length) {
     return [
-      <Card key="empty-catalog" title="🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️">
-        <CardText>😴 Nosso catálogo está descansando e ainda não tem produtos ativos.</CardText>
-        <CardText>🔔 Volte em breve para conferir as novidades! 💜</CardText>
+      <Card
+        key="empty-catalog"
+        title={interpolateBotMessageLimited(message.emptyTitle, {}, 256)}
+      >
+        {message.emptyText ? <CardText>{message.emptyText}</CardText> : null}
+        {message.emptyHint ? <CardText>{message.emptyHint}</CardText> : null}
       </Card>,
     ];
   }
@@ -279,22 +330,26 @@ export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
       key={`catalog-${index}`}
       title={
         pages.length > 1
-          ? `🛍️✨ GWSTORE • PRODUTOS ${index + 1}/${pages.length} ✨🛍️`
-          : "🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️"
+          ? interpolateBotMessageLimited(
+              message.paginatedTitle,
+              { page: index + 1, pages: pages.length },
+              256,
+            )
+          : interpolateBotMessageLimited(message.title, {}, 256)
       }
-      subtitle="🌱 Grow a Garden 2 • ⚡ Compra rápida, privada e segura"
+      subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
     >
-      <CardText>👋💜 **Bem-vindo(a) à GWStore!** 💜👋</CardText>
-      <CardText>🎮 Escolha seu produto favorito e prepare-se para turbinar sua conta! 🚀✨</CardText>
-      <CardText>🔒 Somente **você** verá os detalhes, o pedido e o link de pagamento. 🛡️</CardText>
-      <CardText>💠 Pagamento rápido e seguro via **Pix com LivePix**. ⚡✅</CardText>
+      {message.welcome ? <CardText>{message.welcome}</CardText> : null}
+      {message.catalogText ? <CardText>{message.catalogText}</CardText> : null}
+      {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
+      {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
       <Divider />
-      <CardText>👇🛒 **Abra a lista abaixo e selecione seu produto:**</CardText>
+      {message.prompt ? <CardText>{message.prompt}</CardText> : null}
       <Actions>
         <Select
           id="select_product"
-          label="🛒 Catálogo de produtos"
-          placeholder="✨ Clique aqui e escolha seu produto ✨"
+          label={interpolateBotMessageLimited(message.selectLabel, {}, 100)}
+          placeholder={interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)}
         >
           {page.map(({ game, substore, product }) => (
             <SelectOption
@@ -314,19 +369,26 @@ export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
   ));
 }
 
-function helpCard() {
+function helpCard(
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
+  const message = customization.help;
   return (
-    <Card title="🆘✨ AJUDA • GWSTORE ✨🆘" subtitle="💜 Comprar é rápido, privado e seguro!">
-      <CardText>1️⃣ Vá até o canal da loja e abra a **lista de produtos**. 🛍️✨</CardText>
-      <CardText>2️⃣ Escolha um produto no menu suspenso. 👇🎁</CardText>
-      <CardText>3️⃣ Confira preço e estoque e clique em **🔢 Escolher quantidade**.</CardText>
-      <CardText>4️⃣ Informe a quantidade; o total precisa atingir o mínimo de **R$ 1,00** da LivePix. 💠</CardText>
-      <CardText>5️⃣ Pague com segurança pelo checkout da **LivePix**. 🔒✅</CardText>
-      <CardText>6️⃣ Após a confirmação, abrimos um ticket privado com você e os administradores. 🎫👑</CardText>
-      <Divider />
-      <CardText>🔄 Não encontrou a vitrine? Digite **/loja** para abrir o catálogo alternativo.</CardText>
-      <CardText>🛡️ Nenhum dado protegido do estoque é revelado antes da confirmação do pagamento.</CardText>
-      <CardText>💬 Precisou de ajuda? Fale com a equipe no seu ticket! 🤝💜</CardText>
+    <Card
+      title={interpolateBotMessageLimited(message.title, {}, 256)}
+      subtitle={
+        message.subtitle
+          ? interpolateBotMessageLimited(message.subtitle, {}, 256)
+          : undefined
+      }
+    >
+      {botMessageLines(message.body).map((line, index) =>
+        line === "---" ? (
+          <Divider key={`help-divider-${index}`} />
+        ) : (
+          <CardText key={`help-line-${index}`}>{line}</CardText>
+        ),
+      )}
     </Card>
   );
 }
@@ -337,8 +399,12 @@ type CatalogSelection = {
   product: BotCatalogProduct;
 };
 
-export function selectedProductCard({ game, substore, product }: CatalogSelection) {
+export function selectedProductCard(
+  { game, substore, product }: CatalogSelection,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
   const emoji = productEmoji(product.name);
+  const message = customization.product;
   const minimumQuantity = minimumLivePixQuantity(product.priceCents);
   const minimumTotalCents = minimumQuantity ? product.priceCents * minimumQuantity : 0;
   const canBuy =
@@ -347,39 +413,61 @@ export function selectedProductCard({ game, substore, product }: CatalogSelectio
     minimumTotalCents >= LIVEPIX_MINIMUM_BRL_CENTS;
   return (
     <Card
-      title={`${emoji}✨ ${product.name} ✨${emoji}`}
-      subtitle={`🎮 ${game.name} • 🏪 ${substore.title}`}
+      title={interpolateBotMessageLimited(
+        message.title,
+        { product_emoji: emoji, product_name: product.name },
+        256,
+      )}
+      subtitle={interpolateBotMessageLimited(
+        message.subtitle,
+        { game_name: game.name, substore_title: substore.title },
+        256,
+      )}
       imageUrl={substore.imageUrl ?? undefined}
     >
-      <CardText>🎉 **Você escolheu um produto incrível!** 🎉</CardText>
-      {product.description ? <CardText>{product.description}</CardText> : null}
+      {message.selectedText ? <CardText>{message.selectedText}</CardText> : null}
+      {product.description ? (
+        <CardText>{interpolateBotMessageLimited(product.description, {}, 1_000)}</CardText>
+      ) : null}
       <Divider />
-      <CardText>💰💠 **Preço por unidade:** {formatBrl(product.priceCents)}</CardText>
-      <CardText>📦✅ **Estoque disponível:** {stockLabel(product.availableStock)}</CardText>
-      {minimumQuantity ? (
+      {message.priceText ? (
         <CardText>
-          ⚠️💠 **Mínimo da LivePix:** {minimumQuantity} unidade{minimumQuantity === 1 ? "" : "s"} • **{formatBrl(minimumTotalCents)}**
+          {interpolateBotMessage(message.priceText, { price: formatBrl(product.priceCents) })}
         </CardText>
+      ) : null}
+      {message.stockText ? (
+        <CardText>
+          {interpolateBotMessage(message.stockText, { stock: stockLabel(product.availableStock) })}
+        </CardText>
+      ) : null}
+      {minimumQuantity ? (
+        message.minimumText ? (
+          <CardText>
+            {renderMinimumText(message.minimumText, minimumQuantity, minimumTotalCents)}
+          </CardText>
+        ) : null
       ) : (
-        <CardText>🚫💸 Este produto está sem um preço válido para pagamento.</CardText>
+        message.invalidPriceText ? <CardText>{message.invalidPriceText}</CardText> : null
       )}
-      <CardText>🚀🎫 **Entrega:** atendimento manual em ticket privado após a confirmação.</CardText>
-      <CardText>🔐🛡️ Seu pedido e seu pagamento ficam visíveis somente para você.</CardText>
+      {message.deliveryText ? <CardText>{message.deliveryText}</CardText> : null}
+      {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
       <Divider />
-      {!minimumQuantity ? (
-        <CardText>🚫💸 Corrija o preço deste produto no painel antes de tentar vender.</CardText>
-      ) : canBuy ? (
+      {!minimumQuantity ? null : canBuy ? (
         <Actions>
           <Button id="choose_quantity" value={product.id} style="primary">
-            🔢 Escolher quantidade 🛒
+            {interpolateBotMessageLimited(message.buttonLabel, {}, 80)}
           </Button>
         </Actions>
       ) : product.availableStock > 0 ? (
-        <CardText>
-          ⚠️📦 O estoque atual não alcança as **{minimumQuantity} unidades mínimas** exigidas para gerar um Pix.
-        </CardText>
+        message.insufficientStockText ? (
+          <CardText>
+            {interpolateBotMessage(message.insufficientStockText, {
+              minimum_quantity: minimumQuantity,
+            })}
+          </CardText>
+        ) : null
       ) : (
-        <CardText>😔💨 **Produto esgotado no momento.** Volte em breve! 🔔✨</CardText>
+        message.outOfStockText ? <CardText>{message.outOfStockText}</CardText> : null
       )}
     </Card>
   );
@@ -490,66 +578,104 @@ async function replyPrivately(raw: unknown, card: ChatElement, fallback: () => P
   }
 }
 
-export function purchaseResultCard(result: PurchaseResult, checkoutUrl: string | null = null) {
+export function purchaseResultCard(
+  result: PurchaseResult,
+  checkoutUrl: string | null = null,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
+  const message = customization.order;
   if (result.kind === "created" || result.kind === "duplicate") {
     return (
       <Card
         title={
           result.kind === "created"
-            ? "✅🎉 PEDIDO CRIADO COM SUCESSO! 🎉✅"
-            : "♻️✅ PEDIDO JÁ REGISTRADO ✅♻️"
+            ? interpolateBotMessageLimited(message.createdTitle, {}, 256)
+            : interpolateBotMessageLimited(message.duplicateTitle, {}, 256)
         }
-        subtitle="💜 GWStore • Pagamento seguro com LivePix"
+        subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
       >
-        <CardText>🛍️ **Produto escolhido:**</CardText>
+        {message.productLabel ? <CardText>{message.productLabel}</CardText> : null}
         <CardText>
           {productEmoji(result.productName)} **{result.productName}** • 🔢 **{result.quantity} unidade{result.quantity === 1 ? "" : "s"}**
         </CardText>
-        <CardText>🏷️ **Preço unitário:** {formatBrl(result.unitPriceCents)}</CardText>
-        {result.discountReason === "server_booster" ? (
-          <CardText>🧾 **Subtotal:** {formatBrl(result.subtotalPriceCents)}</CardText>
+        {message.unitPriceLabel ? (
+          <CardText>{message.unitPriceLabel} {formatBrl(result.unitPriceCents)}</CardText>
         ) : null}
-        {result.discountReason === "server_booster" ? (
+        {result.discountReason === "server_booster" && message.subtotalLabel ? (
+          <CardText>{message.subtotalLabel} {formatBrl(result.subtotalPriceCents)}</CardText>
+        ) : null}
+        {result.discountReason === "server_booster" && message.discountLabel ? (
           <CardText>
-            🚀💎 **Desconto Nitro Booster ({formatPercentage(result.discountBps)}):** -{formatBrl(result.discountAmountCents)}
+            {interpolateBotMessage(message.discountLabel, {
+              discount_percent: formatPercentage(result.discountBps),
+            })} -{formatBrl(result.discountAmountCents)}
           </CardText>
         ) : null}
-        <CardText>💰💠 **Total no Pix:** **{formatBrl(result.totalPriceCents)}**</CardText>
-        <CardText>🧾 **ID do pedido:** `{result.orderId}`</CardText>
+        {message.totalLabel ? (
+          <CardText>{message.totalLabel} **{formatBrl(result.totalPriceCents)}**</CardText>
+        ) : null}
+        {message.orderIdLabel ? (
+          <CardText>{message.orderIdLabel} `{result.orderId}`</CardText>
+        ) : null}
         <Divider />
-        <CardText>⏳💠 **Status:** aguardando pagamento via Pix.</CardText>
-        <CardText>👇⚡ Clique no botão abaixo para abrir o checkout seguro:</CardText>
+        {message.statusText ? <CardText>{message.statusText}</CardText> : null}
+        {message.paymentPrompt ? <CardText>{message.paymentPrompt}</CardText> : null}
         {checkoutUrl ? (
           <Actions>
-            <LinkButton url={checkoutUrl}>💠 PAGAR AGORA COM PIX ⚡</LinkButton>
+            <LinkButton url={checkoutUrl}>
+              {interpolateBotMessageLimited(message.paymentButtonLabel, {}, 80)}
+            </LinkButton>
           </Actions>
         ) : null}
         <Divider />
-        <CardText>🎫🔔 Após a confirmação, criaremos automaticamente seu **ticket privado**.</CardText>
-        <CardText>👤🤝 Somente você e os administradores terão acesso ao atendimento.</CardText>
-        <CardText>🔒✨ Compra protegida do início ao fim pela **GWStore**.</CardText>
+        {message.ticketText ? <CardText>{message.ticketText}</CardText> : null}
+        {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
+        {message.protectedText ? <CardText>{message.protectedText}</CardText> : null}
       </Card>
     );
   }
 
-  const message = {
-    invalid_request: "🧩 A solicitação de compra é inválida. Abra a loja novamente com **/loja**. 🛍️",
-    invalid_quantity: `🔢 Informe uma quantidade inteira entre **1 e ${MAXIMUM_ORDER_QUANTITY}**.`,
-    guild_not_authorized: "⛔🏰 Este servidor ainda não está autorizado a vender pela GWStore.",
-    product_unavailable: "🔎🎁 Esse produto não está mais disponível no catálogo.",
-    out_of_stock: "😔📦 Esse produto ficou sem estoque. Escolha outro item na **/loja**! ✨",
-    insufficient_stock: `📦 A quantidade escolhida é maior que o estoque. Disponível agora: **${result.kind === "insufficient_stock" ? result.availableStock : 0} unidades**.`,
-    quantity_below_minimum: `⚠️💠 A LivePix aceita Pix a partir de **${formatBrl(LIVEPIX_MINIMUM_BRL_CENTS)}**. Para este produto, escolha no mínimo **${result.kind === "quantity_below_minimum" ? result.minimumQuantity : 0} unidades** (total de **${result.kind === "quantity_below_minimum" ? formatBrl(result.minimumTotalCents) : formatBrl(0)}**).`,
-    interaction_conflict: "♻️🧾 Essa interação já foi usada em outro pedido.",
+  const errorMessage = {
+    invalid_request: customization.error.invalidRequest,
+    invalid_quantity: interpolateBotMessage(customization.error.invalidQuantity, {
+      maximum_quantity: MAXIMUM_ORDER_QUANTITY,
+    }),
+    guild_not_authorized: customization.error.guildNotAuthorized,
+    product_unavailable: customization.error.productUnavailable,
+    out_of_stock: customization.error.outOfStock,
+    insufficient_stock: interpolateBotMessage(customization.error.insufficientStock, {
+      available_stock: result.kind === "insufficient_stock" ? result.availableStock : 0,
+    }),
+    quantity_below_minimum: interpolateBotMessage(customization.error.quantityBelowMinimum, {
+      minimum_pix: formatBrl(LIVEPIX_MINIMUM_BRL_CENTS),
+      minimum_quantity: result.kind === "quantity_below_minimum" ? result.minimumQuantity : 0,
+      minimum_total:
+        result.kind === "quantity_below_minimum"
+          ? formatBrl(result.minimumTotalCents)
+          : formatBrl(0),
+    }),
+    interaction_conflict: customization.error.interactionConflict,
   }[result.kind];
-  return errorCard(message);
+  return errorCard(errorMessage, customization);
 }
 
-function errorCard(message: string) {
+function errorCard(
+  message: string,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
   return (
-    <Card title="❌🚨 OPS! NÃO FOI POSSÍVEL CONTINUAR 🚨❌" subtitle="💜 A equipe GWStore está aqui para ajudar">
+    <Card
+      title={interpolateBotMessageLimited(customization.error.title, {}, 256)}
+      subtitle={
+        customization.error.subtitle
+          ? interpolateBotMessageLimited(customization.error.subtitle, {}, 256)
+          : undefined
+      }
+    >
       <CardText>{message}</CardText>
-      <CardText>🔄 Tente abrir a loja novamente com **/loja**. 🛍️✨</CardText>
+      {customization.error.retryText ? (
+        <CardText>{customization.error.retryText}</CardText>
+      ) : null}
     </Card>
   );
 }
@@ -562,6 +688,13 @@ function formatPercentage(bps: number) {
   return new Intl.NumberFormat("pt-BR", {
     maximumFractionDigits: 2,
   }).format(bps / 100) + "%";
+}
+
+function renderMinimumText(template: string, quantity: number, totalCents: number) {
+  return interpolateBotMessage(template, {
+    minimum_quantity: quantity,
+    minimum_total: formatBrl(totalCents),
+  }).replaceAll("unidade(s)", quantity === 1 ? "unidade" : "unidades");
 }
 
 function stockLabel(availableStock: number) {

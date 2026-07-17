@@ -329,6 +329,39 @@ begin
 
   if not exists (
     select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'platform_settings'
+      and column_name = 'bot_message_config'
+      and data_type = 'jsonb'
+      and is_nullable = 'NO'
+  ) then
+    raise exception 'platform_settings.bot_message_config must be a non-null jsonb column';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.platform_settings'::regclass
+      and conname in (
+        'platform_settings_bot_message_config_object',
+        'platform_settings_bot_message_config_version',
+        'platform_settings_bot_message_config_size'
+      )
+  ) <> 3 then
+    raise exception 'platform_settings bot message configuration constraints are missing';
+  end if;
+
+  if not (
+    select bot_message_config @> '{"version":1}'::jsonb
+    from public.platform_settings
+    where id = 1
+  ) then
+    raise exception 'platform_settings bot message configuration version is invalid';
+  end if;
+
+  if not exists (
+    select 1
     from storage.buckets
     where id = 'catalog-media'
       and public

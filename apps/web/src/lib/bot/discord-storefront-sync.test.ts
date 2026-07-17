@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   publishDiscordStorefront: vi.fn(),
   readStorefrontConfiguration: vi.fn(),
   withStorefrontConfiguration: vi.fn(),
+  loadBotMessageCustomization: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -25,6 +26,9 @@ vi.mock("./discord-storefront", () => ({
   readStorefrontConfiguration: mocks.readStorefrontConfiguration,
   withStorefrontConfiguration: mocks.withStorefrontConfiguration,
 }));
+vi.mock("./message-customization-server", () => ({
+  loadBotMessageCustomization: mocks.loadBotMessageCustomization,
+}));
 
 import { synchronizePublishedDiscordStorefronts } from "./discord-storefront-sync";
 
@@ -34,6 +38,7 @@ const storefront = {
   message_ids: ["323456789012345678"],
   published_at: "2026-07-17T09:00:00.000Z",
 };
+const customization = { version: 1, storefront: { title: "Loja personalizada" } };
 
 describe("sincronização automática da vitrine Discord", () => {
   beforeEach(() => {
@@ -41,6 +46,7 @@ describe("sincronização automática da vitrine Discord", () => {
     mocks.listCatalog.mockResolvedValue([]);
     mocks.readStorefrontConfiguration.mockReturnValue(storefront);
     mocks.withStorefrontConfiguration.mockReturnValue({ storefront });
+    mocks.loadBotMessageCustomization.mockResolvedValue(customization);
     mocks.publishDiscordStorefront.mockResolvedValue({ configuration: storefront });
   });
 
@@ -55,6 +61,7 @@ describe("sincronização automática da vitrine Discord", () => {
     expect(mocks.publishDiscordStorefront).toHaveBeenCalledWith({
       channel: { id: storefront.channel_id, name: storefront.channel_name },
       catalog: [],
+      customization,
       previous: storefront,
     });
     expect(client.update).toHaveBeenCalledWith({ configuration: { storefront } });

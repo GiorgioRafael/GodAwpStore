@@ -200,10 +200,19 @@ $$;
 do $$
 declare
   visible_games integer;
+  updated_settings integer;
 begin
   select count(*) into visible_games from public.games;
   if visible_games <> 0 then
     raise exception 'unauthorized authenticated user saw % game rows', visible_games;
+  end if;
+
+  update public.platform_settings
+  set bot_message_config = '{"version":1,"storefront":{"title":"forged"}}'::jsonb
+  where id = 1;
+  get diagnostics updated_settings = row_count;
+  if updated_settings <> 0 then
+    raise exception 'unauthorized authenticated user updated bot message configuration';
   end if;
 
   begin
@@ -233,6 +242,7 @@ do $$
 declare
   global_rate integer;
   override_rate integer;
+  settings_audits integer;
 begin
   select effective_commission_bps
   into global_rate
@@ -247,6 +257,49 @@ begin
   if global_rate <> 3000 or override_rate <> 1250 then
     raise exception 'effective commission precedence failed: global %, override %', global_rate, override_rate;
   end if;
+
+  update public.platform_settings
+  set bot_message_config = jsonb_build_object(
+    'version', 1,
+    'storefront', jsonb_build_object('title', 'Integration storefront')
+  )
+  where id = 1;
+
+  if (
+    select bot_message_config #>> '{storefront,title}'
+    from public.platform_settings
+    where id = 1
+  ) <> 'Integration storefront' then
+    raise exception 'active admin did not update bot message configuration';
+  end if;
+
+  select count(*)
+  into settings_audits
+  from public.audit_events
+  where action = 'settings.update'
+    and metadata -> 'changed_fields' ? 'bot_message_config';
+
+  if settings_audits <> 1 then
+    raise exception 'bot message configuration update was not audited exactly once';
+  end if;
+
+  begin
+    update public.platform_settings
+    set bot_message_config = '{"version":2}'::jsonb
+    where id = 1;
+    raise exception 'unsupported bot message configuration version was accepted';
+  exception
+    when check_violation then null;
+  end;
+
+  begin
+    update public.platform_settings
+    set bot_message_config = jsonb_build_object('version', 1, 'oversized', repeat('x', 65537))
+    where id = 1;
+    raise exception 'oversized bot message configuration was accepted';
+  exception
+    when check_violation then null;
+  end;
 end
 $$;
 

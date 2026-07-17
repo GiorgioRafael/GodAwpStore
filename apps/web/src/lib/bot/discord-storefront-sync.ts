@@ -8,6 +8,7 @@ import {
   withStorefrontConfiguration,
 } from "./discord-storefront";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
+import { loadBotMessageCustomization } from "./message-customization-server";
 
 export type DiscordStorefrontSyncResult = {
   published: number;
@@ -36,15 +37,17 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
   });
   if (publishedGuilds.length === 0) return { published: 0, failed: 0 };
 
-  const catalog = await new BotCommerceService(
-    new SupabaseBotCommerceRepository(client),
-  ).listCatalog();
+  const [catalog, customization] = await Promise.all([
+    new BotCommerceService(new SupabaseBotCommerceRepository(client)).listCatalog(),
+    loadBotMessageCustomization(client),
+  ]);
   const results = await Promise.all(
     publishedGuilds.map(async ({ guild, storefront }) => {
       try {
         const publication = await publishDiscordStorefront({
           channel: { id: storefront.channel_id, name: storefront.channel_name },
           catalog,
+          customization,
           previous: storefront,
         });
         const { data: updated, error: updateError } = await client

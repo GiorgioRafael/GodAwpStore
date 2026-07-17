@@ -1,6 +1,7 @@
 import { beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BotCatalogGame } from "./types";
+import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 
 vi.mock("server-only", () => ({}));
 
@@ -84,6 +85,34 @@ describe("Discord storefront", () => {
       channel_name: "compras",
       message_ids: [messageId],
     });
+  });
+
+  it("aplica os textos personalizados sem liberar menções", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }));
+
+    await publishDiscordStorefront({
+      channel: { id: channelId, name: "compras" },
+      catalog: catalog(),
+      customization: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        storefront: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
+          title: "🔥 LOJA PERSONALIZADA @everyone",
+        },
+      },
+      previous: null,
+      fetcher,
+    });
+
+    const payload = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as {
+      allowed_mentions: { parse: string[] };
+      components: unknown[];
+    };
+    expect(JSON.stringify(payload.components)).toContain("LOJA PERSONALIZADA @everyone");
+    expect(payload.allowed_mentions).toEqual({ parse: [] });
   });
 
   it("edita a mensagem rastreada sem criar uma vitrine duplicada", async () => {

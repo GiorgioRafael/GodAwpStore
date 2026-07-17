@@ -2,6 +2,13 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import {
+  DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  interpolateBotMessageLimited,
+  type BotMessageCustomization,
+} from "./message-customization";
+import { loadBotMessageCustomization } from "./message-customization-server";
+
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -85,9 +92,13 @@ export function ensurePaidOrderTicket(
   const existingTask = ticketTasks.get(taskKey);
   if (existingTask) return existingTask;
 
-  const task = ensurePaidOrderTicketInternal(normalized, options.fetcher ?? fetch).finally(() => {
-    if (ticketTasks.get(taskKey) === task) ticketTasks.delete(taskKey);
-  });
+  const task = loadBotMessageCustomization()
+    .then((customization) =>
+      ensurePaidOrderTicketInternal(normalized, options.fetcher ?? fetch, customization),
+    )
+    .finally(() => {
+      if (ticketTasks.get(taskKey) === task) ticketTasks.delete(taskKey);
+    });
   ticketTasks.set(taskKey, task);
   return task;
 }
@@ -95,6 +106,7 @@ export function ensurePaidOrderTicket(
 async function ensurePaidOrderTicketInternal(
   input: PaidOrderTicketInput,
   fetcher: typeof fetch,
+  customization: BotMessageCustomization,
 ): Promise<PaidOrderTicketResult> {
   const config = getDiscordConfig();
   const headers = discordHeaders(config.token);
@@ -173,7 +185,7 @@ async function ensurePaidOrderTicketInternal(
         {
           method: "POST",
           headers,
-          body: JSON.stringify(paidTicketWelcomeMessage(input)),
+          body: JSON.stringify(paidTicketWelcomeMessage(input, customization)),
         },
         fetcher,
       );
@@ -218,9 +230,13 @@ export function buildTicketPermissionOverwrites(input: {
   ];
 }
 
-export function paidTicketWelcomeMessage(input: PaidOrderTicketInput) {
+export function paidTicketWelcomeMessage(
+  input: PaidOrderTicketInput,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
   const productName = sanitizeDiscordText(input.productName, 256);
   const orderMarker = welcomeMessageMarker(input.orderId);
+  const message = customization.ticket;
 
   return {
     content: `<@${input.buyerDiscordId}>`,
@@ -234,14 +250,31 @@ export function paidTicketWelcomeMessage(input: PaidOrderTicketInput) {
     embeds: [
       {
         color: 0xa855f7,
-        title: "Pagamento confirmado",
-        description:
-          "Seu pagamento foi confirmado. Este ticket é privado; aguarde o atendimento e a entrega do produto.",
+        title: interpolateBotMessageLimited(message.title, {}, 256),
+        ...(message.description
+          ? { description: interpolateBotMessageLimited(message.description, {}, 4_096) }
+          : {}),
         fields: [
-          { name: "Produto", value: productName, inline: true },
-          { name: "Quantidade", value: new Intl.NumberFormat("pt-BR").format(input.quantity), inline: true },
-          { name: "Valor", value: formatBrl(input.paidAmountCents), inline: true },
-          { name: "Pedido", value: `\`${input.orderId}\``, inline: false },
+          {
+            name: interpolateBotMessageLimited(message.productLabel, {}, 256),
+            value: productName,
+            inline: true,
+          },
+          {
+            name: interpolateBotMessageLimited(message.quantityLabel, {}, 256),
+            value: new Intl.NumberFormat("pt-BR").format(input.quantity),
+            inline: true,
+          },
+          {
+            name: interpolateBotMessageLimited(message.amountLabel, {}, 256),
+            value: formatBrl(input.paidAmountCents),
+            inline: true,
+          },
+          {
+            name: interpolateBotMessageLimited(message.orderLabel, {}, 256),
+            value: `\`${input.orderId}\``,
+            inline: false,
+          },
         ],
         footer: { text: orderMarker },
       },

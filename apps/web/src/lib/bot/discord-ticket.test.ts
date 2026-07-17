@@ -1,6 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("./message-customization-server", async () => {
+  const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import("./message-customization");
+  return {
+    loadBotMessageCustomization: vi.fn(async () => DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
+  };
+});
 
 type TicketModule = typeof import("./discord-ticket");
 let ticket: TicketModule;

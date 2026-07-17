@@ -2,6 +2,14 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/bot/message-customization-server", async () => {
+  const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import(
+    "@/lib/bot/message-customization"
+  );
+  return {
+    loadBotMessageCustomization: vi.fn(async () => DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
+  };
+});
 vi.mock("@/lib/bot/supabase-repository", () => ({
   SupabaseBotCommerceRepository: class {
     async findPurchasableProduct() {

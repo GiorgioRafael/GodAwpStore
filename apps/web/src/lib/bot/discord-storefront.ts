@@ -8,6 +8,7 @@ import { toCardElement } from "chat";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
 import { catalogCards } from "./discord-bot";
+import type { BotMessageCustomization } from "./message-customization";
 import type { BotCatalogGame } from "./types";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
@@ -122,11 +123,13 @@ export function withStorefrontConfiguration(
 export async function publishDiscordStorefront({
   channel,
   catalog,
+  customization,
   previous,
   fetcher = fetch,
 }: {
   channel: Pick<DiscordStorefrontChannel, "id" | "name">;
   catalog: BotCatalogGame[];
+  customization?: BotMessageCustomization;
   previous: DiscordStorefrontConfiguration | null;
   fetcher?: typeof fetch;
 }): Promise<PublishDiscordStorefrontResult> {
@@ -134,7 +137,7 @@ export async function publishDiscordStorefront({
   const channelName = asChannelName(channel.name);
   if (!channelName) throw new Error("Nome do canal Discord inválido.");
 
-  const payloads = catalogCards(catalog).map((card) => {
+  const payloads = catalogCards(catalog, customization).map((card) => {
     const normalized = toCardElement(card);
     if (!normalized) throw new Error("Não foi possível montar a vitrine do Discord.");
     return {

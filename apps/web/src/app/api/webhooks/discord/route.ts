@@ -8,6 +8,7 @@ import {
   parseNativeDiscordQuantityInteraction,
 } from "@/lib/bot/discord-bot";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
+import { loadBotMessageCustomization } from "@/lib/bot/message-customization-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,15 +32,24 @@ export async function POST(request: Request) {
       }
 
       if (native.interaction.kind === "open") {
+        const customization = loadBotMessageCustomization();
         return Response.json(
-          await createNativeDiscordQuantityResponse(native.interaction.productId),
+          await createNativeDiscordQuantityResponse(
+            native.interaction.productId,
+            undefined,
+            customization,
+          ),
         );
       }
 
       if (native.interaction.kind === "submit") {
         after(async () => {
           try {
-            const stockChanged = await completeDiscordQuantityPurchase(native.raw);
+            const customization = await loadBotMessageCustomization();
+            const stockChanged = await completeDiscordQuantityPurchase(
+              native.raw,
+              customization,
+            );
             if (stockChanged) {
               const storefronts = await synchronizePublishedDiscordStorefronts();
               if (storefronts.failed > 0) {

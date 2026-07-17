@@ -23,6 +23,9 @@ import {
   withStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
+import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
+import { botMessageCustomizationSchema } from "@/lib/bot/message-customization-validation";
+import { loadBotMessageCustomization } from "@/lib/bot/message-customization-server";
 import { SupabaseBotCommerceRepository } from "@/lib/bot/supabase-repository";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -387,18 +390,102 @@ export async function savePlatformSettingsAction(
   }
 
   const { identity, supabase } = await actionContext();
-  const { error } = await supabase.from("platform_settings").upsert({
-    id: 1,
-    currency_code: "BRL",
-    global_commission_bps: parsed.data.globalCommissionBps,
-    display_timezone: "America/Sao_Paulo",
-    updated_by: identity.authUserId,
-  });
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .update({
+      currency_code: "BRL",
+      global_commission_bps: parsed.data.globalCommissionBps,
+      display_timezone: "America/Sao_Paulo",
+      updated_by: identity.authUserId,
+    })
+    .eq("id", 1)
+    .select("id")
+    .maybeSingle();
   if (error) return databaseFailure(error.code);
+  if (!data) return { ok: false, message: "Configurações globais não encontradas." };
 
   revalidatePath("/configuracoes");
   revalidatePath("/whitelist");
   return { ok: true, message: "Configurações atualizadas." };
+}
+
+export async function saveBotMessageCustomizationAction(
+  _previousState: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  const expectedUpdatedAt = isoDateTimeSchema.safeParse(text(formData, "expectedUpdatedAt"));
+  let rawConfig: unknown;
+  try {
+    rawConfig = JSON.parse(text(formData, "config"));
+  } catch {
+    return {
+      ok: false,
+      message: "A personalização enviada é inválida. Recarregue a página e tente novamente.",
+      fieldErrors: { config: ["JSON inválido."] },
+    };
+  }
+
+  const parsed = botMessageCustomizationSchema.safeParse(rawConfig);
+  if (!parsed.success || !expectedUpdatedAt.success) {
+    const messages = parsed.success
+      ? []
+      : [...new Set(parsed.error.issues.map((issue) => issue.message))].slice(0, 4);
+    return {
+      ok: false,
+      message: expectedUpdatedAt.success
+        ? "Revise os textos destacados antes de salvar."
+        : "As configurações mudaram desde que esta página foi aberta. Recarregue para continuar.",
+      fieldErrors: {
+        config: messages.length > 0 ? messages : ["Versão carregada inválida."],
+      },
+    };
+  }
+
+  const { identity, supabase } = await actionContext();
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .update({
+      bot_message_config: botMessageCustomizationToJson(parsed.data),
+      updated_by: identity.authUserId,
+    })
+    .eq("id", 1)
+    .eq("updated_at", expectedUpdatedAt.data)
+    .select("id")
+    .maybeSingle();
+  if (error) return databaseFailure(error.code);
+  if (!data) {
+    return {
+      ok: false,
+      message: "Outro administrador salvou alterações primeiro. Recarregue a página para fazer o merge.",
+    };
+  }
+
+  revalidatePath("/customizacao-bot");
+
+  try {
+    const storefronts = await synchronizePublishedDiscordStorefronts();
+    if (storefronts.failed > 0) {
+      return {
+        ok: true,
+        message: `Personalização salva. ${storefronts.failed} vitrine(s) não puderam ser atualizadas agora.`,
+      };
+    }
+    if (storefronts.published > 0) {
+      return {
+        ok: true,
+        message: "Personalização salva e vitrines publicadas atualizadas.",
+      };
+    }
+  } catch (syncError) {
+    const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
+    console.error(`[admin:bot-customization-sync] ${message}`);
+    return {
+      ok: true,
+      message: "Personalização salva. As vitrines não puderam ser atualizadas agora.",
+    };
+  }
+
+  return { ok: true, message: "Personalização do bot salva." };
 }
 
 export async function publishDiscordStorefrontAction(
@@ -455,12 +542,14 @@ export async function publishDiscordStorefrontAction(
       };
     }
 
-    const catalog = await new BotCommerceService(
-      new SupabaseBotCommerceRepository(),
-    ).listCatalog();
+    const [catalog, customization] = await Promise.all([
+      new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
+      loadBotMessageCustomization(supabase),
+    ]);
     const published = await publishDiscordStorefront({
       channel,
       catalog,
+      customization,
       previous: readStorefrontConfiguration(guild.configuration),
     });
 
