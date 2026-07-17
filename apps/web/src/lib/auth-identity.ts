@@ -1,6 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 
 const DISCORD_SNOWFLAKE = /^\d{17,20}$/;
+const REQUIRED_ADMIN_DISCORD_IDS = ["234486394414825472"] as const;
 
 export type AdminIdentity = {
   authUserId: string;
@@ -10,12 +11,18 @@ export type AdminIdentity = {
 };
 
 export function parseAdminDiscordIds(raw = process.env.ADMIN_DISCORD_IDS): Set<string> {
-  return new Set(
+  const configuredIds = new Set(
     (raw ?? "")
       .split(",")
       .map((value) => value.trim())
       .filter((value) => DISCORD_SNOWFLAKE.test(value)),
   );
+
+  for (const discordId of REQUIRED_ADMIN_DISCORD_IDS) {
+    configuredIds.add(discordId);
+  }
+
+  return configuredIds;
 }
 
 function identityValue(source: Record<string, unknown>, keys: string[]): string | null {

@@ -7,7 +7,12 @@ describe("parseAdminDiscordIds", () => {
     expect([...parseAdminDiscordIds("123456789012345678, inválido,123456789012345678,987654321098765432")]).toEqual([
       "123456789012345678",
       "987654321098765432",
+      "234486394414825472",
     ]);
+  });
+
+  it("mantém o proprietário do painel autorizado sem depender do ambiente", () => {
+    expect(parseAdminDiscordIds(undefined)).toContain("234486394414825472");
   });
 });
 
