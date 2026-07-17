@@ -4,10 +4,13 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
+  Banknote,
   Boxes,
+  CalendarDays,
   CircleDollarSign,
   ClipboardList,
   PackageSearch,
+  ReceiptText,
   Tags,
 } from "lucide-react";
 import { formatBrl, formatDateTimePtBr } from "@godawp/domain";
@@ -18,6 +21,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   getDashboardSummary,
+  getPaidPixMetrics,
   listAuditEvents,
   listProductStock,
 } from "@/lib/data/admin-repository";
@@ -42,12 +46,39 @@ const actionLabels: Record<string, string> = {
 };
 
 export default async function DashboardPage() {
-  const [summary, lowStock, audit] = await Promise.all([
+  const [summary, paidPix, lowStock, audit] = await Promise.all([
     getDashboardSummary(),
+    getPaidPixMetrics(),
     listProductStock({ lowOnly: true }),
     listAuditEvents(6),
   ]);
-  const metrics = [
+  const salesMetrics = [
+    {
+      label: "Receita bruta Pix",
+      value: formatBrl(paidPix.grossRevenueCents),
+      detail: "Somente pagamentos LivePix confirmados",
+      icon: CircleDollarSign,
+    },
+    {
+      label: "Pix pagos",
+      value: paidPix.paidOrdersCount.toLocaleString("pt-BR"),
+      detail: "Pedidos únicos, sem pendentes ou reembolsos",
+      icon: ReceiptText,
+    },
+    {
+      label: "Últimos 30 dias",
+      value: formatBrl(paidPix.grossRevenueLast30DaysCents),
+      detail: "Receita bruta em janela móvel",
+      icon: CalendarDays,
+    },
+    {
+      label: "Ticket médio",
+      value: formatBrl(paidPix.averageOrderCents),
+      detail: "Média por Pix confirmado",
+      icon: Banknote,
+    },
+  ];
+  const operationalMetrics = [
     {
       label: "Produtos",
       value: summary.productsCount.toLocaleString("pt-BR"),
@@ -70,15 +101,20 @@ export default async function DashboardPage() {
       label: "Saldo no ledger",
       value: formatBrl(summary.ledgerBalanceCents),
       detail: "Valores em BRL",
-      icon: CircleDollarSign,
+      icon: Banknote,
     },
+  ];
+  const revenuePeriods = [
+    { label: "Hoje", value: paidPix.grossRevenueTodayCents },
+    { label: "Últimos 7 dias", value: paidPix.grossRevenueLast7DaysCents },
+    { label: "Últimos 30 dias", value: paidPix.grossRevenueLast30DaysCents },
   ];
   return (
     <div className="space-y-7">
       <PageHeader
         eyebrow="Visão geral"
         title="Central de operação"
-        description="Acompanhe catálogo, estoque e atividade da plataforma em um só lugar."
+        description="Acompanhe a receita bruta dos Pix pagos, o catálogo, o estoque e a atividade da plataforma."
         actions={
           <Link
             href="/catalogo/produtos"
@@ -90,10 +126,58 @@ export default async function DashboardPage() {
         }
       />
 
-      <section aria-label="Indicadores principais" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {metrics.map((metric) => (
-          <MetricCard key={metric.label} {...metric} />
-        ))}
+      <section aria-labelledby="sales-metrics-title" className="space-y-4">
+        <div>
+          <h2 id="sales-metrics-title" className="text-base font-semibold tracking-tight text-foreground">
+            Vendas confirmadas
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Valores calculados exclusivamente com pedidos LivePix que tiveram o pagamento confirmado.
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {salesMetrics.map((metric) => (
+            <MetricCard key={metric.label} {...metric} />
+          ))}
+        </div>
+      </section>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold tracking-tight">Entradas por período</h2>
+            <p className="mt-1 text-sm text-muted">Receita bruta recebida por Pix confirmado.</p>
+          </div>
+          <Badge tone={paidPix.lastPaidAt ? "success" : "neutral"}>
+            {paidPix.lastPaidAt
+              ? `Último Pix: ${formatDateTimePtBr(paidPix.lastPaidAt)}`
+              : "Nenhum Pix pago"}
+          </Badge>
+        </CardHeader>
+        <CardContent className="grid gap-3 pt-0 sm:grid-cols-3">
+          {revenuePeriods.map((period) => (
+            <div key={period.label} className="rounded-xl border border-border bg-surface-muted/35 px-4 py-3.5">
+              <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">{period.label}</p>
+              <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-foreground">
+                {formatBrl(period.value)}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <section aria-labelledby="operations-metrics-title" className="space-y-4">
+        <div>
+          <h2 id="operations-metrics-title" className="text-base font-semibold tracking-tight text-foreground">
+            Operação
+          </h2>
+          <p className="mt-1 text-sm text-muted">Indicadores de catálogo, estoque, pedidos e saldo.</p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {operationalMetrics.map((metric) => (
+            <MetricCard key={metric.label} {...metric} />
+          ))}
+        </div>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,.75fr)]">
@@ -180,7 +264,8 @@ export default async function DashboardPage() {
             <div>
               <h2 className="text-sm font-semibold text-foreground">Ambiente pronto para integração</h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-                Os indicadores são calculados diretamente no PostgreSQL e não usam dados demonstrativos.
+                Os indicadores são calculados diretamente no PostgreSQL e não usam dados demonstrativos. A receita
+                bruta considera apenas pedidos com Pix LivePix confirmado como pago.
               </p>
             </div>
           </div>

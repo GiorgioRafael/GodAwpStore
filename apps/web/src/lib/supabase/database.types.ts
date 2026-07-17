@@ -572,6 +572,18 @@ export type Database = {
         };
         Relationships: [];
       };
+      admin_paid_pix_metrics: {
+        Row: {
+          paid_orders_count: number;
+          gross_revenue_cents: number;
+          gross_revenue_today_cents: number;
+          gross_revenue_last_7_days_cents: number;
+          gross_revenue_last_30_days_cents: number;
+          average_order_cents: number;
+          last_paid_at: string | null;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       admin_import_inventory_units: {

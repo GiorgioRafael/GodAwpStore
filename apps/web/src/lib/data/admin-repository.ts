@@ -17,6 +17,16 @@ export type DashboardSummary = {
   pendingPayoutsCents: number;
 };
 
+export type PaidPixMetrics = {
+  paidOrdersCount: number;
+  grossRevenueCents: number;
+  grossRevenueTodayCents: number;
+  grossRevenueLast7DaysCents: number;
+  grossRevenueLast30DaysCents: number;
+  averageOrderCents: number;
+  lastPaidAt: string | null;
+};
+
 export type GameRow = Pick<
   Tables<"games">,
   | "id"
@@ -166,6 +176,23 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     deliveredOrdersCount: toSafeNumber(data.delivered_orders_count),
     ledgerBalanceCents: toSafeNumber(data.ledger_balance_cents),
     pendingPayoutsCents: toSafeNumber(data.pending_payouts_cents),
+  };
+}
+
+export async function getPaidPixMetrics(): Promise<PaidPixMetrics> {
+  const supabase = await client();
+  const { data, error } = await supabase.from("admin_paid_pix_metrics").select("*").single();
+  assertQuerySucceeded(error, "carregar as métricas de vendas Pix");
+  if (!data) throw new Error("As métricas de vendas Pix não retornaram dados.");
+
+  return {
+    paidOrdersCount: toSafeNumber(data.paid_orders_count),
+    grossRevenueCents: toSafeNumber(data.gross_revenue_cents),
+    grossRevenueTodayCents: toSafeNumber(data.gross_revenue_today_cents),
+    grossRevenueLast7DaysCents: toSafeNumber(data.gross_revenue_last_7_days_cents),
+    grossRevenueLast30DaysCents: toSafeNumber(data.gross_revenue_last_30_days_cents),
+    averageOrderCents: toSafeNumber(data.average_order_cents),
+    lastPaidAt: data.last_paid_at,
   };
 }
 

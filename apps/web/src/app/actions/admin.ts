@@ -21,6 +21,7 @@ import {
   withStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 import { SupabaseBotCommerceRepository } from "@/lib/bot/supabase-repository";
+import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type AdminActionState = {
@@ -354,7 +355,9 @@ export async function publishDiscordStorefrontAction(
   }
 
   try {
-    const { supabase } = await actionContext();
+    await requireAdmin();
+    const supabase = createAdminSupabaseClient();
+    if (!supabase) throw new Error("Supabase server-only não configurado.");
     const { data: guild, error: guildError } = await supabase
       .from("guilds")
       .select("id,discord_guild_id,name,configuration")
@@ -384,7 +387,7 @@ export async function publishDiscordStorefrontAction(
       previous: readStorefrontConfiguration(guild.configuration),
     });
 
-    const { error: updateError } = await supabase
+    const { data: updatedGuild, error: updateError } = await supabase
       .from("guilds")
       .update({
         configuration: withStorefrontConfiguration(
@@ -392,20 +395,17 @@ export async function publishDiscordStorefrontAction(
           published.configuration,
         ),
       })
-      .eq("id", guild.id);
+      .eq("id", guild.id)
+      .select("id")
+      .maybeSingle();
     if (updateError) return databaseFailure(updateError.code);
+    if (!updatedGuild) return { ok: false, message: "Servidor Discord não encontrado ao salvar." };
 
     revalidatePath("/configuracoes");
-    return published.pinError
-      ? {
-          ok: true,
-          message:
-            "Vitrine publicada, mas não foi possível fixá-la. Dê ao bot a permissão Fixar mensagens e salve novamente.",
-        }
-      : {
-          ok: true,
-          message: `Vitrine publicada e fixada em #${published.configuration.channel_name}.`,
-        };
+    return {
+      ok: true,
+      message: `Vitrine publicada em #${published.configuration.channel_name}.`,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido.";
     console.error(`[admin:discord-storefront] ${message}`);

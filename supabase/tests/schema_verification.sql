@@ -45,7 +45,8 @@ begin
     'effective_whitelist_commissions',
     'product_stock_summary',
     'whitelist_balances',
-    'admin_dashboard_summary'
+    'admin_dashboard_summary',
+    'admin_paid_pix_metrics'
   ]
   loop
     if to_regclass('public.' || required_view) is null then
@@ -85,6 +86,28 @@ begin
       and data_type = 'timestamp with time zone'
   ) then
     raise exception 'admin_profiles.authorization_expires_at is missing or invalid';
+  end if;
+
+  if (
+    select count(*)
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'admin_paid_pix_metrics'
+      and column_name in (
+        'paid_orders_count',
+        'gross_revenue_cents',
+        'gross_revenue_today_cents',
+        'gross_revenue_last_7_days_cents',
+        'gross_revenue_last_30_days_cents',
+        'average_order_cents',
+        'last_paid_at'
+      )
+  ) <> 7 then
+    raise exception 'admin_paid_pix_metrics is missing a required metric';
+  end if;
+
+  if to_regclass('public.orders_paid_livepix_paid_at_idx') is null then
+    raise exception 'The paid LivePix metrics index is missing';
   end if;
 
   if exists (
@@ -142,7 +165,8 @@ begin
         'effective_whitelist_commissions',
         'product_stock_summary',
         'whitelist_balances',
-        'admin_dashboard_summary'
+        'admin_dashboard_summary',
+        'admin_paid_pix_metrics'
       )
       and not ('security_invoker=true' = any(coalesce(relation.reloptions, array[]::text[])))
   ) then

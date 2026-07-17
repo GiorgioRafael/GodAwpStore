@@ -55,12 +55,11 @@ describe("Discord storefront", () => {
     );
   });
 
-  it("publica o catálogo e fixa a primeira mensagem com a rota atual do Discord", async () => {
+  it("publica o catálogo sem tentar fixar a mensagem", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }));
 
     const result = await publishDiscordStorefront({
       channel: { id: channelId, name: "compras" },
@@ -79,25 +78,19 @@ describe("Discord storefront", () => {
     };
     expect(payload.allowed_mentions).toEqual({ parse: [] });
     expect(JSON.stringify(payload.components)).toContain("select_product");
-    expect(fetcher.mock.calls[1]?.[0]).toBe(
-      `https://discord.com/api/v10/channels/${channelId}/messages/pins/${messageId}`,
-    );
-    expect(fetcher.mock.calls[1]?.[1]?.method).toBe("PUT");
+    expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.configuration).toMatchObject({
       channel_id: channelId,
       channel_name: "compras",
       message_ids: [messageId],
-      pinned: true,
     });
-    expect(result.pinError).toBeNull();
   });
 
   it("edita a mensagem rastreada sem criar uma vitrine duplicada", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const fetcher = vi
       .fn<typeof fetch>()
-      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }));
 
     await publishDiscordStorefront({
       channel: { id: channelId, name: "compras" },
@@ -113,14 +106,13 @@ describe("Discord storefront", () => {
     expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
-  it("recria a mensagem removida e mantém a publicação quando falta permissão para fixar", async () => {
+  it("recria a mensagem removida sem exigir permissão para fixar", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const replacementId = "723456789012345678";
     const fetcher = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(jsonResponse({ id: replacementId, channel_id: channelId }))
-      .mockResolvedValueOnce(new Response(null, { status: 403 }));
+      .mockResolvedValueOnce(jsonResponse({ id: replacementId, channel_id: channelId }));
 
     const result = await publishDiscordStorefront({
       channel: { id: channelId, name: "compras" },
@@ -129,10 +121,8 @@ describe("Discord storefront", () => {
       fetcher,
     });
 
-    expect(fetcher.mock.calls.map(([, init]) => init?.method)).toEqual(["PATCH", "POST", "PUT"]);
+    expect(fetcher.mock.calls.map(([, init]) => init?.method)).toEqual(["PATCH", "POST"]);
     expect(result.configuration.message_ids).toEqual([replacementId]);
-    expect(result.configuration.pinned).toBe(false);
-    expect(result.pinError).toContain("403");
   });
 
   it("preserva as outras configurações do servidor ao salvar a vitrine", () => {
@@ -180,7 +170,6 @@ function storefrontConfiguration() {
     channel_name: "compras",
     message_ids: [messageId],
     published_at: "2026-07-16T12:00:00.000Z",
-    pinned: true,
   };
 }
 

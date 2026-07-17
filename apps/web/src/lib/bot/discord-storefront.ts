@@ -28,12 +28,10 @@ export type DiscordStorefrontConfiguration = {
   channel_name: string;
   message_ids: string[];
   published_at: string;
-  pinned: boolean;
 };
 
 export type PublishDiscordStorefrontResult = {
   configuration: DiscordStorefrontConfiguration;
-  pinError: string | null;
 };
 
 type DiscordChannelPayload = {
@@ -108,7 +106,6 @@ export function readStorefrontConfiguration(
     channel_name: channelName,
     message_ids: messageIds,
     published_at: publishedAt,
-    pinned: storefront.pinned === true,
   };
 }
 
@@ -168,39 +165,13 @@ export async function publishDiscordStorefront({
     await deleteMessages(previous.channel_id, previous.message_ids, fetcher);
   }
 
-  let pinStatus: number | null = null;
-  let pinned = false;
-  try {
-    const pinResponse = await fetcher(
-      `${discordApiUrl()}/channels/${channel.id}/messages/pins/${messageIds[0]}`,
-      {
-        method: "PUT",
-        headers: {
-          ...discordHeaders(),
-          "X-Audit-Log-Reason": encodeURIComponent("GWStore: publicar vitrine da loja"),
-        },
-        cache: "no-store",
-      },
-    );
-    pinStatus = pinResponse.status;
-    pinned = pinResponse.ok;
-  } catch {
-    // A publicação continua válida mesmo se a fixação falhar por rede.
-  }
-
   return {
     configuration: {
       channel_id: channel.id,
       channel_name: channelName,
       message_ids: messageIds,
       published_at: new Date().toISOString(),
-      pinned,
     },
-    pinError: pinned
-      ? null
-      : pinStatus
-        ? `A vitrine foi publicada, mas o Discord recusou a fixação (${pinStatus}).`
-        : "A vitrine foi publicada, mas não foi possível fixá-la agora.",
   };
 }
 

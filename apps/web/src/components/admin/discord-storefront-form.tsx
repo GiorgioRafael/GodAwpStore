@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { LoaderCircle, MessageSquareText, Pin, RefreshCw, ShieldCheck } from "lucide-react";
+import { LoaderCircle, MessageSquareText, RefreshCw, ShieldCheck, Waypoints } from "lucide-react";
 
 import { publishDiscordStorefrontAction } from "@/app/actions/admin";
 import {
@@ -63,11 +63,11 @@ export function DiscordStorefrontForm({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold tracking-tight">Vitrine fixa no Discord</h2>
+              <h2 className="text-base font-semibold tracking-tight">Vitrine no Discord</h2>
               <Badge tone="gold">Bot</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              Escolha o canal onde o bot publicará e fixará a lista de produtos com estoque.
+              Escolha o canal onde o bot publicará a lista de produtos com estoque.
             </p>
           </div>
           <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-gold/20 bg-gold/[0.06] text-gold">
@@ -150,9 +150,9 @@ export function DiscordStorefrontForm({
                 description="Detalhes, botão de compra e pagamento aparecem só para o cliente."
               />
               <FlowItem
-                icon={Pin}
-                title="Mensagem fixa"
-                description="Ao salvar novamente, a vitrine atual é atualizada sem duplicar."
+                icon={Waypoints}
+                title="Canal alterável"
+                description="Troque o canal quando quiser; a vitrine é movida sem duplicar."
               />
             </div>
 
@@ -166,9 +166,7 @@ export function DiscordStorefrontForm({
                     Última atualização: {formatDateTime(selectedGuild.current.published_at)}
                   </p>
                 </div>
-                <Badge tone={selectedGuild.current.pinned ? "success" : "warning"}>
-                  {selectedGuild.current.pinned ? "Fixada" : "Não fixada"}
-                </Badge>
+                <Badge tone="success">Publicada</Badge>
               </div>
             ) : null}
           </CardContent>
@@ -187,7 +185,7 @@ export function DiscordStorefrontForm({
                 ? "Publicando..."
                 : selectedGuild?.current
                   ? "Atualizar vitrine"
-                  : "Publicar e fixar"}
+                  : "Publicar vitrine"}
             </Button>
           </CardFooter>
         </form>
