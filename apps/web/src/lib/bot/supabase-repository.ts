@@ -90,13 +90,21 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
   async findOrderByInteraction(interactionId: string): Promise<ExistingOrder | null> {
     const { data, error } = await this.client
       .from("orders")
-      .select("id,buyer_discord_id,product_id,status")
+      .select("id,buyer_discord_id,product_id,quantity,minimum_price_cents,sale_price_cents,status")
       .eq("payment_reference", interactionReference(interactionId))
       .maybeSingle();
     assertQuery(error, "pedido existente");
 
     return data
-      ? { id: data.id, buyerDiscordId: data.buyer_discord_id, productId: data.product_id, status: data.status }
+      ? {
+          id: data.id,
+          buyerDiscordId: data.buyer_discord_id,
+          productId: data.product_id,
+          quantity: safeInteger(data.quantity),
+          unitPriceCents: safeInteger(data.minimum_price_cents),
+          salePriceCents: safeInteger(data.sale_price_cents),
+          status: data.status,
+        }
       : null;
   }
 
@@ -218,6 +226,8 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     whitelistEntryId: string | null;
     product: PurchasableProduct;
     buyerDiscordId: string;
+    quantity: number;
+    totalPriceCents: number;
     commissionBps: number;
   }): Promise<OrderCreation> {
     if (!input.whitelistEntryId) {
@@ -230,7 +240,8 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         p_whitelist_entry_id: input.whitelistEntryId,
         p_product_id: input.product.id,
         p_buyer_discord_id: input.buyerDiscordId,
-        p_sale_price_cents: input.product.minimumPriceCents,
+        p_quantity: input.quantity,
+        p_sale_price_cents: input.totalPriceCents,
         p_commission_bps: input.commissionBps,
       })
       .single();

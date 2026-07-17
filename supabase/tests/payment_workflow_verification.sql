@@ -21,7 +21,7 @@ begin
   end if;
 
   if (
-    select count(*)
+    select count(distinct routine.proname)
     from pg_proc as routine
     join pg_namespace as namespace on namespace.oid = routine.pronamespace
     where namespace.nspname = 'public'
@@ -140,6 +140,7 @@ from public.create_bot_order_with_reservation(
   '60000000-0000-4000-8000-000000000001',
   (select id from public.products where slug = '2x-moon-bloom' and archived_at is null),
   '620000000000000001',
+  1,
   100,
   3000
 );
@@ -164,6 +165,7 @@ begin
     from public.orders as order_row
     join public.inventory_units as unit on unit.id = order_row.inventory_unit_id
     where order_row.id = '62000000-0000-4000-8000-000000000001'
+      and order_row.quantity = 1
       and unit.product_id = order_row.product_id
       and unit.status = 'reserved'
   ) then
@@ -465,6 +467,7 @@ from public.create_bot_order_with_reservation(
   '60000000-0000-4000-8000-000000000001',
   (select id from public.products where slug = '2x-moon-bloom' and archived_at is null),
   '620000000000000002',
+  1,
   100,
   3000
 );
@@ -484,6 +487,7 @@ begin
     '60000000-0000-4000-8000-000000000001',
     (select id from public.products where slug = '2x-moon-bloom' and archived_at is null),
     '620000000000000003',
+    1,
     100,
     3000
   );
@@ -568,6 +572,7 @@ begin
       '60000000-0000-4000-8000-000000000001',
       (select id from public.products where slug = '2x-moon-bloom' and archived_at is null),
       '620000000000000004',
+      1,
       100,
       3000
     );

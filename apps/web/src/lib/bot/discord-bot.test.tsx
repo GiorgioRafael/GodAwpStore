@@ -5,18 +5,24 @@ import { toCardElement } from "chat";
 vi.mock("server-only", () => ({}));
 
 let catalogCards: typeof import("./discord-bot").catalogCards;
+let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
 let purchaseResultCard: typeof import("./discord-bot").purchaseResultCard;
+let parseNativeDiscordQuantityInteraction: typeof import("./discord-bot").parseNativeDiscordQuantityInteraction;
 let selectedProductCard: typeof import("./discord-bot").selectedProductCard;
+let updateDiscordEphemeralResponse: typeof import("./discord-bot").updateDiscordEphemeralResponse;
 
 beforeAll(async () => {
   ({
     catalogCards,
+    createNativeDiscordQuantityResponse,
     getDiscordBot,
     postDiscordEphemeral,
     purchaseResultCard,
+    parseNativeDiscordQuantityInteraction,
     selectedProductCard,
+    updateDiscordEphemeralResponse,
   } = await import("./discord-bot"));
 });
 
@@ -134,8 +140,65 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain("🌶️👻✨ Ghost Pepper");
     expect(serialized).toContain("R$ 0,10");
     expect(serialized).toContain("318 unidades");
-    expect(serialized).toContain("💠 Comprar com Pix ⚡");
-    expect(serialized).toContain('"id":"buy"');
+    expect(serialized).toContain("10 unidades");
+    expect(serialized).toContain("R$ 1,00");
+    expect(serialized).toContain("🔢 Escolher quantidade 🛒");
+    expect(serialized).toContain('"id":"choose_quantity"');
+  });
+
+  it("recalcula o mínimo ao abrir o formulário, ignorando o valor antigo do botão", async () => {
+    const interaction = parseNativeDiscordQuantityInteraction({
+      type: 3,
+      data: {
+        custom_id: "choose_quantity\n9a845b40-7c4e-4d25-9f3f-3cbd27f050c9:50",
+      },
+    });
+
+    expect(interaction).toMatchObject({
+      kind: "open",
+      productId: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+    });
+
+    const response = await createNativeDiscordQuantityResponse(
+      "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+      {
+        findPurchasableProduct: vi.fn(async () => ({
+          id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+          name: "Ghost Pepper",
+          minimumPriceCents: 5,
+        })),
+        countAvailableStock: vi.fn(async () => 100),
+      },
+    );
+    expect(response).toMatchObject({
+      type: 9,
+      data: {
+        components: [
+          {
+            components: [
+              expect.objectContaining({
+                label: "Quantidade (mínimo 20)",
+                value: "20",
+              }),
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("adia a resposta do envio da quantidade como mensagem privada", () => {
+    expect(
+      parseNativeDiscordQuantityInteraction({
+        type: 5,
+        data: {
+          custom_id: "gwstore_quantity:9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+          components: [
+            { type: 1, components: [{ type: 4, custom_id: "quantity", value: "50" }] },
+          ],
+        },
+      }),
+    ).toEqual({ kind: "submit", response: { type: 5, data: { flags: 64 } } });
   });
 
   it("renderiza o checkout como botão seguro da LivePix", async () => {
@@ -146,7 +209,9 @@ describe("Discord catalog cards", () => {
         kind: "created",
         orderId: "cddc0f6c-d177-4435-9bf7-476380f0654c",
         productName: "Dragon's Breath",
-        priceCents: 40,
+        quantity: 3,
+        unitPriceCents: 40,
+        totalPriceCents: 120,
       },
       "https://checkout.livepix.gg/payment-reference",
     );
@@ -164,6 +229,27 @@ describe("Discord catalog cards", () => {
     expect(String(request?.body)).toContain("https://checkout.livepix.gg/payment-reference");
     expect(String(request?.body)).toContain("PAGAR AGORA COM PIX");
     expect(String(request?.body)).toContain("🐉🔥");
+    expect(String(request?.body)).toContain("3 unidades");
+    expect(String(request?.body)).toContain("R$ 1,20");
+  });
+
+  it("conclui a resposta adiada do modal editando a mensagem privada original", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 200 }));
+
+    await updateDiscordEphemeralResponse(
+      {
+        application_id: "123456789012345678",
+        token: "interaction-token-for-test-123456",
+      },
+      catalogCards([])[0],
+      fetcher,
+    );
+
+    expect(fetcher.mock.calls[0]?.[0]).toBe(
+      "https://discord.com/api/v10/webhooks/123456789012345678/interaction-token-for-test-123456/messages/@original",
+    );
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe("PATCH");
   });
 
   it("aceita PING assinado e rejeita corpo não verificado", async () => {

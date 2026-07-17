@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { LivePixCheckout, LivePixPayment } from "./client";
+import { LIVEPIX_MINIMUM_BRL_CENTS } from "./limits";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -15,6 +16,11 @@ export type StoredCheckout = {
   orderId: string;
   providerReference: string;
   checkoutUrl: string;
+};
+
+export type CheckoutClaim = {
+  claimed: boolean;
+  checkout: StoredCheckout | null;
 };
 
 export type PaymentConfirmation = {
@@ -35,6 +41,7 @@ export type DiscordTicketClaim = {
   discordGuildId: string;
   buyerDiscordId: string;
   productName: string;
+  quantity: number;
   paidAmountCents: number;
   ticketStatus: string;
   existingChannelId: string | null;
@@ -44,7 +51,9 @@ export interface LivePixPaymentRepository {
   findCheckoutByOrder(orderId: string): Promise<StoredCheckout | null>;
   findCheckoutByReference(providerReference: string): Promise<StoredCheckout | null>;
   findPayableOrder(orderId: string): Promise<PayableOrder | null>;
-  registerCheckout(input: StoredCheckout): Promise<StoredCheckout>;
+  claimCheckout(orderId: string, claimToken: string): Promise<CheckoutClaim>;
+  registerCheckout(input: StoredCheckout & { claimToken: string }): Promise<StoredCheckout>;
+  releaseCheckoutClaim(orderId: string, claimToken: string): Promise<void>;
   confirmPayment(input: {
     providerPaymentId: string;
     providerProof: string;
@@ -79,18 +88,36 @@ export class LivePixPaymentService {
     if (!order || order.status !== "awaiting_payment" || order.currency !== "BRL") {
       throw new Error("O pedido não está disponível para pagamento.");
     }
-    if (!Number.isSafeInteger(order.amountCents) || order.amountCents < 100) {
+    if (
+      !Number.isSafeInteger(order.amountCents) ||
+      order.amountCents < LIVEPIX_MINIMUM_BRL_CENTS
+    ) {
       throw new Error("O valor do pedido não é aceito pela LivePix.");
     }
 
+    const claimToken = crypto.randomUUID();
+    const claim = await this.repository.claimCheckout(order.id, claimToken);
+    if (claim.checkout) return claim.checkout;
+    if (!claim.claimed) {
+      throw new Error("O Pix deste pedido já está sendo preparado. Tente novamente em instantes.");
+    }
+
     const origin = readOrigin(siteUrl);
-    const checkout = await this.client.createPayment({
-      amountCents: order.amountCents,
-      redirectUrl: `${origin}/pagamento/${order.id}`,
-    });
+    let checkout: LivePixCheckout;
+    try {
+      checkout = await this.client.createPayment({
+        amountCents: order.amountCents,
+        redirectUrl: `${origin}/pagamento/${order.id}`,
+      });
+    } catch (error) {
+      await this.repository.releaseCheckoutClaim(order.id, claimToken).catch(() => undefined);
+      throw error;
+    }
+
     try {
       return await this.repository.registerCheckout({
         orderId: order.id,
+        claimToken,
         providerReference: checkout.reference,
         checkoutUrl: checkout.checkoutUrl,
       });

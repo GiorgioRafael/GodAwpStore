@@ -54,6 +54,7 @@ export async function POST(request: Request) {
         guildId: claim.discordGuildId,
         buyerDiscordId: claim.buyerDiscordId,
         productName: claim.productName,
+        quantity: claim.quantity,
         paidAmountCents: claim.paidAmountCents,
       });
       await payments.completeTicket(claim.orderId, ticket.channelId);

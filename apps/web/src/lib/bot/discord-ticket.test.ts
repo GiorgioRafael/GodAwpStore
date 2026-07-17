@@ -10,6 +10,7 @@ const order = {
   guildId: "123456789012345678",
   buyerDiscordId: "223456789012345678",
   productName: "Dragon Breath @everyone\n",
+  quantity: 2,
   paidAmountCents: 200,
 };
 const botId = "323456789012345678";

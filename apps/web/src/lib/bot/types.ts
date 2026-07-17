@@ -43,6 +43,9 @@ export type ExistingOrder = {
   id: string;
   buyerDiscordId: string;
   productId: string;
+  quantity: number;
+  unitPriceCents: number;
+  salePriceCents: number;
   status: string;
 };
 
@@ -66,15 +69,31 @@ export interface BotCommerceRepository {
     whitelistEntryId: string | null;
     product: PurchasableProduct;
     buyerDiscordId: string;
+    quantity: number;
+    totalPriceCents: number;
     commissionBps: number;
   }): Promise<OrderCreation>;
 }
 
 export type PurchaseResult =
-  | { kind: "created" | "duplicate"; orderId: string; productName: string; priceCents: number }
+  | {
+      kind: "created" | "duplicate";
+      orderId: string;
+      productName: string;
+      quantity: number;
+      unitPriceCents: number;
+      totalPriceCents: number;
+    }
+  | {
+      kind: "quantity_below_minimum";
+      minimumQuantity: number;
+      minimumTotalCents: number;
+    }
+  | { kind: "insufficient_stock"; availableStock: number }
   | {
       kind:
         | "invalid_request"
+        | "invalid_quantity"
         | "guild_not_authorized"
         | "product_unavailable"
         | "out_of_stock"

@@ -17,6 +17,7 @@ const input = {
   interactionId: "323456789012345678",
   buyerDiscordId: "423456789012345678",
   productId: product.id,
+  quantity: 1,
   guild,
 };
 
@@ -76,7 +77,9 @@ describe("BotCommerceService", () => {
       kind: "created",
       orderId: "order-row",
       productName: "Dragon Breath",
-      priceCents: 200,
+      quantity: 1,
+      unitPriceCents: 200,
+      totalPriceCents: 200,
     });
     expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith({
       interactionId: input.interactionId,
@@ -84,6 +87,8 @@ describe("BotCommerceService", () => {
       whitelistEntryId: "whitelist-row",
       product,
       buyerDiscordId: input.buyerDiscordId,
+      quantity: 1,
+      totalPriceCents: 200,
       commissionBps: 1_000,
     });
   });
@@ -104,10 +109,14 @@ describe("BotCommerceService", () => {
 
   it("trata a repetição da mesma interação como idempotente", async () => {
     const repo = repository({
+      findPurchasableProduct: vi.fn(async () => ({ ...product, minimumPriceCents: 500 })),
       findOrderByInteraction: vi.fn(async () => ({
         id: "order-existing",
         buyerDiscordId: input.buyerDiscordId,
         productId: input.productId,
+        quantity: 1,
+        unitPriceCents: 200,
+        salePriceCents: 200,
         status: "awaiting_payment",
       })),
     });
@@ -117,7 +126,9 @@ describe("BotCommerceService", () => {
       kind: "duplicate",
       orderId: "order-existing",
       productName: product.name,
-      priceCents: product.minimumPriceCents,
+      quantity: 1,
+      unitPriceCents: 200,
+      totalPriceCents: 200,
     });
     expect(repo.ensureGuild).not.toHaveBeenCalled();
     expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
@@ -129,12 +140,96 @@ describe("BotCommerceService", () => {
         id: "order-existing",
         buyerDiscordId: "523456789012345678",
         productId: input.productId,
+        quantity: 1,
+        unitPriceCents: 200,
+        salePriceCents: 200,
         status: "awaiting_payment",
       })),
     });
     const service = new BotCommerceService(repo);
 
     await expect(service.purchase(input)).resolves.toEqual({ kind: "interaction_conflict" });
+    expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
+  });
+
+  it("exige quantidade suficiente para atingir o mínimo de R$ 1,00 da LivePix", async () => {
+    const centProduct = { ...product, minimumPriceCents: 2 };
+    const repo = repository({ findPurchasableProduct: vi.fn(async () => centProduct) });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase({ ...input, quantity: 49 })).resolves.toEqual({
+      kind: "quantity_below_minimum",
+      minimumQuantity: 50,
+      minimumTotalCents: 100,
+    });
+    expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
+  });
+
+  it("reserva a quantidade solicitada e calcula o total no servidor", async () => {
+    const centProduct = { ...product, minimumPriceCents: 2 };
+    const repo = repository({
+      findPurchasableProduct: vi.fn(async () => centProduct),
+      countAvailableStock: vi.fn(async () => 100),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase({ ...input, quantity: 50 })).resolves.toMatchObject({
+      kind: "created",
+      quantity: 50,
+      unitPriceCents: 2,
+      totalPriceCents: 100,
+    });
+    expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ quantity: 50, totalPriceCents: 100 }),
+    );
+  });
+
+  it("recalcula quantidade minima e total quando o admin altera o preco", async () => {
+    let currentPriceCents = 2;
+    const repo = repository({
+      findPurchasableProduct: vi.fn(async () => ({
+        ...product,
+        minimumPriceCents: currentPriceCents,
+      })),
+      countAvailableStock: vi.fn(async () => 100),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase({ ...input, quantity: 49 })).resolves.toMatchObject({
+      kind: "quantity_below_minimum",
+      minimumQuantity: 50,
+    });
+
+    currentPriceCents = 5;
+    await expect(
+      service.purchase({
+        ...input,
+        interactionId: "323456789012345679",
+        quantity: 20,
+      }),
+    ).resolves.toMatchObject({
+      kind: "created",
+      quantity: 20,
+      unitPriceCents: 5,
+      totalPriceCents: 100,
+    });
+    expect(repo.createAwaitingPaymentOrder).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        product: expect.objectContaining({ minimumPriceCents: 5 }),
+        quantity: 20,
+        totalPriceCents: 100,
+      }),
+    );
+  });
+
+  it("informa o estoque disponível quando a quantidade solicitada é maior", async () => {
+    const repo = repository({ countAvailableStock: vi.fn(async () => 2) });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase({ ...input, quantity: 3 })).resolves.toEqual({
+      kind: "insufficient_stock",
+      availableStock: 2,
+    });
     expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
   });
 });

@@ -58,6 +58,7 @@ describe("LivePix webhook route", () => {
       discordGuildId: "123456789012345678",
       buyerDiscordId: "223456789012345678",
       productName: "Unicórnio",
+      quantity: 2,
       paidAmountCents: 200,
       ticketStatus: "creating",
       existingChannelId: null,
@@ -74,6 +75,7 @@ describe("LivePix webhook route", () => {
       guildId: "123456789012345678",
       buyerDiscordId: "223456789012345678",
       productName: "Unicórnio",
+      quantity: 2,
       paidAmountCents: 200,
     });
     expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
@@ -88,6 +90,7 @@ describe("LivePix webhook route", () => {
       discordGuildId: "123456789012345678",
       buyerDiscordId: "223456789012345678",
       productName: "Unicórnio",
+      quantity: 2,
       paidAmountCents: 200,
       ticketStatus: "creating",
       existingChannelId: null,

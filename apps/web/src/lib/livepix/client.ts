@@ -1,5 +1,7 @@
 import "server-only";
 
+import { LIVEPIX_MINIMUM_BRL_CENTS } from "./limits";
+
 const DEFAULT_OAUTH_URL = "https://oauth.livepix.gg/oauth2/token";
 const DEFAULT_API_URL = "https://api.livepix.gg";
 const REQUIRED_SCOPES = "payments:write payments:read";
@@ -44,7 +46,10 @@ export class LivePixClient {
   }
 
   async createPayment(input: { amountCents: number; redirectUrl: string }): Promise<LivePixCheckout> {
-    if (!Number.isSafeInteger(input.amountCents) || input.amountCents < 100) {
+    if (
+      !Number.isSafeInteger(input.amountCents) ||
+      input.amountCents < LIVEPIX_MINIMUM_BRL_CENTS
+    ) {
       throw new Error("A cobrança LivePix deve ter pelo menos R$ 1,00.");
     }
     assertHttpUrl(input.redirectUrl, "URL de retorno da LivePix");

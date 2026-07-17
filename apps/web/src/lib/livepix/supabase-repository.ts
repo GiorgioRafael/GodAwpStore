@@ -54,10 +54,32 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
       : null;
   }
 
-  async registerCheckout(input: StoredCheckout): Promise<StoredCheckout> {
+  async claimCheckout(orderId: string, claimToken: string) {
     const { data, error } = await this.client
-      .rpc("register_livepix_checkout", {
+      .rpc("claim_livepix_checkout", {
+        p_order_id: orderId,
+        p_claim_token: claimToken,
+      })
+      .single();
+    assertQuery(error, "reserva da criação do checkout LivePix");
+    return {
+      claimed: data.claimed,
+      checkout:
+        data.provider_reference && data.checkout_url
+          ? {
+              orderId: data.claimed_order_id,
+              providerReference: data.provider_reference,
+              checkoutUrl: data.checkout_url,
+            }
+          : null,
+    };
+  }
+
+  async registerCheckout(input: StoredCheckout & { claimToken: string }): Promise<StoredCheckout> {
+    const { data, error } = await this.client
+      .rpc("register_claimed_livepix_checkout", {
         p_order_id: input.orderId,
+        p_claim_token: input.claimToken,
         p_provider_reference: input.providerReference,
         p_checkout_url: input.checkoutUrl,
         p_expires_at: null,
@@ -69,6 +91,14 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
       providerReference: data.provider_reference,
       checkoutUrl: data.checkout_url,
     };
+  }
+
+  async releaseCheckoutClaim(orderId: string, claimToken: string): Promise<void> {
+    const { error } = await this.client.rpc("release_livepix_checkout_claim", {
+      p_order_id: orderId,
+      p_claim_token: claimToken,
+    });
+    assertQuery(error, "liberação da criação do checkout LivePix");
   }
 
   async confirmPayment(input: {
@@ -116,6 +146,7 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
       discordGuildId: data.discord_guild_id,
       buyerDiscordId: data.buyer_discord_id,
       productName: data.product_name,
+      quantity: safeInteger(data.order_quantity),
       paidAmountCents: safeInteger(data.paid_amount_cents),
       ticketStatus: data.ticket_status,
       existingChannelId: data.existing_channel_id,

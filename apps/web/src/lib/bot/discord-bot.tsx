@@ -4,6 +4,7 @@ import "server-only";
 import {
   cardToDiscordPayload,
   createDiscordAdapter,
+  decodeDiscordCustomId,
   DiscordContentFormat,
   DiscordInteractionResponseFlag,
 } from "@chat-adapter/discord";
@@ -24,15 +25,32 @@ import {
 
 import { getSiteUrl } from "@/lib/env";
 import { getLivePixClient } from "@/lib/livepix/client";
+import {
+  LIVEPIX_MINIMUM_BRL_CENTS,
+  MAXIMUM_ORDER_QUANTITY,
+  minimumLivePixQuantity,
+} from "@/lib/livepix/limits";
 import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
-import type { BotCatalogGame, BotCatalogProduct, BotCatalogSubstore, PurchaseResult } from "./types";
+import type {
+  BotCatalogGame,
+  BotCatalogProduct,
+  BotCatalogSubstore,
+  BotCommerceRepository,
+  PurchaseResult,
+} from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_SELECT_OPTION_LIMIT = 25;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DISCORD_MESSAGE_COMPONENT = 3;
+const DISCORD_MODAL_SUBMIT = 5;
+const DISCORD_DEFERRED_CHANNEL_MESSAGE = 5;
+const DISCORD_MODAL_RESPONSE = 9;
+const QUANTITY_MODAL_PREFIX = "gwstore_quantity:";
 
 let botSingleton: ReturnType<typeof createBot> | undefined;
 
@@ -107,27 +125,116 @@ function createBot() {
     }
   });
 
-  bot.onAction("buy", async (event) => {
-    try {
-      const context = readDiscordInteraction(event.raw, event.user.userId);
-      if (!context.interactionId || !context.guildId || !context.userId || !event.value) {
-        const card = errorCard(
-          "🏰 A compra precisa ser iniciada dentro do servidor Discord usando o botão da loja. 🛍️",
-        );
-        await replyPrivately(event.raw, card, () =>
-          event.thread
-            ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
-            : Promise.resolve(null),
-        );
-        return;
-      }
+  return bot;
+}
 
-      const guild = await fetchDiscordGuildIdentity(context.guildId);
+export type NativeDiscordQuantityInteraction =
+  | { kind: "open"; productId: string }
+  | { kind: "submit"; response: Record<string, unknown> };
+
+export function parseNativeDiscordQuantityInteraction(
+  raw: unknown,
+): NativeDiscordQuantityInteraction | null {
+  if (!isObject(raw) || !isObject(raw.data) || typeof raw.type !== "number") return null;
+
+  if (raw.type === DISCORD_MESSAGE_COMPONENT && typeof raw.data.custom_id === "string") {
+    const decoded = decodeDiscordCustomId(raw.data.custom_id);
+    if (decoded.actionId !== "choose_quantity") return null;
+    const productId = parseQuantityButtonProductId(decoded.value);
+    if (!productId) return null;
+
+    return {
+      kind: "open",
+      productId,
+    };
+  }
+
+  if (
+    raw.type === DISCORD_MODAL_SUBMIT &&
+    typeof raw.data.custom_id === "string" &&
+    raw.data.custom_id.startsWith(QUANTITY_MODAL_PREFIX) &&
+    UUID_PATTERN.test(raw.data.custom_id.slice(QUANTITY_MODAL_PREFIX.length))
+  ) {
+    return {
+      kind: "submit",
+      response: {
+        type: DISCORD_DEFERRED_CHANNEL_MESSAGE,
+        data: { flags: DISCORD_EPHEMERAL_FLAG },
+      },
+    };
+  }
+
+  return null;
+}
+
+export async function createNativeDiscordQuantityResponse(
+  productId: string,
+  repository: Pick<BotCommerceRepository, "findPurchasableProduct" | "countAvailableStock"> =
+    new SupabaseBotCommerceRepository(),
+) {
+  const [product, availableStock] = await Promise.all([
+    repository.findPurchasableProduct(productId),
+    repository.countAvailableStock(productId),
+  ]);
+  if (!product) {
+    return discordEphemeralText("🔎🎁 Esse produto não está mais disponível. Abra a loja novamente com /loja.");
+  }
+
+  const minimumQuantity = minimumLivePixQuantity(product.minimumPriceCents);
+  if (!minimumQuantity) {
+    return discordEphemeralText("🚫💸 Este produto está sem um preço válido para pagamento.");
+  }
+  if (availableStock < minimumQuantity) {
+    return discordEphemeralText(
+      `⚠️📦 O estoque atual não alcança as ${minimumQuantity} unidades mínimas para gerar o Pix.`,
+    );
+  }
+
+  return {
+    type: DISCORD_MODAL_RESPONSE,
+    data: {
+      custom_id: `${QUANTITY_MODAL_PREFIX}${product.id}`,
+      title: "Escolha a quantidade",
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 4,
+              custom_id: "quantity",
+              label: `Quantidade (mínimo ${minimumQuantity})`,
+              style: 1,
+              min_length: 1,
+              max_length: String(MAXIMUM_ORDER_QUANTITY).length,
+              required: true,
+              value: String(minimumQuantity),
+              placeholder: `De ${minimumQuantity} até ${MAXIMUM_ORDER_QUANTITY}`,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+export async function completeDiscordQuantityPurchase(raw: unknown) {
+  let card: ChatElement;
+  try {
+    const context = readDiscordInteraction(raw, "");
+    const productId = readQuantityModalProductId(raw);
+    const quantity = readQuantityModalValue(raw);
+    if (!context.interactionId || !context.guildId || !context.userId || !productId) {
+      card = errorCard(
+        "🏰 A compra precisa ser iniciada dentro do servidor Discord usando o botão da loja. 🛍️",
+      );
+    } else {
+      const service = new BotCommerceService(new SupabaseBotCommerceRepository());
       const result = await service.purchase({
         interactionId: context.interactionId,
         buyerDiscordId: context.userId,
-        productId: event.value,
-        guild,
+        productId,
+        quantity,
+        guild: await fetchDiscordGuildIdentity(context.guildId),
       });
       const checkoutUrl =
         result.kind === "created" || result.kind === "duplicate"
@@ -138,26 +245,16 @@ function createBot() {
               ).createCheckout(result.orderId, getSiteUrl())
             ).checkoutUrl
           : null;
-      const card = purchaseResultCard(result, checkoutUrl);
-      await replyPrivately(event.raw, card, () =>
-        event.thread
-          ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
-          : Promise.resolve(null),
-      );
-    } catch (error) {
-      logBotError("purchase", error);
-      const card = errorCard(
-        "🛡️ Não foi possível criar o pedido. Fique tranquilo: nenhum item foi entregue ou revelado. 🔒",
-      );
-      await replyPrivately(event.raw, card, () =>
-        event.thread
-          ? event.thread.postEphemeral(event.user, card, { fallbackToDM: true })
-          : Promise.resolve(null),
-      );
+      card = purchaseResultCard(result, checkoutUrl);
     }
-  });
+  } catch (error) {
+    logBotError("purchase", error);
+    card = errorCard(
+      "🛡️ Não foi possível criar o pedido. Fique tranquilo: nenhum item foi entregue ou revelado. 🔒",
+    );
+  }
 
-  return bot;
+  await updateDiscordEphemeralResponse(raw, card);
 }
 
 export function catalogCards(catalog: BotCatalogGame[]): ChatElement[] {
@@ -218,9 +315,10 @@ function helpCard() {
     <Card title="🆘✨ AJUDA • GWSTORE ✨🆘" subtitle="💜 Comprar é rápido, privado e seguro!">
       <CardText>1️⃣ Vá até o canal da loja e abra a **lista de produtos**. 🛍️✨</CardText>
       <CardText>2️⃣ Escolha um produto no menu suspenso. 👇🎁</CardText>
-      <CardText>3️⃣ Confira preço e estoque e clique em **💠 Comprar com Pix ⚡**.</CardText>
-      <CardText>4️⃣ Pague com segurança pelo checkout da **LivePix**. 🔒✅</CardText>
-      <CardText>5️⃣ Após a confirmação, abrimos um ticket privado com você e os administradores. 🎫👑</CardText>
+      <CardText>3️⃣ Confira preço e estoque e clique em **🔢 Escolher quantidade**.</CardText>
+      <CardText>4️⃣ Informe a quantidade; o total precisa atingir o mínimo de **R$ 1,00** da LivePix. 💠</CardText>
+      <CardText>5️⃣ Pague com segurança pelo checkout da **LivePix**. 🔒✅</CardText>
+      <CardText>6️⃣ Após a confirmação, abrimos um ticket privado com você e os administradores. 🎫👑</CardText>
       <Divider />
       <CardText>🔄 Não encontrou a vitrine? Digite **/loja** para abrir o catálogo alternativo.</CardText>
       <CardText>🛡️ Nenhum dado protegido do estoque é revelado antes da confirmação do pagamento.</CardText>
@@ -237,6 +335,12 @@ type CatalogSelection = {
 
 export function selectedProductCard({ game, substore, product }: CatalogSelection) {
   const emoji = productEmoji(product.name);
+  const minimumQuantity = minimumLivePixQuantity(product.priceCents);
+  const minimumTotalCents = minimumQuantity ? product.priceCents * minimumQuantity : 0;
+  const canBuy =
+    minimumQuantity !== null &&
+    product.availableStock >= minimumQuantity &&
+    minimumTotalCents >= LIVEPIX_MINIMUM_BRL_CENTS;
   return (
     <Card
       title={`${emoji}✨ ${product.name} ✨${emoji}`}
@@ -246,17 +350,30 @@ export function selectedProductCard({ game, substore, product }: CatalogSelectio
       <CardText>🎉 **Você escolheu um produto incrível!** 🎉</CardText>
       {product.description ? <CardText>{product.description}</CardText> : null}
       <Divider />
-      <CardText>💰💠 **Preço no Pix:** {formatBrl(product.priceCents)}</CardText>
+      <CardText>💰💠 **Preço por unidade:** {formatBrl(product.priceCents)}</CardText>
       <CardText>📦✅ **Estoque disponível:** {stockLabel(product.availableStock)}</CardText>
+      {minimumQuantity ? (
+        <CardText>
+          ⚠️💠 **Mínimo da LivePix:** {minimumQuantity} unidade{minimumQuantity === 1 ? "" : "s"} • **{formatBrl(minimumTotalCents)}**
+        </CardText>
+      ) : (
+        <CardText>🚫💸 Este produto está sem um preço válido para pagamento.</CardText>
+      )}
       <CardText>🚀🎫 **Entrega:** atendimento manual em ticket privado após a confirmação.</CardText>
       <CardText>🔐🛡️ Seu pedido e seu pagamento ficam visíveis somente para você.</CardText>
       <Divider />
-      {product.availableStock > 0 ? (
+      {!minimumQuantity ? (
+        <CardText>🚫💸 Corrija o preço deste produto no painel antes de tentar vender.</CardText>
+      ) : canBuy ? (
         <Actions>
-          <Button id="buy" value={product.id} style="primary">
-            💠 Comprar com Pix ⚡
+          <Button id="choose_quantity" value={product.id} style="primary">
+            🔢 Escolher quantidade 🛒
           </Button>
         </Actions>
+      ) : product.availableStock > 0 ? (
+        <CardText>
+          ⚠️📦 O estoque atual não alcança as **{minimumQuantity} unidades mínimas** exigidas para gerar um Pix.
+        </CardText>
       ) : (
         <CardText>😔💨 **Produto esgotado no momento.** Volte em breve! 🔔✨</CardText>
       )}
@@ -314,6 +431,36 @@ export async function postDiscordEphemeral(
   }
 }
 
+export async function updateDiscordEphemeralResponse(
+  raw: unknown,
+  card: ChatElement,
+  fetcher: typeof fetch = fetch,
+) {
+  const interaction = readDiscordFollowupContext(raw);
+  const normalizedCard = toCardElement(card);
+  if (!normalizedCard) throw new Error("Resposta privada Discord inválida.");
+  const payload = cardToDiscordPayload(normalizedCard, {
+    contentFormat: DiscordContentFormat.ComponentsV2,
+  });
+  const apiUrl = (process.env.DISCORD_API_URL?.trim() || "https://discord.com/api/v10").replace(/\/$/, "");
+  const response = await fetcher(
+    `${apiUrl}/webhooks/${interaction.applicationId}/${interaction.token}/messages/@original`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        allowed_mentions: { parse: [] },
+      }),
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`Discord recusou a atualização privada (${response.status}).`);
+  }
+}
+
 function readDiscordFollowupContext(raw: unknown) {
   if (!isObject(raw)) throw new Error("Interação Discord inválida.");
   const configuredApplicationId = process.env.DISCORD_APPLICATION_ID?.trim();
@@ -352,8 +499,10 @@ export function purchaseResultCard(result: PurchaseResult, checkoutUrl: string |
       >
         <CardText>🛍️ **Produto escolhido:**</CardText>
         <CardText>
-          {productEmoji(result.productName)} **{result.productName}** • 💰 **{formatBrl(result.priceCents)}**
+          {productEmoji(result.productName)} **{result.productName}** • 🔢 **{result.quantity} unidade{result.quantity === 1 ? "" : "s"}**
         </CardText>
+        <CardText>🏷️ **Preço unitário:** {formatBrl(result.unitPriceCents)}</CardText>
+        <CardText>💰💠 **Total no Pix:** **{formatBrl(result.totalPriceCents)}**</CardText>
         <CardText>🧾 **ID do pedido:** `{result.orderId}`</CardText>
         <Divider />
         <CardText>⏳💠 **Status:** aguardando pagamento via Pix.</CardText>
@@ -373,9 +522,12 @@ export function purchaseResultCard(result: PurchaseResult, checkoutUrl: string |
 
   const message = {
     invalid_request: "🧩 A solicitação de compra é inválida. Abra a loja novamente com **/loja**. 🛍️",
+    invalid_quantity: `🔢 Informe uma quantidade inteira entre **1 e ${MAXIMUM_ORDER_QUANTITY}**.`,
     guild_not_authorized: "⛔🏰 Este servidor ainda não está autorizado a vender pela GWStore.",
     product_unavailable: "🔎🎁 Esse produto não está mais disponível no catálogo.",
     out_of_stock: "😔📦 Esse produto ficou sem estoque. Escolha outro item na **/loja**! ✨",
+    insufficient_stock: `📦 A quantidade escolhida é maior que o estoque. Disponível agora: **${result.kind === "insufficient_stock" ? result.availableStock : 0} unidades**.`,
+    quantity_below_minimum: `⚠️💠 A LivePix aceita Pix a partir de **${formatBrl(LIVEPIX_MINIMUM_BRL_CENTS)}**. Para este produto, escolha no mínimo **${result.kind === "quantity_below_minimum" ? result.minimumQuantity : 0} unidades** (total de **${result.kind === "quantity_below_minimum" ? formatBrl(result.minimumTotalCents) : formatBrl(0)}**).`,
     interaction_conflict: "♻️🧾 Essa interação já foi usada em outro pedido.",
   }[result.kind];
   return errorCard(message);
@@ -420,6 +572,49 @@ function productEmoji(productName: string) {
 
 function truncateSelectText(text: string) {
   return text.length <= 100 ? text : `${text.slice(0, 97)}...`;
+}
+
+function parseQuantityButtonProductId(value: string | undefined) {
+  if (!value) return null;
+  const separator = value.lastIndexOf(":");
+  const productId = separator > 0 ? value.slice(0, separator) : value;
+  return UUID_PATTERN.test(productId) ? productId : null;
+}
+
+function discordEphemeralText(content: string) {
+  return {
+    type: 4,
+    data: {
+      content,
+      flags: DISCORD_EPHEMERAL_FLAG,
+      allowed_mentions: { parse: [] },
+    },
+  };
+}
+
+function readQuantityModalProductId(raw: unknown) {
+  if (!isObject(raw) || !isObject(raw.data) || typeof raw.data.custom_id !== "string") return null;
+  if (!raw.data.custom_id.startsWith(QUANTITY_MODAL_PREFIX)) return null;
+  const productId = raw.data.custom_id.slice(QUANTITY_MODAL_PREFIX.length);
+  return UUID_PATTERN.test(productId) ? productId : null;
+}
+
+function readQuantityModalValue(raw: unknown) {
+  if (!isObject(raw) || !isObject(raw.data) || !Array.isArray(raw.data.components)) return Number.NaN;
+  for (const row of raw.data.components) {
+    if (!isObject(row) || !Array.isArray(row.components)) continue;
+    for (const component of row.components) {
+      if (
+        isObject(component) &&
+        component.custom_id === "quantity" &&
+        typeof component.value === "string" &&
+        /^\d{1,5}$/.test(component.value.trim())
+      ) {
+        return Number(component.value.trim());
+      }
+    }
+  }
+  return Number.NaN;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

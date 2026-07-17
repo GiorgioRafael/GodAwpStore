@@ -15,7 +15,13 @@ function repository(overrides: Partial<LivePixPaymentRepository> = {}): LivePixP
       checkoutUrl: "https://checkout.livepix.gg/provider-ref",
     })),
     findPayableOrder: vi.fn(async () => ({ id: orderId, status: "awaiting_payment", amountCents: 500, currency: "BRL" })),
-    registerCheckout: vi.fn(async (input) => input),
+    claimCheckout: vi.fn(async () => ({ claimed: true, checkout: null })),
+    registerCheckout: vi.fn(async (input) => ({
+      orderId: input.orderId,
+      providerReference: input.providerReference,
+      checkoutUrl: input.checkoutUrl,
+    })),
+    releaseCheckoutClaim: vi.fn(async () => undefined),
     confirmPayment: vi.fn(async () => ({
       orderId,
       discordGuildId: "123456789012345678",
@@ -33,6 +39,7 @@ function repository(overrides: Partial<LivePixPaymentRepository> = {}): LivePixP
       discordGuildId: "123456789012345678",
       buyerDiscordId: "223456789012345678",
       productName: "Unicórnio",
+      quantity: 2,
       paidAmountCents: 500,
       ticketStatus: "creating",
       existingChannelId: null,
@@ -88,6 +95,19 @@ describe("LivePixPaymentService", () => {
     const service = new LivePixPaymentService(repo, api);
 
     await expect(service.createCheckout(orderId, "https://gwstore.vercel.app")).resolves.toEqual(existing);
+    expect(api.createPayment).not.toHaveBeenCalled();
+  });
+
+  it("não cria cobrança concorrente quando outro processo possui a reserva", async () => {
+    const repo = repository({
+      claimCheckout: vi.fn(async () => ({ claimed: false, checkout: null })),
+    });
+    const api = client();
+    const service = new LivePixPaymentService(repo, api);
+
+    await expect(service.createCheckout(orderId, "https://gwstore.vercel.app")).rejects.toThrow(
+      "já está sendo preparado",
+    );
     expect(api.createPayment).not.toHaveBeenCalled();
   });
 

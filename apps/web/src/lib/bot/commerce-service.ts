@@ -4,6 +4,11 @@ import type {
   DiscordGuildIdentity,
   PurchaseResult,
 } from "./types";
+import {
+  calculateOrderTotalCents,
+  LIVEPIX_MINIMUM_BRL_CENTS,
+  minimumLivePixQuantity,
+} from "@/lib/livepix/limits";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
@@ -27,6 +32,7 @@ export class BotCommerceService {
     interactionId: string;
     buyerDiscordId: string;
     productId: string;
+    quantity: number;
     guild: DiscordGuildIdentity;
   }): Promise<PurchaseResult> {
     if (
@@ -37,10 +43,17 @@ export class BotCommerceService {
     ) {
       return { kind: "invalid_request" };
     }
+    if (!Number.isInteger(input.quantity) || input.quantity < 1) {
+      return { kind: "invalid_quantity" };
+    }
 
     const existing = await this.repository.findOrderByInteraction(input.interactionId);
     if (existing) {
-      if (existing.buyerDiscordId !== input.buyerDiscordId || existing.productId !== input.productId) {
+      if (
+        existing.buyerDiscordId !== input.buyerDiscordId ||
+        existing.productId !== input.productId ||
+        existing.quantity !== input.quantity
+      ) {
         return { kind: "interaction_conflict" };
       }
 
@@ -49,7 +62,9 @@ export class BotCommerceService {
         kind: "duplicate",
         orderId: existing.id,
         productName: product?.name ?? "Produto",
-        priceCents: product?.minimumPriceCents ?? 0,
+        quantity: existing.quantity,
+        unitPriceCents: existing.unitPriceCents,
+        totalPriceCents: existing.salePriceCents,
       };
     }
 
@@ -65,9 +80,24 @@ export class BotCommerceService {
       return { kind: "guild_not_authorized" };
     }
 
+    const minimumQuantity = minimumLivePixQuantity(product.minimumPriceCents);
+    const totalPriceCents = calculateOrderTotalCents(product.minimumPriceCents, input.quantity);
+    if (!minimumQuantity || totalPriceCents === null) {
+      return { kind: "invalid_quantity" };
+    }
+    if (totalPriceCents < LIVEPIX_MINIMUM_BRL_CENTS) {
+      return {
+        kind: "quantity_below_minimum",
+        minimumQuantity,
+        minimumTotalCents: product.minimumPriceCents * minimumQuantity,
+      };
+    }
+
     const availableStock = await this.repository.countAvailableStock(product.id);
-    if (availableStock < 1) {
-      return { kind: "out_of_stock" };
+    if (availableStock < input.quantity) {
+      return availableStock < 1
+        ? { kind: "out_of_stock" }
+        : { kind: "insufficient_stock", availableStock };
     }
 
     const commissionBps = await this.repository.getCommissionBps(guild.whitelistEntryId);
@@ -77,6 +107,8 @@ export class BotCommerceService {
       whitelistEntryId: guild.whitelistEntryId,
       product,
       buyerDiscordId: input.buyerDiscordId,
+      quantity: input.quantity,
+      totalPriceCents,
       commissionBps,
     });
     if (order.outOfStock || !order.id) {
@@ -87,7 +119,9 @@ export class BotCommerceService {
       kind: order.created ? "created" : "duplicate",
       orderId: order.id,
       productName: product.name,
-      priceCents: product.minimumPriceCents,
+      quantity: input.quantity,
+      unitPriceCents: product.minimumPriceCents,
+      totalPriceCents,
     };
   }
 }

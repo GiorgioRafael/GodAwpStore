@@ -15,7 +15,7 @@ export default async function OrdersPage() {
       eyebrow="Operação"
       title="Pedidos"
       description="Acompanhe o ciclo de pagamento, reserva e entrega sem expor o conteúdo secreto do estoque."
-      columns={["Pedido", "Cliente", "Produto", "Total", "Status", "Pagamento", "Criado em"]}
+      columns={["Pedido", "Cliente", "Produto", "Qtd.", "Total", "Status", "Pagamento", "Criado em"]}
       emptyIcon={ReceiptText}
       emptyTitle="Nenhum pedido registrado"
       emptyDescription="Pedidos reais aparecerão aqui após a integração do bot e do provedor de pagamentos."
@@ -26,6 +26,7 @@ export default async function OrdersPage() {
           <td className="px-5 py-4 font-mono text-xs text-muted-strong" title={String(row.id)}>{String(row.id).slice(0, 8)}…</td>
           <td className="px-5 py-4 font-mono text-xs text-muted">{String(row.buyer_discord_id)}</td>
           <td className="px-5 py-4 font-mono text-xs text-muted" title={String(row.product_id)}>{String(row.product_id).slice(0, 8)}…</td>
+          <td className="px-5 py-4 text-sm font-medium">{Number(row.quantity ?? 1).toLocaleString("pt-BR")}</td>
           <td className="px-5 py-4 text-sm font-medium">{formatBrl(Number(row.sale_price_cents))}</td>
           <td className="px-5 py-4"><Badge tone={row.status === "delivered" ? "success" : row.status === "failed" ? "danger" : "warning"}>{String(row.status)}</Badge></td>
           <td className="px-5 py-4 text-xs text-muted">{row.paid_at ? new Date(String(row.paid_at)).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "Pendente"}</td>

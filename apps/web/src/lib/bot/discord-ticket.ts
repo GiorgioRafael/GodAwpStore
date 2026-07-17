@@ -44,6 +44,7 @@ export type PaidOrderTicketInput = {
   guildId: string;
   buyerDiscordId: string;
   productName: string;
+  quantity: number;
   paidAmountCents: number;
   parentChannelId?: string | null;
 };
@@ -238,6 +239,7 @@ export function paidTicketWelcomeMessage(input: PaidOrderTicketInput) {
           "Seu pagamento foi confirmado. Este ticket é privado; aguarde o atendimento e a entrega do produto.",
         fields: [
           { name: "Produto", value: productName, inline: true },
+          { name: "Quantidade", value: new Intl.NumberFormat("pt-BR").format(input.quantity), inline: true },
           { name: "Valor", value: formatBrl(input.paidAmountCents), inline: true },
           { name: "Pedido", value: `\`${input.orderId}\``, inline: false },
         ],
@@ -288,6 +290,9 @@ function validateTicketInput(input: PaidOrderTicketInput): PaidOrderTicketInput 
     throw new Error("ID da categoria de tickets inválido.");
   }
   if (!input.productName.trim()) throw new Error("Produto inválido para ticket Discord.");
+  if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 10_000) {
+    throw new Error("Quantidade inválida para ticket Discord.");
+  }
   if (!Number.isSafeInteger(input.paidAmountCents) || input.paidAmountCents < 0) {
     throw new Error("Valor pago inválido para ticket Discord.");
   }

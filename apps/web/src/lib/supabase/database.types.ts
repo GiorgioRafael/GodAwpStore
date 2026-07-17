@@ -187,6 +187,7 @@ type OrderRow = {
   product_id: string;
   inventory_unit_id: string | null;
   buyer_discord_id: string;
+  quantity: number;
   status: Database["public"]["Enums"]["order_status"];
   currency_code: string;
   sale_price_cents: number;
@@ -197,6 +198,8 @@ type OrderRow = {
   payment_provider_reference: string | null;
   payment_provider_checkout_id: string | null;
   payment_checkout_url: string | null;
+  livepix_checkout_claim_token: string | null;
+  livepix_checkout_claimed_at: string | null;
   payment_provider_proof_id: string | null;
   payment_status: Database["public"]["Enums"]["payment_status"];
   payment_expires_at: string | null;
@@ -209,6 +212,13 @@ type OrderRow = {
   cancelled_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type OrderInventoryUnitRow = {
+  order_id: string;
+  inventory_unit_id: string;
+  position: number;
+  created_at: string;
 };
 
 type PaymentWebhookEventRow = {
@@ -450,6 +460,25 @@ export type Database = {
           >,
         ];
       };
+      order_inventory_units: {
+        Row: OrderInventoryUnitRow;
+        Insert: InsertRow<OrderInventoryUnitRow, "order_id" | "inventory_unit_id" | "position">;
+        Update: UpdateRow<OrderInventoryUnitRow>;
+        Relationships: [
+          Relationship<
+            "order_inventory_units_order_id_fkey",
+            ["order_id"],
+            "orders",
+            ["id"]
+          >,
+          Relationship<
+            "order_inventory_units_inventory_unit_id_fkey",
+            ["inventory_unit_id"],
+            "inventory_units",
+            ["id"]
+          >,
+        ];
+      };
       payment_webhook_events: {
         Row: PaymentWebhookEventRow;
         Insert: InsertRow<
@@ -642,6 +671,34 @@ export type Database = {
           was_created: boolean;
         }[];
       };
+      claim_livepix_checkout: {
+        Args: { p_order_id: string; p_claim_token: string };
+        Returns: {
+          claimed_order_id: string;
+          claimed: boolean;
+          provider_reference: string | null;
+          checkout_url: string | null;
+        }[];
+      };
+      register_claimed_livepix_checkout: {
+        Args: {
+          p_order_id: string;
+          p_claim_token: string;
+          p_provider_reference: string;
+          p_checkout_url: string;
+          p_expires_at?: string | null;
+        };
+        Returns: {
+          registered_order_id: string;
+          provider_reference: string;
+          checkout_url: string;
+          was_created: boolean;
+        }[];
+      };
+      release_livepix_checkout_claim: {
+        Args: { p_order_id: string; p_claim_token: string };
+        Returns: boolean;
+      };
       confirm_livepix_payment: {
         Args: {
           p_provider_checkout_id: string;
@@ -675,6 +732,7 @@ export type Database = {
           paid_amount_cents: number;
           ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
           existing_channel_id: string | null;
+          order_quantity: number;
         }[];
       };
       complete_discord_ticket: {
@@ -696,6 +754,7 @@ export type Database = {
           p_whitelist_entry_id: string;
           p_product_id: string;
           p_buyer_discord_id: string;
+          p_quantity: number;
           p_sale_price_cents: number;
           p_commission_bps: number;
         };
