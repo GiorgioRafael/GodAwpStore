@@ -748,6 +748,16 @@ export type Database = {
         Args: { p_order_id: string };
         Returns: { failed_order_id: string; was_failed: boolean }[];
       };
+      get_paid_order_summary: {
+        Args: {
+          p_created_from?: string | null;
+          p_created_to?: string | null;
+        };
+        Returns: {
+          paid_orders_count: number;
+          total_received_cents: number;
+        }[];
+      };
       create_bot_order_with_reservation: {
         Args: {
           p_interaction_id: string;

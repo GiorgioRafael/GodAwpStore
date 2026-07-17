@@ -481,6 +481,34 @@ update public.orders
 set id = '62000000-0000-4000-8000-000000000002'
 where payment_reference = 'discord:620000000000000102';
 
+update public.orders
+set created_at = case id
+  when '62000000-0000-4000-8000-000000000001'::uuid then '2099-01-10 12:00:00+00'::timestamptz
+  when '62000000-0000-4000-8000-000000000002'::uuid then '2099-01-11 12:00:00+00'::timestamptz
+  else created_at
+end
+where id in (
+  '62000000-0000-4000-8000-000000000001',
+  '62000000-0000-4000-8000-000000000002'
+);
+
+do $$
+declare
+  v_summary record;
+begin
+  select * into strict v_summary
+  from public.get_paid_order_summary(
+    '2099-01-01 00:00:00+00'::timestamptz,
+    '2099-02-01 00:00:00+00'::timestamptz
+  );
+
+  if v_summary.paid_orders_count <> 1
+    or v_summary.total_received_cents <> 100 then
+    raise exception 'paid order summary included a status other than paid';
+  end if;
+end
+$$;
+
 do $$
 declare
   v_result record;

@@ -58,7 +58,8 @@ begin
     'public.admin_import_inventory_units(uuid,text,text,jsonb,uuid)',
     'public.admin_get_inventory_secret(uuid)',
     'public.admin_check_inventory_fingerprints(text[])',
-    'public.admin_change_inventory_status(uuid,text,text)'
+    'public.admin_change_inventory_status(uuid,text,text)',
+    'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)'
   ]
   loop
     if to_regprocedure(required_function) is null then
@@ -135,6 +136,10 @@ begin
 
   if to_regclass('public.orders_paid_livepix_paid_at_idx') is null then
     raise exception 'The paid LivePix metrics index is missing';
+  end if;
+
+  if to_regclass('public.orders_paid_created_at_idx') is null then
+    raise exception 'The paid order period index is missing';
   end if;
 
   if exists (
@@ -221,6 +226,18 @@ begin
     'EXECUTE'
   ) then
     raise exception 'Inventory import RPC execute privileges are invalid';
+  end if;
+
+  if not has_function_privilege(
+    'authenticated',
+    'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
+    'EXECUTE'
+  ) then
+    raise exception 'Paid order summary RPC execute privileges are invalid';
   end if;
 
   if exists (

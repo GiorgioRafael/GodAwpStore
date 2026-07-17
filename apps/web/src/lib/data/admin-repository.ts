@@ -2,6 +2,7 @@ import "server-only";
 
 import { requireAdmin } from "@/lib/auth";
 import type { JsonObject, Tables, Views } from "@/lib/supabase/database.types";
+import type { OrdersPeriodRange } from "@/lib/orders-period";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type DashboardSummary = {
@@ -25,6 +26,11 @@ export type PaidPixMetrics = {
   grossRevenueLast30DaysCents: number;
   averageOrderCents: number;
   lastPaidAt: string | null;
+};
+
+export type PaidOrderSummary = {
+  paidOrdersCount: number;
+  totalReceivedCents: number;
 };
 
 export type GameRow = Pick<
@@ -195,6 +201,41 @@ export async function getPaidPixMetrics(): Promise<PaidPixMetrics> {
     averageOrderCents: toSafeNumber(data.average_order_cents),
     lastPaidAt: data.last_paid_at,
   };
+}
+
+export async function getPaidOrderSummary(
+  period: OrdersPeriodRange,
+): Promise<PaidOrderSummary> {
+  const supabase = await client();
+  const { data, error } = await supabase.rpc("get_paid_order_summary", {
+    p_created_from: period.from,
+    p_created_to: period.to,
+  });
+  assertQuerySucceeded(error, "carregar o total recebido dos pedidos");
+  const summary = data?.[0];
+
+  return {
+    paidOrdersCount: toSafeNumber(summary?.paid_orders_count),
+    totalReceivedCents: toSafeNumber(summary?.total_received_cents),
+  };
+}
+
+export async function listOrders(
+  period: OrdersPeriodRange,
+  limit = 500,
+): Promise<Tables<"orders">[]> {
+  const supabase = await client();
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  let query = supabase.from("orders").select("*");
+
+  if (period.from) query = query.gte("created_at", period.from);
+  if (period.to) query = query.lt("created_at", period.to);
+
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+  assertQuerySucceeded(error, "carregar os pedidos");
+  return data ?? [];
 }
 
 export async function listGames(): Promise<GameRow[]> {

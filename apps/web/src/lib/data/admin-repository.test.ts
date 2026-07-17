@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
   createServerSupabaseClient: vi.fn(),
   from: vi.fn(),
+  rpc: vi.fn(),
   select: vi.fn(),
   single: vi.fn(),
 }));
@@ -14,14 +15,35 @@ vi.mock("@/lib/supabase/server", () => ({
   createServerSupabaseClient: mocks.createServerSupabaseClient,
 }));
 
-import { getPaidPixMetrics } from "./admin-repository";
+import { getPaidOrderSummary, getPaidPixMetrics } from "./admin-repository";
 
 describe("getPaidPixMetrics", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createServerSupabaseClient.mockResolvedValue({ from: mocks.from });
+    mocks.createServerSupabaseClient.mockResolvedValue({ from: mocks.from, rpc: mocks.rpc });
     mocks.from.mockReturnValue({ select: mocks.select });
     mocks.select.mockReturnValue({ single: mocks.single });
+  });
+
+  it("carrega a soma de pedidos cujo status é paid no período", async () => {
+    mocks.rpc.mockResolvedValue({
+      data: [{ paid_orders_count: 2, total_received_cents: 5_500 }],
+      error: null,
+    });
+
+    await expect(
+      getPaidOrderSummary({
+        from: "2026-07-01T03:00:00.000Z",
+        to: "2026-08-01T03:00:00.000Z",
+      }),
+    ).resolves.toEqual({
+      paidOrdersCount: 2,
+      totalReceivedCents: 5_500,
+    });
+    expect(mocks.rpc).toHaveBeenCalledWith("get_paid_order_summary", {
+      p_created_from: "2026-07-01T03:00:00.000Z",
+      p_created_to: "2026-08-01T03:00:00.000Z",
+    });
   });
 
   it("carrega e normaliza o resumo de pagamentos Pix confirmados", async () => {
