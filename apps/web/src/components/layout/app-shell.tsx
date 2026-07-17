@@ -3,7 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, LockKeyhole, Menu, MoreHorizontal, X } from "lucide-react";
+import { ChevronDown, LockKeyhole, LogOut, Menu, MoreHorizontal, X } from "lucide-react";
 import { Brand } from "./brand";
 import {
   getCurrentPageLabel,
@@ -166,17 +166,16 @@ export function AppShell({ children, identity }: { children: ReactNode; identity
               Painel interno
             </div>
             <form action="/auth/logout" method="post">
-              <button
+              <Button
                 type="submit"
-                className="flex items-center gap-2 rounded-xl border border-border bg-surface px-2 py-1.5 transition-colors hover:border-border-strong"
+                variant="danger"
+                size="sm"
                 aria-label={`Sair da conta ${identity.displayName}`}
-                title={`Discord ID ${identity.discordId} · Clique para sair`}
+                title={`Sair da conta ${identity.displayName}`}
               >
-                <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-gold/25 to-gold/[0.06] text-xs font-semibold text-gold-bright">
-                  {initials(identity.displayName)}
-                </span>
-                <ChevronDown aria-hidden="true" className="mr-1 hidden size-3.5 text-muted sm:block" />
-              </button>
+                <LogOut aria-hidden="true" className="size-4" strokeWidth={1.8} />
+                <span>Sair</span>
+              </Button>
             </form>
           </div>
         </header>
