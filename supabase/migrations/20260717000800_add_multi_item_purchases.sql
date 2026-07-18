@@ -61,7 +61,7 @@ create policy order_items_admin_select
 on public.order_items
 for select
 to authenticated
-using (public.is_current_admin());
+using (private.is_admin());
 
 revoke all on table public.order_items from public, anon, authenticated;
 grant select on table public.order_items to authenticated;
