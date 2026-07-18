@@ -1,7 +1,7 @@
 begin;
 
 create table if not exists public.order_items (
-  order_id uuid not null references public.orders (id) on delete restrict,
+  order_id uuid not null references public.orders (id) on update cascade on delete restrict,
   position smallint not null,
   product_id uuid not null references public.products (id) on delete restrict,
   quantity integer not null,
