@@ -9,6 +9,8 @@ import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
+import type { DiscordCartSelection } from "./discord-cart-selection";
+import { decodeDiscordCartSelection } from "./discord-cart-selection";
 import {
   cartPurchaseResultCard,
   updateDiscordEphemeralResponse,
@@ -18,7 +20,7 @@ import {
   type BotMessageCustomization,
 } from "./message-customization";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
-import { MAXIMUM_CART_ITEMS, type BotCommerceRepository } from "./types";
+import { MAXIMUM_CART_ITEMS } from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_MESSAGE_COMPONENT = 3;
@@ -30,7 +32,7 @@ const CART_MODAL_PREFIX = "gwc:";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type NativeDiscordCartInteraction =
-  | { kind: "open"; productIds: string[] }
+  | { kind: "open"; selections: DiscordCartSelection[] }
   | { kind: "submit"; response: Record<string, unknown> };
 
 export function parseNativeDiscordCartInteraction(
@@ -44,18 +46,22 @@ export function parseNativeDiscordCartInteraction(
     decodeDiscordCustomId(raw.data.custom_id).actionId === CART_SELECT_ACTION &&
     Array.isArray(raw.data.values)
   ) {
-    const productIds = raw.data.values.filter(
-      (value): value is string => typeof value === "string" && UUID_PATTERN.test(value),
+    const selections = raw.data.values.map(decodeDiscordCartSelection);
+    const productIds = selections.flatMap((selection) =>
+      selection ? [selection.productId] : [],
     );
     if (
-      productIds.length !== raw.data.values.length ||
+      selections.some((selection) => !selection) ||
       productIds.length < 1 ||
       productIds.length > MAXIMUM_CART_ITEMS ||
       new Set(productIds).size !== productIds.length
     ) {
       return null;
     }
-    return { kind: "open", productIds };
+    return {
+      kind: "open",
+      selections: selections as DiscordCartSelection[],
+    };
   }
 
   if (
@@ -75,15 +81,8 @@ export function parseNativeDiscordCartInteraction(
   return null;
 }
 
-export async function createNativeDiscordCartResponse(
-  productIds: string[],
-  repository: Pick<
-    BotCommerceRepository,
-    "findPurchasableProducts" | "countAvailableStocks"
-  > = new SupabaseBotCommerceRepository(),
-  customization: BotMessageCustomization | Promise<BotMessageCustomization> =
-    DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
-) {
+export function createNativeDiscordCartResponse(selections: DiscordCartSelection[]) {
+  const productIds = selections.map((selection) => selection.productId);
   if (
     productIds.length < 1 ||
     productIds.length > MAXIMUM_CART_ITEMS ||
@@ -93,48 +92,25 @@ export async function createNativeDiscordCartResponse(
     return discordEphemeralText("Seleção de produtos inválida. Abra a loja e tente novamente.");
   }
 
-  const [products, availableStock, resolvedCustomization] = await Promise.all([
-    repository.findPurchasableProducts(productIds),
-    repository.countAvailableStocks(productIds),
-    customization,
-  ]);
-  const productById = new Map(products.map((product) => [product.id, product]));
-  const selectedProducts = productIds.map((productId) => productById.get(productId));
-  if (selectedProducts.some((product) => !product)) {
-    return discordEphemeralText(resolvedCustomization.quantity.unavailableText);
-  }
-
-  const unavailable = selectedProducts.find(
-    (product) => product && (availableStock.get(product.id) ?? 0) < 1,
-  );
-  if (unavailable) {
-    return discordEphemeralText(`**${unavailable.name}** está sem estoque no momento.`);
-  }
-
   return {
     type: DISCORD_MODAL_RESPONSE,
     data: {
       custom_id: encodeCartProductIds(productIds),
       title: `Quantidades (${productIds.length}/${productIds.length})`,
-      components: selectedProducts.map((product, index) => {
-        if (!product) throw new Error("Produto selecionado não encontrado.");
-        const stock = Math.min(
-          availableStock.get(product.id) ?? 0,
-          MAXIMUM_ORDER_QUANTITY,
-        );
+      components: selections.map((selection, index) => {
         return {
           type: 1,
           components: [
             {
               type: 4,
               custom_id: `quantity_${index}`,
-              label: truncate(product.name, 45),
+              label: truncate(selection.productName ?? `Produto ${index + 1}`, 45),
               style: 1,
               min_length: 1,
               max_length: String(MAXIMUM_ORDER_QUANTITY).length,
               required: true,
               value: "1",
-              placeholder: `1 até ${stock}`,
+              placeholder: `1 até ${MAXIMUM_ORDER_QUANTITY}`,
             },
           ],
         };

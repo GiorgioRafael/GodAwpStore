@@ -95,6 +95,9 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain("🔒");
     expect(serialized).toContain("💠");
     expect(serialized).toContain('"id":"select_products"');
+    expect(serialized).toContain(
+      "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9:Moon Blossom",
+    );
     expect(serialized).toContain('"type":"select"');
     expect(serialized).not.toContain('"id":"buy"');
     expect(serialized).not.toMatch(/encrypted_payload|auth_tag|fingerprint/i);
@@ -114,7 +117,7 @@ describe("Discord catalog cards", () => {
             colorHex: "#D4AF37",
             imageUrl: null,
             products: Array.from({ length: 26 }, (_, index) => ({
-              id: `product-${index}`,
+              id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
               name: `Produto ${index}`,
               description: null,
               priceCents: 100,
@@ -132,8 +135,12 @@ describe("Discord catalog cards", () => {
     expect(toCardElement(cards[1])).toMatchObject({
       title: "🛍️✨ GWSTORE • PRODUTOS 2/2 ✨🛍️",
     });
-    expect(JSON.stringify(toCardElement(cards[0]))).not.toContain("product-25");
-    expect(JSON.stringify(toCardElement(cards[1]))).toContain("product-25");
+    expect(JSON.stringify(toCardElement(cards[0]))).not.toContain(
+      "00000000-0000-4000-8000-000000000025",
+    );
+    expect(JSON.stringify(toCardElement(cards[1]))).toContain(
+      "00000000-0000-4000-8000-000000000025",
+    );
   });
 
   it("mostra estado vazio sem criar botão", () => {

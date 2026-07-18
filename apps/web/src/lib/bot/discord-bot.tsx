@@ -35,6 +35,7 @@ import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
+import { encodeDiscordCartSelection } from "./discord-cart-selection";
 import {
   botMessageLines,
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
@@ -373,7 +374,7 @@ export function catalogCards(
               label={truncateSelectText(
                 `${productEmoji(product.name)} ${product.name} • ${formatBrl(product.priceCents)}`,
               )}
-              value={product.id}
+              value={encodeDiscordCartSelection(product.id, product.name)}
               description={truncateSelectText(
                 `🎮 ${game.name} • 🏪 ${substore.name} • 📦 ${stockLabel(product.availableStock)}`,
               )}

@@ -68,11 +68,7 @@ export async function POST(request: Request) {
       if (native.scope === "cart") {
         if (native.interaction.kind === "open") {
           return Response.json(
-            await createNativeDiscordCartResponse(
-              native.interaction.productIds,
-              undefined,
-              loadBotMessageCustomization(),
-            ),
+            createNativeDiscordCartResponse(native.interaction.selections),
           );
         }
 

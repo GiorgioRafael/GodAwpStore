@@ -1,4 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  encodeDiscordCartSelection,
+  type DiscordCartSelection,
+} from "./discord-cart-selection";
 
 vi.mock("server-only", () => ({}));
 
@@ -7,6 +11,14 @@ const productIds = [
   "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
   "5f8199d0-67f7-45ec-b597-8d5149568707",
 ];
+const productNames = ["Super Watering", "Super Sprinkler", "Dragon's Breath"];
+const selections: DiscordCartSelection[] = productIds.map((productId, index) => ({
+  productId,
+  productName: productNames[index] ?? "Produto",
+}));
+const selectionValues = selections.map((selection) =>
+  encodeDiscordCartSelection(selection.productId, selection.productName ?? "Produto"),
+);
 
 let createNativeDiscordCartResponse: typeof import("./discord-cart").createNativeDiscordCartResponse;
 let parseNativeDiscordCartInteraction: typeof import("./discord-cart").parseNativeDiscordCartInteraction;
@@ -23,30 +35,23 @@ describe("carrinho nativo do Discord", () => {
     expect(
       parseNativeDiscordCartInteraction({
         type: 3,
-        data: { custom_id: "select_products", values: productIds },
+        data: { custom_id: "select_products", values: selectionValues },
       }),
-    ).toEqual({ kind: "open", productIds });
+    ).toEqual({ kind: "open", selections });
 
     expect(
       parseNativeDiscordCartInteraction({
         type: 3,
-        data: { custom_id: "select_products", values: [...productIds, productIds[0]] },
+        data: {
+          custom_id: "select_products",
+          values: [...selectionValues, selectionValues[0]],
+        },
       }),
     ).toBeNull();
   });
 
-  it("abre um campo de quantidade para cada produto selecionado", async () => {
-    const products = [
-      { id: productIds[0], name: "Super Watering", minimumPriceCents: 100 },
-      { id: productIds[1], name: "Super Sprinkler", minimumPriceCents: 200 },
-      { id: productIds[2], name: "Dragon's Breath", minimumPriceCents: 300 },
-    ];
-    const response = await createNativeDiscordCartResponse(productIds, {
-      findPurchasableProducts: vi.fn(async () => products),
-      countAvailableStocks: vi.fn(async () =>
-        new Map(productIds.map((productId, index) => [productId, index + 2])),
-      ),
-    });
+  it("abre imediatamente um campo de quantidade para cada produto selecionado", () => {
+    const response = createNativeDiscordCartResponse(selections);
 
     expect(response).toMatchObject({
       type: 9,
@@ -74,23 +79,30 @@ describe("carrinho nativo do Discord", () => {
     ).toEqual({ kind: "submit", response: { type: 5, data: { flags: 64 } } });
   });
 
-  it("impede abrir o formulário quando um item ficou sem estoque", async () => {
-    const response = await createNativeDiscordCartResponse(productIds.slice(0, 2), {
-      findPurchasableProducts: vi.fn(async () => [
-        { id: productIds[0], name: "Super Watering", minimumPriceCents: 100 },
-        { id: productIds[1], name: "Super Sprinkler", minimumPriceCents: 200 },
-      ]),
-      countAvailableStocks: vi.fn(async () =>
-        new Map([
-          [productIds[0], 2],
-          [productIds[1], 0],
-        ]),
-      ),
+  it("mantém compatibilidade com vitrines antigas sem consultar o banco", () => {
+    const interaction = parseNativeDiscordCartInteraction({
+      type: 3,
+      data: { custom_id: "select_products", values: productIds.slice(0, 2) },
     });
+    expect(interaction).toEqual({
+      kind: "open",
+      selections: [
+        { productId: productIds[0], productName: null },
+        { productId: productIds[1], productName: null },
+      ],
+    });
+    if (!interaction || interaction.kind !== "open") {
+      throw new Error("A seleção legada não foi reconhecida.");
+    }
 
-    expect(response).toMatchObject({
-      type: 4,
-      data: { content: expect.stringContaining("Super Sprinkler") },
+    expect(createNativeDiscordCartResponse(interaction.selections)).toMatchObject({
+      type: 9,
+      data: {
+        components: [
+          { components: [{ label: "Produto 1" }] },
+          { components: [{ label: "Produto 2" }] },
+        ],
+      },
     });
   });
 });

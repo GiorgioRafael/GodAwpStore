@@ -1,5 +1,6 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { encodeDiscordCartSelection } from "@/lib/bot/discord-cart-selection";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/bot/message-customization-server", async () => {
@@ -52,11 +53,17 @@ describe("Discord native quantity interactions", () => {
       "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
       "5f8199d0-67f7-45ec-b597-8d5149568707",
     ];
+    const productNames = ["Super Watering", "Super Sprinkler", "Dragon's Breath"];
     const body = JSON.stringify({
       type: 3,
       id: "223456789012345678",
       application_id: "123456789012345678",
-      data: { custom_id: "select_products", values: productIds },
+      data: {
+        custom_id: "select_products",
+        values: productIds.map((productId, index) =>
+          encodeDiscordCartSelection(productId, productNames[index] ?? "Produto"),
+        ),
+      },
     });
     const timestamp = String(Math.floor(Date.now() / 1000));
     const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
