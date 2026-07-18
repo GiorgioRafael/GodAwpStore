@@ -7,7 +7,7 @@ import {
 import { toCardElement } from "chat";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
-import { catalogCards, configureDiscordMultiProductSelect } from "./discord-bot";
+import { catalogCards, configureDiscordProductEntrySelect } from "./discord-bot";
 import type { BotMessageCustomization } from "./message-customization";
 import type { BotCatalogGame } from "./types";
 
@@ -141,7 +141,7 @@ export async function publishDiscordStorefront({
     const normalized = toCardElement(card);
     if (!normalized) throw new Error("Não foi possível montar a vitrine do Discord.");
     return {
-      ...configureDiscordMultiProductSelect(
+      ...configureDiscordProductEntrySelect(
         cardToDiscordPayload(normalized, {
           contentFormat: DiscordContentFormat.ComponentsV2,
         }),

@@ -79,7 +79,7 @@ describe("Discord storefront", () => {
     };
     expect(payload.allowed_mentions).toEqual({ parse: [] });
     expect(JSON.stringify(payload.components)).toContain("select_products");
-    expect(JSON.stringify(payload.components)).toContain('"max_values":3');
+    expect(JSON.stringify(payload.components)).toContain('"max_values":1');
     expect(JSON.stringify(payload.components)).toContain(
       "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9:Ghost Pepper",
     );

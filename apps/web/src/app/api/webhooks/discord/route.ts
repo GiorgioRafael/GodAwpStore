@@ -9,6 +9,7 @@ import {
 } from "@/lib/bot/discord-bot";
 import {
   completeDiscordCartPurchase,
+  createNativeDiscordCartReviewResponse,
   createNativeDiscordCartResponse,
   parseNativeDiscordCartInteraction,
 } from "@/lib/bot/discord-cart";
@@ -66,6 +67,16 @@ export async function POST(request: Request) {
       }
 
       if (native.scope === "cart") {
+        if (native.interaction.kind === "review") {
+          return Response.json(
+            createNativeDiscordCartReviewResponse(
+              native.interaction.selections,
+              native.interaction.options,
+              native.interaction.responseType,
+            ),
+          );
+        }
+
         if (native.interaction.kind === "open") {
           return Response.json(
             createNativeDiscordCartResponse(native.interaction.selections),

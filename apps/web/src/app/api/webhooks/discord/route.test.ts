@@ -44,7 +44,7 @@ import { POST } from "./route";
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Discord native quantity interactions", () => {
-  it("verifica a assinatura antes de abrir as quantidades de vários produtos", async () => {
+  it("verifica a assinatura no carrinho progressivo e na abertura das quantidades", async () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
     const publicDer = publicKey.export({ format: "der", type: "spki" });
     vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
@@ -54,40 +54,62 @@ describe("Discord native quantity interactions", () => {
       "5f8199d0-67f7-45ec-b597-8d5149568707",
     ];
     const productNames = ["Super Watering", "Super Sprinkler", "Dragon's Breath"];
-    const body = JSON.stringify({
+    const initialBody = JSON.stringify({
       type: 3,
       id: "223456789012345678",
       application_id: "123456789012345678",
       data: {
         custom_id: "select_products",
-        values: productIds.map((productId, index) =>
-          encodeDiscordCartSelection(productId, productNames[index] ?? "Produto"),
-        ),
+        values: [encodeDiscordCartSelection(productIds[0], productNames[0])],
       },
     });
     const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
-    const request = new Request("https://gwstore.vercel.app/api/webhooks/discord", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-signature-ed25519": signature,
-        "x-signature-timestamp": timestamp,
-      },
-      body,
-    });
+    const signedRequest = (body: string) =>
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": sign(
+            null,
+            Buffer.from(timestamp + body),
+            privateKey,
+          ).toString("hex"),
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      });
 
-    const response = await POST(request);
+    const response = await POST(signedRequest(initialBody));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const review = await response.json();
+    expect(review).toMatchObject({
+      type: 4,
+      data: {
+        flags: 64,
+        content: expect.stringContaining("Carrinho: 1/3"),
+        components: [
+          { components: [{ label: "Super Watering", disabled: true }] },
+          { components: [{ custom_id: "gwc:continue" }] },
+        ],
+      },
+    });
+
+    const continueBody = JSON.stringify({
+      type: 3,
+      id: "323456789012345678",
+      application_id: "123456789012345678",
+      data: { custom_id: "gwc:continue" },
+      message: review.data,
+    });
+    const modalResponse = await POST(signedRequest(continueBody));
+    expect(modalResponse.status).toBe(200);
+    await expect(modalResponse.json()).resolves.toMatchObject({
       type: 9,
       data: {
-        title: "Quantidades (3/3)",
+        title: "Quantidades (1/1)",
         components: [
           { components: [{ custom_id: "quantity_0", label: "Super Watering" }] },
-          { components: [{ custom_id: "quantity_1", label: "Super Sprinkler" }] },
-          { components: [{ custom_id: "quantity_2", label: "Dragon's Breath" }] },
         ],
       },
     });

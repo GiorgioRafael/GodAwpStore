@@ -53,7 +53,6 @@ import type {
   CartPurchaseResult,
   PurchaseResult,
 } from "./types";
-import { MAXIMUM_CART_ITEMS } from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_SELECT_OPTION_LIMIT = 25;
@@ -162,7 +161,7 @@ class GWStoreDiscordAdapter extends DiscordAdapter {
     options?: { clearContentForCard?: boolean },
   ) {
     const result = super.buildMessagePayload(message, options);
-    configureDiscordMultiProductSelect(result.payload);
+    configureDiscordProductEntrySelect(result.payload);
     return result;
   }
 }
@@ -517,7 +516,7 @@ export async function postDiscordEphemeral(
   const interaction = readDiscordFollowupContext(raw);
   const normalizedCard = toCardElement(card);
   if (!normalizedCard) throw new Error("Resposta privada Discord inválida.");
-  const payload = configureDiscordMultiProductSelect(
+  const payload = configureDiscordProductEntrySelect(
     cardToDiscordPayload(normalizedCard, {
       contentFormat: DiscordContentFormat.ComponentsV2,
     }),
@@ -762,7 +761,7 @@ export function cartPurchaseResultCard(
   return errorCard(errorMessage, customization);
 }
 
-export function configureDiscordMultiProductSelect<T>(payload: T): T {
+export function configureDiscordProductEntrySelect<T>(payload: T): T {
   visitDiscordComponents(payload, (component) => {
     if (
       component.type !== 3 ||
@@ -774,7 +773,7 @@ export function configureDiscordMultiProductSelect<T>(payload: T): T {
     }
 
     component.min_values = 1;
-    component.max_values = Math.min(MAXIMUM_CART_ITEMS, component.options.length);
+    component.max_values = 1;
   });
   return payload;
 }

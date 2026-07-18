@@ -21,36 +21,136 @@ const selectionValues = selections.map((selection) =>
 );
 
 let createNativeDiscordCartResponse: typeof import("./discord-cart").createNativeDiscordCartResponse;
+let createNativeDiscordCartReviewResponse: typeof import("./discord-cart").createNativeDiscordCartReviewResponse;
 let parseNativeDiscordCartInteraction: typeof import("./discord-cart").parseNativeDiscordCartInteraction;
 
 beforeAll(async () => {
   ({
     createNativeDiscordCartResponse,
+    createNativeDiscordCartReviewResponse,
     parseNativeDiscordCartInteraction,
   } = await import("./discord-cart"));
 });
 
 describe("carrinho nativo do Discord", () => {
-  it("aceita de um a três produtos únicos no seletor", () => {
-    expect(
-      parseNativeDiscordCartInteraction({
-        type: 3,
-        data: { custom_id: "select_products", values: selectionValues },
-      }),
-    ).toEqual({ kind: "open", selections });
+  it("fecha a lista após cada escolha e oferece adicionar outro ou continuar", () => {
+    const initial = parseNativeDiscordCartInteraction({
+      type: 3,
+      data: { custom_id: "select_products", values: [selectionValues[0]] },
+      message: {
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 3,
+                custom_id: "select_products",
+                options: selectionValues.map((value, index) => ({
+                  label: productNames[index],
+                  value,
+                  description: `Produto ${index + 1}`,
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(initial).toEqual({
+      kind: "review",
+      responseType: 4,
+      selections: [selections[0]],
+      options: [
+        { label: productNames[1], value: selectionValues[1], description: "Produto 2" },
+        { label: productNames[2], value: selectionValues[2], description: "Produto 3" },
+      ],
+    });
+    if (!initial || initial.kind !== "review") throw new Error("Revisão inicial não criada.");
 
+    const firstReview = createNativeDiscordCartReviewResponse(
+      initial.selections,
+      initial.options,
+      initial.responseType,
+    );
+    expect(firstReview).toMatchObject({
+      type: 4,
+      data: {
+        flags: 64,
+        content: expect.stringContaining("Carrinho: 1/3"),
+        components: [
+          { components: [{ type: 2, label: "Super Watering", disabled: true }] },
+          {
+            components: [
+              {
+                type: 3,
+                custom_id: "gwc:add",
+                max_values: 1,
+                placeholder: "➕ Adicionar outro produto (1/3)",
+              },
+            ],
+          },
+          { components: [{ type: 2, custom_id: "gwc:continue" }] },
+        ],
+      },
+    });
+
+    const second = parseNativeDiscordCartInteraction({
+      type: 3,
+      data: { custom_id: "gwc:add", values: [selectionValues[1]] },
+      message: firstReview.data,
+    });
+    expect(second).toMatchObject({
+      kind: "review",
+      responseType: 7,
+      selections: [selections[0], selections[1]],
+      options: [{ value: selectionValues[2] }],
+    });
+    if (!second || second.kind !== "review") throw new Error("Segundo produto não adicionado.");
+
+    const secondReview = createNativeDiscordCartReviewResponse(
+      second.selections,
+      second.options,
+      second.responseType,
+    );
     expect(
       parseNativeDiscordCartInteraction({
         type: 3,
-        data: {
-          custom_id: "select_products",
-          values: [...selectionValues, selectionValues[0]],
-        },
+        data: { custom_id: "gwc:continue" },
+        message: secondReview.data,
       }),
-    ).toBeNull();
+    ).toEqual({ kind: "open", selections: selections.slice(0, 2) });
+
+    const third = parseNativeDiscordCartInteraction({
+      type: 3,
+      data: { custom_id: "gwc:add", values: [selectionValues[2]] },
+      message: secondReview.data,
+    });
+    expect(third).toMatchObject({
+      kind: "review",
+      responseType: 7,
+      selections,
+      options: [],
+    });
+    if (!third || third.kind !== "review") throw new Error("Terceiro produto não adicionado.");
+    expect(
+      createNativeDiscordCartReviewResponse(
+        third.selections,
+        third.options,
+        third.responseType,
+      ),
+    ).toMatchObject({
+      type: 7,
+      data: {
+        content: expect.stringContaining("Carrinho: 3/3"),
+        components: [
+          { components: [{ label: "Super Watering" }, { label: "Super Sprinkler" }, { label: "Dragon's Breath" }] },
+          { components: [{ custom_id: "gwc:continue", label: "Continuar com 3 produtos" }] },
+        ],
+      },
+    });
   });
 
-  it("abre imediatamente um campo de quantidade para cada produto selecionado", () => {
+  it("abre um campo de quantidade para cada produto depois da confirmação", () => {
     const response = createNativeDiscordCartResponse(selections);
 
     expect(response).toMatchObject({
@@ -85,22 +185,29 @@ describe("carrinho nativo do Discord", () => {
       data: { custom_id: "select_products", values: productIds.slice(0, 2) },
     });
     expect(interaction).toEqual({
-      kind: "open",
+      kind: "review",
+      responseType: 4,
       selections: [
         { productId: productIds[0], productName: null },
         { productId: productIds[1], productName: null },
       ],
+      options: [],
     });
-    if (!interaction || interaction.kind !== "open") {
+    if (!interaction || interaction.kind !== "review") {
       throw new Error("A seleção legada não foi reconhecida.");
     }
 
-    expect(createNativeDiscordCartResponse(interaction.selections)).toMatchObject({
-      type: 9,
+    const review = createNativeDiscordCartReviewResponse(
+      interaction.selections,
+      interaction.options,
+      interaction.responseType,
+    );
+    expect(review).toMatchObject({
+      type: 4,
       data: {
         components: [
-          { components: [{ label: "Produto 1" }] },
-          { components: [{ label: "Produto 2" }] },
+          { components: [{ label: "Produto 1" }, { label: "Produto 2" }] },
+          { components: [{ custom_id: "gwc:continue" }] },
         ],
       },
     });

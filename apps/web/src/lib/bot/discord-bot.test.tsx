@@ -6,7 +6,7 @@ import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 vi.mock("server-only", () => ({}));
 
 let catalogCards: typeof import("./discord-bot").catalogCards;
-let configureDiscordMultiProductSelect: typeof import("./discord-bot").configureDiscordMultiProductSelect;
+let configureDiscordProductEntrySelect: typeof import("./discord-bot").configureDiscordProductEntrySelect;
 let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
@@ -18,7 +18,7 @@ let updateDiscordEphemeralResponse: typeof import("./discord-bot").updateDiscord
 beforeAll(async () => {
   ({
     catalogCards,
-    configureDiscordMultiProductSelect,
+    configureDiscordProductEntrySelect,
     createNativeDiscordQuantityResponse,
     getDiscordBot,
     postDiscordEphemeral,
@@ -32,7 +32,7 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Discord catalog cards", () => {
-  it("configura o seletor para até três produtos sem alterar outros componentes", () => {
+  it("configura o seletor inicial para fechar após a primeira escolha", () => {
     const payload = {
       components: [
         {
@@ -49,10 +49,10 @@ describe("Discord catalog cards", () => {
       ],
     };
 
-    configureDiscordMultiProductSelect(payload);
+    configureDiscordProductEntrySelect(payload);
     expect(payload.components[0]?.components[0]).toMatchObject({
       min_values: 1,
-      max_values: 3,
+      max_values: 1,
     });
   });
 
