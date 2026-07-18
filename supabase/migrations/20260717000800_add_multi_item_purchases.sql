@@ -686,11 +686,14 @@ begin
   where guild.id = v_order.guild_id;
 
   select
-    string_agg(
-      product.name || ' ×' || item.quantity::text,
-      ', '
-      order by item.position
-    ),
+    case
+      when count(*) = 1 then min(product.name)
+      else string_agg(
+        product.name || ' ×' || item.quantity::text,
+        ', '
+        order by item.position
+      )
+    end,
     sum(item.quantity)::integer
   into v_product_name, v_order_quantity
   from public.order_items as item
