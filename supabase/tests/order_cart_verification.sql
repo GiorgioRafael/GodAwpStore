@@ -122,7 +122,7 @@ begin
   end if;
 
   update public.orders
-  set payment_expires_at = now() - interval '1 minute'
+  set created_at = now() - interval '3 hours'
   where id = created.checkout_order_id;
 
   perform *
