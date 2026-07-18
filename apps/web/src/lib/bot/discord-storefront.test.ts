@@ -78,7 +78,8 @@ describe("Discord storefront", () => {
       components: unknown[];
     };
     expect(payload.allowed_mentions).toEqual({ parse: [] });
-    expect(JSON.stringify(payload.components)).toContain("select_product");
+    expect(JSON.stringify(payload.components)).toContain("select_products");
+    expect(JSON.stringify(payload.components)).toContain('"max_values":3');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.configuration).toMatchObject({
       channel_id: channelId,
@@ -185,6 +186,20 @@ function catalog(): BotCatalogGame[] {
               description: null,
               priceCents: 10,
               availableStock: 318,
+            },
+            {
+              id: "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
+              name: "Super Watering",
+              description: null,
+              priceCents: 100,
+              availableStock: 10,
+            },
+            {
+              id: "5f8199d0-67f7-45ec-b597-8d5149568707",
+              name: "Super Sprinkler",
+              description: null,
+              priceCents: 200,
+              availableStock: 10,
             },
           ],
         },

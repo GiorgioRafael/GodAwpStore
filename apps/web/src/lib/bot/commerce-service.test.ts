@@ -13,6 +13,11 @@ const product = {
   name: "Dragon Breath",
   minimumPriceCents: 200,
 };
+const secondProduct = {
+  id: "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
+  name: "Super Sprinkler",
+  minimumPriceCents: 300,
+};
 const input = {
   interactionId: "323456789012345678",
   buyerDiscordId: "423456789012345678",
@@ -42,6 +47,19 @@ function repository(overrides: Partial<BotCommerceRepository> = {}) {
     getCommissionBps: vi.fn(async () => 1_000),
     createAwaitingPaymentOrder: vi.fn(async () => ({
       id: "order-row",
+      status: "awaiting_payment" as const,
+      created: true,
+      outOfStock: false,
+    })),
+    findPurchaseByInteraction: vi.fn(async () => null),
+    findPurchasableProducts: vi.fn(async (productIds) =>
+      [product, secondProduct].filter((item) => productIds.includes(item.id)),
+    ),
+    countAvailableStocks: vi.fn(async (productIds: string[]) =>
+      new Map(productIds.map((productId) => [productId, 10])),
+    ),
+    createAwaitingPaymentPurchase: vi.fn(async () => ({
+      id: "cart-order-row",
       status: "awaiting_payment" as const,
       created: true,
       outOfStock: false,
@@ -294,5 +312,126 @@ describe("BotCommerceService", () => {
       availableStock: 2,
     });
     expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
+  });
+
+  it("cria um único checkout com vários produtos e preços calculados no servidor", async () => {
+    const repo = repository();
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.purchaseCart({
+        interactionId: input.interactionId,
+        buyerDiscordId: input.buyerDiscordId,
+        guild,
+        isServerBooster: false,
+        items: [
+          { productId: product.id, quantity: 2 },
+          { productId: secondProduct.id, quantity: 3 },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      kind: "created",
+      orderId: "cart-order-row",
+      subtotalPriceCents: 1_300,
+      totalPriceCents: 1_300,
+      items: [
+        { productId: product.id, quantity: 2, totalPriceCents: 400 },
+        { productId: secondProduct.id, quantity: 3, totalPriceCents: 900 },
+      ],
+    });
+    expect(repo.createAwaitingPaymentPurchase).toHaveBeenCalledWith({
+      interactionId: input.interactionId,
+      guildId: "guild-row",
+      whitelistEntryId: "whitelist-row",
+      buyerDiscordId: input.buyerDiscordId,
+      items: [
+        { productId: product.id, quantity: 2 },
+        { productId: secondProduct.id, quantity: 3 },
+      ],
+      discountBps: 0,
+      discountReason: null,
+      commissionBps: 1_000,
+    });
+  });
+
+  it("aplica o mínimo da LivePix sobre o total do carrinho", async () => {
+    const cheapProducts = [
+      { ...product, minimumPriceCents: 40 },
+      { ...secondProduct, minimumPriceCents: 60 },
+    ];
+    const repo = repository({
+      findPurchasableProducts: vi.fn(async () => cheapProducts),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.purchaseCart({
+        interactionId: input.interactionId,
+        buyerDiscordId: input.buyerDiscordId,
+        guild,
+        isServerBooster: false,
+        items: cheapProducts.map((item) => ({ productId: item.id, quantity: 1 })),
+      }),
+    ).resolves.toMatchObject({ kind: "created", totalPriceCents: 100 });
+  });
+
+  it("informa qual produto do carrinho ficou com estoque insuficiente", async () => {
+    const repo = repository({
+      countAvailableStocks: vi.fn(async () =>
+        new Map([
+          [product.id, 10],
+          [secondProduct.id, 1],
+        ]),
+      ),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.purchaseCart({
+        interactionId: input.interactionId,
+        buyerDiscordId: input.buyerDiscordId,
+        guild,
+        isServerBooster: false,
+        items: [
+          { productId: product.id, quantity: 1 },
+          { productId: secondProduct.id, quantity: 2 },
+        ],
+      }),
+    ).resolves.toEqual({
+      kind: "insufficient_stock",
+      productName: secondProduct.name,
+      availableStock: 1,
+    });
+    expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
+  });
+
+  it("distribui o desconto de booster sem alterar o total do carrinho", async () => {
+    const expensiveProducts = [
+      { ...product, minimumPriceCents: 2_500 },
+      { ...secondProduct, minimumPriceCents: 2_501 },
+    ];
+    const repo = repository({
+      findPurchasableProducts: vi.fn(async () => expensiveProducts),
+    });
+    const service = new BotCommerceService(repo);
+
+    const result = await service.purchaseCart({
+      interactionId: input.interactionId,
+      buyerDiscordId: input.buyerDiscordId,
+      guild,
+      isServerBooster: true,
+      items: expensiveProducts.map((item) => ({ productId: item.id, quantity: 1 })),
+    });
+
+    expect(result).toMatchObject({
+      kind: "created",
+      subtotalPriceCents: 5_001,
+      discountBps: 500,
+      discountAmountCents: 250,
+      totalPriceCents: 4_751,
+    });
+    if (result.kind === "created") {
+      expect(result.items.reduce((sum, item) => sum + item.totalPriceCents, 0)).toBe(4_751);
+    }
   });
 });

@@ -145,7 +145,20 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
             <tr key={row.id} className="border-b border-border/70 last:border-b-0">
               <td className="px-5 py-4 font-mono text-xs text-muted-strong" title={row.id}>{row.id.slice(0, 8)}…</td>
               <td className="px-5 py-4 font-mono text-xs text-muted">{row.buyer_discord_id}</td>
-              <td className="px-5 py-4 font-mono text-xs text-muted" title={row.product_id}>{row.product_id.slice(0, 8)}…</td>
+              <td className="px-5 py-4 text-xs text-muted">
+                {row.items.length > 0 ? (
+                  <ul className="space-y-1">
+                    {row.items.map((item) => (
+                      <li key={item.productId} title={item.productId}>
+                        <span className="font-medium text-muted-strong">{item.productName}</span>
+                        {" ×"}{item.quantity.toLocaleString("pt-BR")}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="font-mono" title={row.product_id}>{row.product_id.slice(0, 8)}…</span>
+                )}
+              </td>
               <td className="px-5 py-4 text-sm font-medium">{row.quantity.toLocaleString("pt-BR")}</td>
               <td className="px-5 py-4 text-sm font-medium">{formatBrl(row.sale_price_cents)}</td>
               <td className="px-5 py-4">

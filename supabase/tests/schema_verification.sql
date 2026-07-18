@@ -20,6 +20,7 @@ begin
     'inventory_units',
     'guilds',
     'orders',
+    'order_items',
     'ledger_entries',
     'payouts'
   ]
@@ -60,6 +61,7 @@ begin
     'public.admin_check_inventory_fingerprints(text[])',
     'public.admin_change_inventory_status(uuid,text,text)',
     'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
+    'public.create_bot_cart_with_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
     'public.submit_paid_order_game_nickname(uuid,text,text,text,text)'
   ]
   loop

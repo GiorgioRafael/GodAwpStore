@@ -4,7 +4,9 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type {
   BotCatalogGame,
   BotCommerceRepository,
+  CartItemInput,
   DiscordGuildIdentity,
+  ExistingPurchase,
   ExistingOrder,
   OrderCreation,
   PurchasableProduct,
@@ -113,6 +115,60 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       : null;
   }
 
+  async findPurchaseByInteraction(interactionId: string): Promise<ExistingPurchase | null> {
+    const { data: lead, error: leadError } = await this.client
+      .from("orders")
+      .select("id,buyer_discord_id,guild_id,subtotal_price_cents,sale_price_cents,discount_bps,discount_amount_cents,discount_reason,status")
+      .eq("payment_reference", interactionReference(interactionId))
+      .maybeSingle();
+    assertQuery(leadError, "compra existente");
+    if (!lead) return null;
+
+    const { data: rows, error: rowsError } = await this.client
+      .from("order_items")
+      .select("product_id,quantity,unit_price_cents,subtotal_price_cents,sale_price_cents,discount_amount_cents,position")
+      .eq("order_id", lead.id)
+      .order("position");
+    assertQuery(rowsError, "itens da compra existente");
+
+    const productIds = (rows ?? []).map((row) => row.product_id);
+    const { data: products, error: productsError } = productIds.length
+      ? await this.client.from("products").select("id,name").in("id", productIds)
+      : { data: [], error: null };
+    assertQuery(productsError, "produtos da compra existente");
+    const names = new Map((products ?? []).map((product) => [product.id, product.name]));
+
+    return {
+      id: lead.id,
+      buyerDiscordId: lead.buyer_discord_id,
+      guildId: lead.guild_id,
+      items: (rows ?? []).map((row) => ({
+        productId: row.product_id,
+        productName: names.get(row.product_id) ?? "Produto",
+        quantity: safeInteger(row.quantity),
+        unitPriceCents: safeInteger(row.unit_price_cents),
+        subtotalPriceCents: safeInteger(row.subtotal_price_cents),
+        totalPriceCents: safeInteger(row.sale_price_cents),
+        discountAmountCents: safeInteger(row.discount_amount_cents),
+      })),
+      subtotalPriceCents: (rows ?? []).reduce(
+        (sum, row) => sum + safeInteger(row.subtotal_price_cents),
+        0,
+      ),
+      salePriceCents: (rows ?? []).reduce(
+        (sum, row) => sum + safeInteger(row.sale_price_cents),
+        0,
+      ),
+      discountBps: safeInteger(lead.discount_bps),
+      discountAmountCents: (rows ?? []).reduce(
+        (sum, row) => sum + safeInteger(row.discount_amount_cents),
+        0,
+      ),
+      discountReason: lead.discount_reason === "server_booster" ? "server_booster" : null,
+      status: lead.status,
+    };
+  }
+
   async ensureGuild(identity: DiscordGuildIdentity): Promise<RegisteredGuild> {
     const { data: whitelist, error: whitelistError } = await this.client
       .from("whitelist_entries")
@@ -199,6 +255,13 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     };
   }
 
+  async findPurchasableProducts(productIds: string[]): Promise<PurchasableProduct[]> {
+    const products = await Promise.all(
+      productIds.map((productId) => this.findPurchasableProduct(productId)),
+    );
+    return products.filter((product): product is PurchasableProduct => product !== null);
+  }
+
   async countAvailableStock(productId: string): Promise<number> {
     const { data, error } = await this.client
       .from("product_stock_summary")
@@ -207,6 +270,18 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       .maybeSingle();
     assertQuery(error, "estoque do produto");
     return safeInteger(data?.available_count ?? 0);
+  }
+
+  async countAvailableStocks(productIds: string[]): Promise<Map<string, number>> {
+    if (productIds.length === 0) return new Map();
+    const { data, error } = await this.client
+      .from("product_stock_summary")
+      .select("product_id,available_count")
+      .in("product_id", productIds);
+    assertQuery(error, "estoque dos produtos");
+    return new Map(
+      (data ?? []).map((row) => [row.product_id, safeInteger(row.available_count)]),
+    );
   }
 
   async getCommissionBps(whitelistEntryId: string | null): Promise<number> {
@@ -266,6 +341,43 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     return {
       id: data.created_order_id,
       status: "awaiting_payment",
+      created: data.was_created,
+      outOfStock: data.out_of_stock,
+    };
+  }
+
+  async createAwaitingPaymentPurchase(input: {
+    interactionId: string;
+    guildId: string;
+    whitelistEntryId: string | null;
+    buyerDiscordId: string;
+    items: CartItemInput[];
+    discountBps: number;
+    discountReason: "server_booster" | null;
+    commissionBps: number;
+  }) {
+    if (!input.whitelistEntryId) {
+      throw new Error("Servidor sem vendedor autorizado.");
+    }
+    const { data, error } = await this.client
+      .rpc("create_bot_cart_with_reservation", {
+        p_interaction_id: input.interactionId,
+        p_guild_id: input.guildId,
+        p_whitelist_entry_id: input.whitelistEntryId,
+        p_buyer_discord_id: input.buyerDiscordId,
+        p_items: input.items.map((item) => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+        })),
+        p_discount_bps: input.discountBps,
+        p_discount_reason: input.discountReason,
+        p_commission_bps: input.commissionBps,
+      })
+      .single();
+    assertQuery(error, "criação da compra");
+    return {
+      id: data.checkout_order_id,
+      status: "awaiting_payment" as const,
       created: data.was_created,
       outOfStock: data.out_of_stock,
     };

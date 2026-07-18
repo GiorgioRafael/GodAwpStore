@@ -8,6 +8,11 @@ import {
   parseNativeDiscordQuantityInteraction,
 } from "@/lib/bot/discord-bot";
 import {
+  completeDiscordCartPurchase,
+  createNativeDiscordCartResponse,
+  parseNativeDiscordCartInteraction,
+} from "@/lib/bot/discord-cart";
+import {
   completeDiscordGameNicknameSubmission,
   createNativeDiscordGameNicknameResponse,
   parseNativeDiscordGameNicknameInteraction,
@@ -55,6 +60,39 @@ export async function POST(request: Request) {
           } catch (error) {
             const message = error instanceof Error ? error.message : "erro desconhecido";
             console.error(`[discord-game-nickname] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "cart") {
+        if (native.interaction.kind === "open") {
+          return Response.json(
+            await createNativeDiscordCartResponse(
+              native.interaction.productIds,
+              undefined,
+              loadBotMessageCustomization(),
+            ),
+          );
+        }
+
+        after(async () => {
+          try {
+            const stockChanged = await completeDiscordCartPurchase(
+              native.raw,
+              await loadBotMessageCustomization(),
+            );
+            if (stockChanged) {
+              const storefronts = await synchronizePublishedDiscordStorefronts();
+              if (storefronts.failed > 0) {
+                console.error(
+                  `[discord-cart] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
+                );
+              }
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-cart] ${message}`);
           }
         });
         return Response.json(native.interaction.response);
@@ -118,6 +156,9 @@ async function readNativeDiscordInteraction(request: Request) {
   if (gameNickname) {
     return { body, raw, scope: "game_nickname" as const, interaction: gameNickname };
   }
+
+  const cart = parseNativeDiscordCartInteraction(raw);
+  if (cart) return { body, raw, scope: "cart" as const, interaction: cart };
 
   const quantity = parseNativeDiscordQuantityInteraction(raw);
   return quantity
