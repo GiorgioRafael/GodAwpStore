@@ -211,11 +211,10 @@ begin
   if p_whitelist_entry_id is null then
     raise exception using errcode = '42501', message = 'Guild owner is not authorized to sell.';
   end if;
-  if p_items is null or case
-    when jsonb_typeof(p_items) = 'array'
-      then jsonb_array_length(p_items) not between 1 and 3
-    else true
-  end then
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    raise exception using errcode = '22023', message = 'Cart must contain between one and three products.';
+  end if;
+  if jsonb_array_length(p_items) not between 1 and 3 then
     raise exception using errcode = '22023', message = 'Cart must contain between one and three products.';
   end if;
   if exists (
