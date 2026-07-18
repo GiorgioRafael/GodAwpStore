@@ -87,6 +87,16 @@ export type BotMessageCustomization = {
     quantityLabel: string;
     amountLabel: string;
     orderLabel: string;
+    nicknamePromptText: string;
+    nicknameButtonLabel: string;
+    nicknameModalTitle: string;
+    nicknameInputLabel: string;
+    nicknameInputPlaceholder: string;
+    nicknameSavedText: string;
+    nicknameUpdatedText: string;
+    nicknameInvalidText: string;
+    nicknameUnauthorizedText: string;
+    nicknameUnavailableText: string;
   };
 };
 
@@ -196,6 +206,22 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
     quantityLabel: "Quantidade",
     amountLabel: "Valor",
     orderLabel: "Pedido",
+    nicknamePromptText:
+      "Para concluir o atendimento, informe seu nick no jogo pelo botão abaixo.",
+    nicknameButtonLabel: "Informar nick no jogo",
+    nicknameModalTitle: "Informe seu nick no jogo",
+    nicknameInputLabel: "Nick no jogo",
+    nicknameInputPlaceholder: "Digite seu nick exatamente como aparece no jogo",
+    nicknameSavedText:
+      "✅ Nick **{game_nickname}** recebido! A equipe continuará a entrega por este ticket.",
+    nicknameUpdatedText:
+      "✅ Nick atualizado para **{game_nickname}**. A equipe usará este nick na entrega.",
+    nicknameInvalidText:
+      "⚠️ Informe um nick válido com 2 a 64 caracteres, sem quebras de linha.",
+    nicknameUnauthorizedText:
+      "⛔ Somente o comprador deste pedido pode informar o nick no jogo.",
+    nicknameUnavailableText:
+      "⚠️ Não foi possível vincular o nick a este pedido. Confirme se o pagamento foi aprovado e tente novamente.",
   },
 };
 
@@ -270,6 +296,16 @@ export const BOT_MESSAGE_FIELD_LIMITS = {
   "ticket.quantityLabel": 256,
   "ticket.amountLabel": 256,
   "ticket.orderLabel": 256,
+  "ticket.nicknamePromptText": 1_000,
+  "ticket.nicknameButtonLabel": 80,
+  "ticket.nicknameModalTitle": 45,
+  "ticket.nicknameInputLabel": 45,
+  "ticket.nicknameInputPlaceholder": 100,
+  "ticket.nicknameSavedText": 1_000,
+  "ticket.nicknameUpdatedText": 1_000,
+  "ticket.nicknameInvalidText": 1_000,
+  "ticket.nicknameUnauthorizedText": 1_000,
+  "ticket.nicknameUnavailableText": 1_000,
 } as const satisfies Record<string, number>;
 
 export const BOT_MESSAGE_TOKEN_ALLOWLIST: Record<string, readonly string[]> = {
@@ -287,6 +323,8 @@ export const BOT_MESSAGE_TOKEN_ALLOWLIST: Record<string, readonly string[]> = {
   "error.invalidQuantity": ["maximum_quantity"],
   "error.insufficientStock": ["available_stock"],
   "error.quantityBelowMinimum": ["minimum_pix", "minimum_quantity", "minimum_total"],
+  "ticket.nicknameSavedText": ["game_nickname"],
+  "ticket.nicknameUpdatedText": ["game_nickname"],
 };
 
 export function normalizeBotMessageCustomization(value: Json | unknown): BotMessageCustomization {

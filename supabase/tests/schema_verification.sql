@@ -59,7 +59,8 @@ begin
     'public.admin_get_inventory_secret(uuid)',
     'public.admin_check_inventory_fingerprints(text[])',
     'public.admin_change_inventory_status(uuid,text,text)',
-    'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)'
+    'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
+    'public.submit_paid_order_game_nickname(uuid,text,text,text,text)'
   ]
   loop
     if to_regprocedure(required_function) is null then
@@ -140,6 +141,44 @@ begin
 
   if to_regclass('public.orders_paid_created_at_idx') is null then
     raise exception 'The paid order period index is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'orders'
+      and column_name = 'game_nickname'
+      and data_type = 'text'
+      and is_nullable = 'YES'
+  ) then
+    raise exception 'orders.game_nickname must be a nullable text column';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'orders'
+      and column_name = 'game_nickname_submitted_at'
+      and data_type = 'timestamp with time zone'
+      and is_nullable = 'YES'
+  ) then
+    raise exception 'orders.game_nickname_submitted_at must be a nullable timestamptz column';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.orders'::regclass
+      and conname in (
+        'orders_game_nickname_trimmed',
+        'orders_game_nickname_length',
+        'orders_game_nickname_no_control_characters',
+        'orders_game_nickname_submission_state'
+      )
+  ) <> 4 then
+    raise exception 'orders game nickname constraints are missing';
   end if;
 
   if exists (
@@ -238,6 +277,33 @@ begin
     'EXECUTE'
   ) then
     raise exception 'Paid order summary RPC execute privileges are invalid';
+  end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.submit_paid_order_game_nickname(uuid,text,text,text,text)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.submit_paid_order_game_nickname(uuid,text,text,text,text)',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.submit_paid_order_game_nickname(uuid,text,text,text,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'Paid order game nickname RPC execute privileges are invalid';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc as procedure
+    join pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'public'
+      and procedure.proname = 'submit_paid_order_game_nickname'
+      and procedure.prosecdef
+  ) then
+    raise exception 'Paid order game nickname RPC must be SECURITY DEFINER';
   end if;
 
   if exists (

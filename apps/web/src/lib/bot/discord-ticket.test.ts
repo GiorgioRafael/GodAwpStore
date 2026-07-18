@@ -99,7 +99,7 @@ describe("Discord paid-order ticket", () => {
       (request) => request.method === "POST" && request.url.endsWith(`/channels/${channelId}/messages`),
     );
     expect(welcome?.body).toMatchObject({
-      content: `<@${order.buyerDiscordId}>`,
+      content: expect.stringContaining(`<@${order.buyerDiscordId}>`),
       allowed_mentions: { parse: [], users: [order.buyerDiscordId], replied_user: false },
       enforce_nonce: true,
       embeds: [
@@ -108,7 +108,20 @@ describe("Discord paid-order ticket", () => {
           footer: { text: `GWStore ticket · ${order.orderId}` },
         }),
       ],
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 1,
+              custom_id: `gwstore_game_nickname:${order.orderId}`,
+            },
+          ],
+        },
+      ],
     });
+    expect((welcome?.body as { content: string }).content).toContain("nick");
     expect(String((welcome?.body as { nonce: string }).nonce)).toHaveLength(25);
     expect(JSON.stringify(welcome?.body)).toContain("Dragon Breath @everyone");
     expect(JSON.stringify(welcome?.body)).not.toContain("secret-ticket-token");

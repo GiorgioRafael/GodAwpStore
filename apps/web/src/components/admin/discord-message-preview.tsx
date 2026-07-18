@@ -55,6 +55,7 @@ const PREVIEW_TOKENS: Record<string, string | number> = {
   discount_amount: "R$ 1,25",
   total: "R$ 23,75",
   order_id: "8d31a2c9-42ee-4c75-a218-63e92f89ca12",
+  game_nickname: "Speedy_BR",
 };
 
 interface DiscordMessagePreviewProps {
@@ -219,22 +220,67 @@ function TicketPreview({ config }: { config: BotMessageCustomization }) {
   ];
 
   return (
-    <div className="rounded border-l-4 border-[#a855f7] bg-[#2b2d31] px-4 py-3.5">
-      <DiscordText className="font-semibold text-[#f2f3f5]">
-        {renderText(ticket.title)}
-      </DiscordText>
-      <DiscordText className="mt-2 text-sm leading-5 text-[#dbdee1]">
-        {renderText(ticket.description)}
-      </DiscordText>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        {fields.map(([label, value], index) => (
-          <div key={`${label}-${index}`} className={index === 3 ? "sm:col-span-2" : undefined}>
-            <DiscordText className="text-xs font-semibold text-[#f2f3f5]">
-              {renderText(String(label))}
-            </DiscordText>
-            <p className="mt-0.5 break-words text-sm text-[#dbdee1]">{String(value)}</p>
+    <div className="space-y-3">
+      <div className="text-sm leading-5 text-[#dbdee1]">
+        <DiscordText>@comprador</DiscordText>
+        <DiscordText>{renderText(ticket.nicknamePromptText)}</DiscordText>
+      </div>
+      <div className="rounded border-l-4 border-[#a855f7] bg-[#2b2d31] px-4 py-3.5">
+        <DiscordText className="font-semibold text-[#f2f3f5]">
+          {renderText(ticket.title)}
+        </DiscordText>
+        <DiscordText className="mt-2 text-sm leading-5 text-[#dbdee1]">
+          {renderText(ticket.description)}
+        </DiscordText>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {fields.map(([label, value], index) => (
+            <div key={`${label}-${index}`} className={index === 3 ? "sm:col-span-2" : undefined}>
+              <DiscordText className="text-xs font-semibold text-[#f2f3f5]">
+                {renderText(String(label))}
+              </DiscordText>
+              <p className="mt-0.5 break-words text-sm text-[#dbdee1]">{String(value)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-md bg-[#5865f2] px-3 text-sm font-medium text-white">
+        <Send aria-hidden="true" className="size-3.5 shrink-0" />
+        <DiscordText>{renderText(ticket.nicknameButtonLabel)}</DiscordText>
+      </div>
+
+      <div className="rounded-lg border border-[#1e1f22] bg-[#232428] p-4 shadow-[0_14px_36px_rgba(0,0,0,.3)]">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-[#949ba4]">
+          Prévia do modal
+        </p>
+        <DiscordText className="text-base font-semibold text-[#f2f3f5]">
+          {renderText(ticket.nicknameModalTitle)}
+        </DiscordText>
+        <div className="mt-3">
+          <DiscordText className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#b5bac1]">
+            {renderText(ticket.nicknameInputLabel)}
+          </DiscordText>
+          <div className="min-h-10 rounded-md border border-[#1e1f22] bg-[#1e1f22] px-3 py-2 text-sm text-[#87898c]">
+            {renderText(ticket.nicknameInputPlaceholder)}
           </div>
-        ))}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <span className="rounded-md bg-[#4e5058] px-3 py-2 text-xs font-medium text-white">
+            Cancelar
+          </span>
+          <span className="rounded-md bg-[#5865f2] px-3 py-2 text-xs font-medium text-white">
+            Enviar
+          </span>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-[#248046]/40 bg-[#248046]/10 px-3 py-2.5">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[.14em] text-[#80d69b]">
+          Após o envio
+        </p>
+        <DiscordText className="text-sm leading-5 text-[#dbdee1]">
+          {renderField("ticket.nicknameSavedText", ticket.nicknameSavedText)}
+        </DiscordText>
       </div>
     </div>
   );

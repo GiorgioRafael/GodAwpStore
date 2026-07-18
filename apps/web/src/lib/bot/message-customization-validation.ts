@@ -27,6 +27,7 @@ const TOKEN_LENGTH_BUDGETS: Record<string, number> = {
   discount_percent: 20,
   available_stock: 20,
   minimum_pix: 40,
+  game_nickname: 64,
 };
 
 const optionalFields = new Set([
@@ -164,6 +165,16 @@ const ticketSchema = z.object({
   quantityLabel: textField("ticket.quantityLabel"),
   amountLabel: textField("ticket.amountLabel"),
   orderLabel: textField("ticket.orderLabel"),
+  nicknamePromptText: textField("ticket.nicknamePromptText"),
+  nicknameButtonLabel: textField("ticket.nicknameButtonLabel"),
+  nicknameModalTitle: textField("ticket.nicknameModalTitle"),
+  nicknameInputLabel: textField("ticket.nicknameInputLabel"),
+  nicknameInputPlaceholder: textField("ticket.nicknameInputPlaceholder"),
+  nicknameSavedText: textField("ticket.nicknameSavedText"),
+  nicknameUpdatedText: textField("ticket.nicknameUpdatedText"),
+  nicknameInvalidText: textField("ticket.nicknameInvalidText"),
+  nicknameUnauthorizedText: textField("ticket.nicknameUnauthorizedText"),
+  nicknameUnavailableText: textField("ticket.nicknameUnavailableText"),
 }).strict();
 
 export const botMessageCustomizationSchema = z.object({
@@ -210,6 +221,16 @@ function validatePlaceholders(
         code: "custom",
         path: path.split("."),
         message: `O texto pode ultrapassar ${maximum} caracteres após preencher as variáveis.`,
+      });
+    }
+  }
+
+  for (const path of ["ticket.nicknameSavedText", "ticket.nicknameUpdatedText"] as const) {
+    if (!readPath(value, path).includes("{game_nickname}")) {
+      context.addIssue({
+        code: "custom",
+        path: path.split("."),
+        message: "Inclua {game_nickname} para a equipe visualizar o nick informado.",
       });
     }
   }
@@ -260,7 +281,14 @@ function validateRenderedLimits(
     validateCardTotal([...errorBase, message], ["error", key], context);
   }
 
-  const ticketTotal = Object.values(value.ticket)
+  const ticketTotal = [
+    value.ticket.title,
+    value.ticket.description,
+    value.ticket.productLabel,
+    value.ticket.quantityLabel,
+    value.ticket.amountLabel,
+    value.ticket.orderLabel,
+  ]
     .reduce((sum, field) => sum + estimateExpandedLength(field), 0);
   if (ticketTotal > 5_400) {
     context.addIssue({

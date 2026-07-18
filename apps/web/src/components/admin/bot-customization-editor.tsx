@@ -300,6 +300,38 @@ const EDITOR_SECTIONS: EditorSection[] = [
           f("ticket", "orderLabel", "Rótulo do pedido", 120),
         ],
       },
+      {
+        title: "Coleta do nick no jogo",
+        description: "Orientação, botão e modal usados depois que o pagamento já foi confirmado.",
+        fields: [
+          f("ticket", "nicknamePromptText", "Orientação antes do botão", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "nicknameButtonLabel", "Botão para informar o nick", 80),
+          f("ticket", "nicknameModalTitle", "Título do modal de nick", 45),
+          f("ticket", "nicknameInputLabel", "Rótulo do campo de nick", 45),
+          f("ticket", "nicknameInputPlaceholder", "Placeholder do campo de nick", 100),
+        ],
+      },
+      {
+        title: "Respostas do nick",
+        description: "Mensagens enviadas ao salvar, atualizar ou recusar o nick informado.",
+        fields: [
+          f("ticket", "nicknameSavedText", "Confirmação do nick recebido", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "nicknameUpdatedText", "Confirmação do nick atualizado", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "nicknameInvalidText", "Nick inválido", 1_000, { multiline: true }),
+          f("ticket", "nicknameUnauthorizedText", "Usuário não autorizado", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "nicknameUnavailableText", "Pedido indisponível", 1_000, {
+            multiline: true,
+          }),
+        ],
+      },
     ],
   },
 ];

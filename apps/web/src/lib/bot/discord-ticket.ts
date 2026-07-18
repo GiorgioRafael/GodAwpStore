@@ -8,6 +8,7 @@ import {
   type BotMessageCustomization,
 } from "./message-customization";
 import { loadBotMessageCustomization } from "./message-customization-server";
+import { gameNicknameInteractionId } from "./discord-game-nickname";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -237,9 +238,10 @@ export function paidTicketWelcomeMessage(
   const productName = sanitizeDiscordText(input.productName, 256);
   const orderMarker = welcomeMessageMarker(input.orderId);
   const message = customization.ticket;
+  const nicknamePrompt = interpolateBotMessageLimited(message.nicknamePromptText, {}, 1_000);
 
   return {
-    content: `<@${input.buyerDiscordId}>`,
+    content: [`<@${input.buyerDiscordId}>`, nicknamePrompt].filter(Boolean).join("\n"),
     allowed_mentions: {
       parse: [],
       users: [input.buyerDiscordId],
@@ -277,6 +279,19 @@ export function paidTicketWelcomeMessage(
           },
         ],
         footer: { text: orderMarker },
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 1,
+            custom_id: gameNicknameInteractionId(input.orderId),
+            label: interpolateBotMessageLimited(message.nicknameButtonLabel, {}, 80),
+          },
+        ],
       },
     ],
   };

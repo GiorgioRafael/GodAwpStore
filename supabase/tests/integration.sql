@@ -616,3 +616,4 @@ rollback;
 select 'GodAwpStore transactional integration checks passed' as result;
 
 \ir payment_workflow_verification.sql
+\ir order_game_nickname_verification.sql

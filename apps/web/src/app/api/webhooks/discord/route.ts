@@ -7,6 +7,11 @@ import {
   getDiscordBot,
   parseNativeDiscordQuantityInteraction,
 } from "@/lib/bot/discord-bot";
+import {
+  completeDiscordGameNicknameSubmission,
+  createNativeDiscordGameNicknameResponse,
+  parseNativeDiscordGameNicknameInteraction,
+} from "@/lib/bot/discord-game-nickname";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import { loadBotMessageCustomization } from "@/lib/bot/message-customization-server";
 
@@ -18,7 +23,7 @@ const MAXIMUM_DISCORD_INTERACTION_BYTES = 64 * 1024;
 
 export async function POST(request: Request) {
   try {
-    const native = await readNativeQuantityInteraction(request);
+    const native = await readNativeDiscordInteraction(request);
     if (native) {
       const signature = request.headers.get("x-signature-ed25519");
       const timestamp = request.headers.get("x-signature-timestamp");
@@ -31,6 +36,30 @@ export async function POST(request: Request) {
         return new Response("Invalid signature", { status: 401 });
       }
 
+      if (native.scope === "game_nickname") {
+        if (native.interaction.kind === "open") {
+          return Response.json(
+            await createNativeDiscordGameNicknameResponse(
+              native.interaction.orderId,
+              loadBotMessageCustomization(),
+            ),
+          );
+        }
+
+        after(async () => {
+          try {
+            await completeDiscordGameNicknameSubmission(
+              native.raw,
+              await loadBotMessageCustomization(),
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-game-nickname] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
       if (native.interaction.kind === "open") {
         const customization = loadBotMessageCustomization();
         return Response.json(
@@ -40,9 +69,7 @@ export async function POST(request: Request) {
             customization,
           ),
         );
-      }
-
-      if (native.interaction.kind === "submit") {
+      } else {
         after(async () => {
           try {
             const customization = await loadBotMessageCustomization();
@@ -77,7 +104,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function readNativeQuantityInteraction(request: Request) {
+async function readNativeDiscordInteraction(request: Request) {
   const body = new Uint8Array(await request.clone().arrayBuffer());
   if (body.byteLength > MAXIMUM_DISCORD_INTERACTION_BYTES) return null;
 
@@ -87,6 +114,13 @@ async function readNativeQuantityInteraction(request: Request) {
   } catch {
     return null;
   }
-  const interaction = parseNativeDiscordQuantityInteraction(raw);
-  return interaction ? { body, raw, interaction } : null;
+  const gameNickname = parseNativeDiscordGameNicknameInteraction(raw);
+  if (gameNickname) {
+    return { body, raw, scope: "game_nickname" as const, interaction: gameNickname };
+  }
+
+  const quantity = parseNativeDiscordQuantityInteraction(raw);
+  return quantity
+    ? { body, raw, scope: "quantity" as const, interaction: quantity }
+    : null;
 }

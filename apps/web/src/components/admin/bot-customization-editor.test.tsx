@@ -59,4 +59,47 @@ describe("editor de mensagens do bot", () => {
     expect(productTitle).toHaveValue(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.product.title);
     expect(screen.getByText("Padrões restaurados localmente")).toBeInTheDocument();
   });
+
+  it("edita e visualiza o fluxo de coleta do nick no ticket", () => {
+    const { container } = render(
+      <BotCustomizationEditor
+        initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        updatedAt={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Ticket" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Orientação antes do botão" }), {
+      target: { value: "Envie seu nick agora." },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Botão para informar o nick" }), {
+      target: { value: "Cadastrar nick" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Título do modal de nick" }), {
+      target: { value: "Seu nick" },
+    });
+
+    const savedText = screen.getByRole("textbox", { name: "Confirmação do nick recebido" });
+    fireEvent.change(savedText, { target: { value: "Recebido:" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Adicionar {game_nickname} em Confirmação do nick recebido",
+      }),
+    );
+
+    expect(savedText).toHaveValue("Recebido: {game_nickname}");
+    expect(screen.getByText("Envie seu nick agora.", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Cadastrar nick")).toBeInTheDocument();
+    expect(screen.getByText("Seu nick")).toBeInTheDocument();
+    expect(screen.getByText("Recebido: Speedy_BR", { selector: "p" })).toBeInTheDocument();
+
+    const serialized = container.querySelector<HTMLInputElement>('input[name="config"]');
+    expect(JSON.parse(serialized?.value ?? "{}")).toMatchObject({
+      ticket: {
+        nicknamePromptText: "Envie seu nick agora.",
+        nicknameButtonLabel: "Cadastrar nick",
+        nicknameSavedText: "Recebido: {game_nickname}",
+      },
+    });
+  });
 });

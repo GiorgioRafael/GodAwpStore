@@ -213,6 +213,8 @@ type OrderRow = {
   discord_ticket_channel_id: string | null;
   discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
   discord_ticket_claimed_at: string | null;
+  game_nickname: string | null;
+  game_nickname_submitted_at: string | null;
   paid_at: string | null;
   delivered_at: string | null;
   cancelled_at: string | null;
@@ -753,6 +755,21 @@ export type Database = {
       fail_discord_ticket: {
         Args: { p_order_id: string };
         Returns: { failed_order_id: string; was_failed: boolean }[];
+      };
+      submit_paid_order_game_nickname: {
+        Args: {
+          p_order_id: string;
+          p_buyer_discord_id: string;
+          p_discord_guild_id: string;
+          p_ticket_channel_id: string;
+          p_game_nickname: string;
+        };
+        Returns: {
+          order_id: string;
+          game_nickname: string;
+          was_created: boolean;
+          was_changed: boolean;
+        }[];
       };
       get_paid_order_summary: {
         Args: {

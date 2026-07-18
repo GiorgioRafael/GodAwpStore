@@ -22,6 +22,18 @@ describe("personalização das mensagens do bot", () => {
       DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront.subtitle,
     );
     expect(normalized.ticket).toEqual(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket);
+
+    const legacyTicket = normalizeBotMessageCustomization({
+      version: 1,
+      ticket: { title: "Pagamento aprovado" },
+    });
+    expect(legacyTicket.ticket.title).toBe("Pagamento aprovado");
+    expect(legacyTicket.ticket.nicknameButtonLabel).toBe(
+      DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.nicknameButtonLabel,
+    );
+    expect(legacyTicket.ticket.nicknameSavedText).toBe(
+      DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.nicknameSavedText,
+    );
   });
 
   it("interpola apenas tokens entregues e mantém desconhecidos literais", () => {
@@ -114,5 +126,57 @@ describe("personalização das mensagens do bot", () => {
     });
     expect(parsed.storefront.welcome).toContain("@everyone");
     expect(parsed.storefront.welcome).toContain("<@&123456789012345678>");
+  });
+
+  it("valida os textos e tokens do fluxo de nick no ticket", () => {
+    const parsed = botMessageCustomizationSchema.safeParse({
+      ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticket: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+        nicknameSavedText: "Nick **{game_nickname}** recebido.",
+        nicknameUpdatedText: "Nick alterado para **{game_nickname}**.",
+      },
+    });
+    expect(parsed.success).toBe(true);
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          nicknameButtonLabel: "x".repeat(81),
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          nicknameInvalidText: "Nick inválido: {game_nickname}",
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          nicknameSavedText: "Nick {unknown_token}",
+        },
+      }).success,
+    ).toBe(false);
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          nicknameUpdatedText: "Nick atualizado com sucesso.",
+        },
+      }).success,
+    ).toBe(false);
   });
 });
