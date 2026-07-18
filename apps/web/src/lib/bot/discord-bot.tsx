@@ -3,8 +3,8 @@ import "server-only";
 
 import {
   cardToDiscordPayload,
-  createDiscordAdapter,
   decodeDiscordCustomId,
+  DiscordAdapter,
   DiscordContentFormat,
   DiscordInteractionResponseFlag,
 } from "@chat-adapter/discord";
@@ -21,6 +21,7 @@ import {
   SelectOption,
   toCardElement,
   type ChatElement,
+  type AdapterPostableMessage,
 } from "chat";
 
 import { getSiteUrl } from "@/lib/env";
@@ -48,8 +49,10 @@ import type {
   BotCatalogProduct,
   BotCatalogSubstore,
   BotCommerceRepository,
+  CartPurchaseResult,
   PurchaseResult,
 } from "./types";
+import { MAXIMUM_CART_ITEMS } from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_SELECT_OPTION_LIMIT = 25;
@@ -71,7 +74,7 @@ export function getDiscordBot() {
 
 function createBot() {
   const service = new BotCommerceService(new SupabaseBotCommerceRepository());
-  const discord = createDiscordAdapter({
+  const discord = new GWStoreDiscordAdapter({
     contentFormat: DiscordContentFormat.ComponentsV2,
     interactionFlags: ({ command }) =>
       command === "/loja" || command === "/ajuda"
@@ -150,6 +153,17 @@ function createBot() {
   });
 
   return bot;
+}
+
+class GWStoreDiscordAdapter extends DiscordAdapter {
+  protected override buildMessagePayload(
+    message: AdapterPostableMessage,
+    options?: { clearContentForCard?: boolean },
+  ) {
+    const result = super.buildMessagePayload(message, options);
+    configureDiscordMultiProductSelect(result.payload);
+    return result;
+  }
 }
 
 export type NativeDiscordQuantityInteraction =
@@ -349,7 +363,7 @@ export function catalogCards(
       {message.prompt ? <CardText>{message.prompt}</CardText> : null}
       <Actions>
         <Select
-          id="select_product"
+          id="select_products"
           label={interpolateBotMessageLimited(message.selectLabel, {}, 100)}
           placeholder={interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)}
         >
@@ -502,9 +516,11 @@ export async function postDiscordEphemeral(
   const interaction = readDiscordFollowupContext(raw);
   const normalizedCard = toCardElement(card);
   if (!normalizedCard) throw new Error("Resposta privada Discord inválida.");
-  const payload = cardToDiscordPayload(normalizedCard, {
-    contentFormat: DiscordContentFormat.ComponentsV2,
-  });
+  const payload = configureDiscordMultiProductSelect(
+    cardToDiscordPayload(normalizedCard, {
+      contentFormat: DiscordContentFormat.ComponentsV2,
+    }),
+  );
   const apiUrl = (process.env.DISCORD_API_URL?.trim() || "https://discord.com/api/v10").replace(/\/$/, "");
   const response = await fetcher(
     `${apiUrl}/webhooks/${interaction.applicationId}/${interaction.token}`,
@@ -662,6 +678,106 @@ export function purchaseResultCard(
   return errorCard(errorMessage, customization);
 }
 
+export function cartPurchaseResultCard(
+  result: CartPurchaseResult,
+  checkoutUrl: string | null = null,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
+  const message = customization.order;
+  if (result.kind === "created" || result.kind === "duplicate") {
+    return (
+      <Card
+        title={
+          result.kind === "created"
+            ? interpolateBotMessageLimited(message.createdTitle, {}, 256)
+            : interpolateBotMessageLimited(message.duplicateTitle, {}, 256)
+        }
+        subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+      >
+        {message.productLabel ? <CardText>{message.productLabel}</CardText> : null}
+        {result.items.map((item) => (
+          <CardText key={item.productId}>
+            {productEmoji(item.productName)} **{item.productName}** • 🔢 **{item.quantity} unidade{item.quantity === 1 ? "" : "s"}** • {formatBrl(item.totalPriceCents)}
+          </CardText>
+        ))}
+        {result.discountReason === "server_booster" && message.subtotalLabel ? (
+          <CardText>{message.subtotalLabel} {formatBrl(result.subtotalPriceCents)}</CardText>
+        ) : null}
+        {result.discountReason === "server_booster" && message.discountLabel ? (
+          <CardText>
+            {interpolateBotMessage(message.discountLabel, {
+              discount_percent: formatPercentage(result.discountBps),
+            })} -{formatBrl(result.discountAmountCents)}
+          </CardText>
+        ) : null}
+        {message.totalLabel ? (
+          <CardText>{message.totalLabel} **{formatBrl(result.totalPriceCents)}**</CardText>
+        ) : null}
+        {message.orderIdLabel ? (
+          <CardText>{message.orderIdLabel} `{result.orderId}`</CardText>
+        ) : null}
+        <Divider />
+        {message.statusText ? <CardText>{message.statusText}</CardText> : null}
+        <CardText>{UNPAID_ORDER_EXPIRATION_NOTICE}</CardText>
+        {message.paymentPrompt ? <CardText>{message.paymentPrompt}</CardText> : null}
+        {checkoutUrl ? (
+          <Actions>
+            <LinkButton url={checkoutUrl}>
+              {interpolateBotMessageLimited(message.paymentButtonLabel, {}, 80)}
+            </LinkButton>
+          </Actions>
+        ) : null}
+        <Divider />
+        {message.ticketText ? <CardText>{message.ticketText}</CardText> : null}
+        {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
+        {message.protectedText ? <CardText>{message.protectedText}</CardText> : null}
+      </Card>
+    );
+  }
+
+  if (result.kind === "total_below_minimum") {
+    return errorCard(
+      `O total do carrinho precisa ser de pelo menos **${formatBrl(result.minimumTotalCents)}** para pagar via Pix.`,
+      customization,
+    );
+  }
+  if (result.kind === "insufficient_stock") {
+    return errorCard(
+      `Estoque insuficiente para **${result.productName}**. Disponível agora: **${result.availableStock}**.`,
+      customization,
+    );
+  }
+
+  const errorMessage = {
+    invalid_request: customization.error.invalidRequest,
+    invalid_quantity: interpolateBotMessage(customization.error.invalidQuantity, {
+      maximum_quantity: MAXIMUM_ORDER_QUANTITY,
+    }),
+    guild_not_authorized: customization.error.guildNotAuthorized,
+    product_unavailable: customization.error.productUnavailable,
+    out_of_stock: customization.error.outOfStock,
+    interaction_conflict: customization.error.interactionConflict,
+  }[result.kind];
+  return errorCard(errorMessage, customization);
+}
+
+export function configureDiscordMultiProductSelect<T>(payload: T): T {
+  visitDiscordComponents(payload, (component) => {
+    if (
+      component.type !== 3 ||
+      typeof component.custom_id !== "string" ||
+      decodeDiscordCustomId(component.custom_id).actionId !== "select_products" ||
+      !Array.isArray(component.options)
+    ) {
+      return;
+    }
+
+    component.min_values = 1;
+    component.max_values = Math.min(MAXIMUM_CART_ITEMS, component.options.length);
+  });
+  return payload;
+}
+
 function errorCard(
   message: string,
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
@@ -773,6 +889,19 @@ function readQuantityModalValue(raw: unknown) {
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function visitDiscordComponents(
+  value: unknown,
+  visit: (component: Record<string, unknown>) => void,
+) {
+  if (Array.isArray(value)) {
+    for (const item of value) visitDiscordComponents(item, visit);
+    return;
+  }
+  if (!isObject(value)) return;
+  if (typeof value.type === "number") visit(value);
+  for (const child of Object.values(value)) visitDiscordComponents(child, visit);
 }
 
 function logBotError(operation: string, error: unknown) {

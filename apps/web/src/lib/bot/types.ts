@@ -1,5 +1,7 @@
 import type { BoosterDiscountConfiguration } from "./booster-discount";
 
+export const MAXIMUM_CART_ITEMS = 3;
+
 export type BotCatalogProduct = {
   id: string;
   name: string;
@@ -63,6 +65,41 @@ export type OrderCreation = {
   outOfStock: boolean;
 };
 
+export type CartItemInput = {
+  productId: string;
+  quantity: number;
+};
+
+export type PurchaseItem = {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPriceCents: number;
+  subtotalPriceCents: number;
+  totalPriceCents: number;
+  discountAmountCents: number;
+};
+
+export type ExistingPurchase = {
+  id: string;
+  buyerDiscordId: string;
+  guildId: string;
+  items: PurchaseItem[];
+  subtotalPriceCents: number;
+  salePriceCents: number;
+  discountBps: number;
+  discountAmountCents: number;
+  discountReason: "server_booster" | null;
+  status: string;
+};
+
+export type PurchaseCreation = {
+  id: string | null;
+  status: "awaiting_payment";
+  created: boolean;
+  outOfStock: boolean;
+};
+
 export interface BotCommerceRepository {
   listCatalog(): Promise<BotCatalogGame[]>;
   findOrderByInteraction(interactionId: string): Promise<ExistingOrder | null>;
@@ -84,6 +121,19 @@ export interface BotCommerceRepository {
     discountReason: "server_booster" | null;
     commissionBps: number;
   }): Promise<OrderCreation>;
+  findPurchaseByInteraction(interactionId: string): Promise<ExistingPurchase | null>;
+  findPurchasableProducts(productIds: string[]): Promise<PurchasableProduct[]>;
+  countAvailableStocks(productIds: string[]): Promise<Map<string, number>>;
+  createAwaitingPaymentPurchase(input: {
+    interactionId: string;
+    guildId: string;
+    whitelistEntryId: string | null;
+    buyerDiscordId: string;
+    items: CartItemInput[];
+    discountBps: number;
+    discountReason: "server_booster" | null;
+    commissionBps: number;
+  }): Promise<PurchaseCreation>;
 }
 
 export type PurchaseResult =
@@ -105,6 +155,33 @@ export type PurchaseResult =
       minimumTotalCents: number;
     }
   | { kind: "insufficient_stock"; availableStock: number }
+  | {
+      kind:
+        | "invalid_request"
+        | "invalid_quantity"
+        | "guild_not_authorized"
+        | "product_unavailable"
+        | "out_of_stock"
+        | "interaction_conflict";
+    };
+
+export type CartPurchaseResult =
+  | {
+      kind: "created" | "duplicate";
+      orderId: string;
+      items: PurchaseItem[];
+      subtotalPriceCents: number;
+      totalPriceCents: number;
+      discountBps: number;
+      discountAmountCents: number;
+      discountReason: "server_booster" | null;
+    }
+  | { kind: "total_below_minimum"; minimumTotalCents: number }
+  | {
+      kind: "insufficient_stock";
+      productName: string;
+      availableStock: number;
+    }
   | {
       kind:
         | "invalid_request"

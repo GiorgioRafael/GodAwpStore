@@ -18,6 +18,13 @@ const baseOrder = {
   inventory_unit_id: null,
   buyer_discord_id: "911402638975844354",
   quantity: 2,
+  items: [
+    {
+      productId: "71000000-0000-4000-8000-000000000003",
+      productName: "Super Watering",
+      quantity: 2,
+    },
+  ],
   status: "paid" as const,
   currency_code: "BRL",
   sale_price_cents: 2_000,
@@ -100,6 +107,7 @@ describe("aba Pedidos", () => {
     expect(within(table).getByText("paid")).toHaveClass("text-[#94e5b2]");
     expect(within(table).getByText("awaiting_payment")).toHaveClass("text-[#f3c878]");
     expect(within(table).getByText(/Pago após o prazo/)).toHaveClass("text-danger");
+    expect(within(table).getAllByText("Super Watering")).toHaveLength(3);
   });
 
   it("mostra o estado vazio para um período sem pedidos", async () => {

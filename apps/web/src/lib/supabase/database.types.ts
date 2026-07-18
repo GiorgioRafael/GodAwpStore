@@ -225,6 +225,18 @@ type OrderRow = {
   updated_at: string;
 };
 
+type OrderItemRow = {
+  order_id: string;
+  position: number;
+  product_id: string;
+  quantity: number;
+  unit_price_cents: number;
+  subtotal_price_cents: number;
+  sale_price_cents: number;
+  discount_amount_cents: number;
+  created_at: string;
+};
+
 type OrderInventoryUnitRow = {
   order_id: string;
   inventory_unit_id: string;
@@ -468,6 +480,29 @@ export type Database = {
             "orders_inventory_unit_id_fkey",
             ["inventory_unit_id"],
             "inventory_units",
+            ["id"]
+          >,
+        ];
+      };
+      order_items: {
+        Row: OrderItemRow;
+        Insert: InsertRow<
+          OrderItemRow,
+          | "order_id"
+          | "position"
+          | "product_id"
+          | "quantity"
+          | "unit_price_cents"
+          | "subtotal_price_cents"
+          | "sale_price_cents"
+        >;
+        Update: UpdateRow<OrderItemRow>;
+        Relationships: [
+          Relationship<"order_items_order_id_fkey", ["order_id"], "orders", ["id"]>,
+          Relationship<
+            "order_items_product_id_fkey",
+            ["product_id"],
+            "products",
             ["id"]
           >,
         ];
@@ -810,6 +845,23 @@ export type Database = {
         Returns: {
           created_order_id: string | null;
           resulting_status: Database["public"]["Enums"]["order_status"];
+          was_created: boolean;
+          out_of_stock: boolean;
+        }[];
+      };
+      create_bot_cart_with_reservation: {
+        Args: {
+          p_interaction_id: string;
+          p_guild_id: string;
+          p_whitelist_entry_id: string;
+          p_buyer_discord_id: string;
+          p_items: Json;
+          p_discount_bps: number;
+          p_discount_reason: string | null;
+          p_commission_bps: number;
+        };
+        Returns: {
+          checkout_order_id: string | null;
           was_created: boolean;
           out_of_stock: boolean;
         }[];

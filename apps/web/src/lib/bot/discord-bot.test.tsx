@@ -6,6 +6,7 @@ import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 vi.mock("server-only", () => ({}));
 
 let catalogCards: typeof import("./discord-bot").catalogCards;
+let configureDiscordMultiProductSelect: typeof import("./discord-bot").configureDiscordMultiProductSelect;
 let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
@@ -17,6 +18,7 @@ let updateDiscordEphemeralResponse: typeof import("./discord-bot").updateDiscord
 beforeAll(async () => {
   ({
     catalogCards,
+    configureDiscordMultiProductSelect,
     createNativeDiscordQuantityResponse,
     getDiscordBot,
     postDiscordEphemeral,
@@ -30,6 +32,30 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Discord catalog cards", () => {
+  it("configura o seletor para até três produtos sem alterar outros componentes", () => {
+    const payload = {
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 3,
+              custom_id: "select_products",
+              max_values: 1,
+              options: [{ value: "a" }, { value: "b" }, { value: "c" }, { value: "d" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    configureDiscordMultiProductSelect(payload);
+    expect(payload.components[0]?.components[0]).toMatchObject({
+      min_values: 1,
+      max_values: 3,
+    });
+  });
+
   it("renderiza todos os produtos em uma lista suspensa sem dados secretos", () => {
     const [card] = catalogCards([
       {
@@ -68,7 +94,7 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain("🌙🌸 Moon Blossom");
     expect(serialized).toContain("🔒");
     expect(serialized).toContain("💠");
-    expect(serialized).toContain('"id":"select_product"');
+    expect(serialized).toContain('"id":"select_products"');
     expect(serialized).toContain('"type":"select"');
     expect(serialized).not.toContain('"id":"buy"');
     expect(serialized).not.toMatch(/encrypted_payload|auth_tag|fingerprint/i);
@@ -400,7 +426,8 @@ describe("Discord catalog cards", () => {
     };
     expect(payload.flags & 64).toBe(64);
     expect(payload.allowed_mentions).toEqual({ parse: [] });
-    expect(JSON.stringify(payload.components)).toContain("select_product");
+    expect(JSON.stringify(payload.components)).toContain("select_products");
+    expect(JSON.stringify(payload.components)).toContain('"max_values":1');
   });
 
   it("rejeita follow-up que não pertence à aplicação configurada", async () => {

@@ -147,9 +147,10 @@ Para desenvolvimento, preencha `DISCORD_GUILD_ID` antes do comando; o registro
 será limitado ao servidor e aparecerá imediatamente. Sem essa variável, o
 registro é global e pode levar algum tempo para se propagar.
 
-`/loja` consulta catálogo, preços e a quantidade agregada disponível no Supabase. O botão
-**Comprar** revalida produto e estoque no servidor, cria um pedido
-`awaiting_payment` e devolve o link oficial do checkout LivePix. Repetições do mesmo clique usam
+`/loja` consulta catálogo, preços e a quantidade agregada disponível no Supabase. O usuário
+pode selecionar até três produtos e informar a quantidade de cada um. O bot revalida todos os
+itens e estoques no servidor, cria um único pedido `awaiting_payment` e devolve um único link
+oficial do checkout LivePix. Repetições do mesmo envio usam
 `orders.payment_reference = discord:<interaction-id>` e o índice único existente,
 evitando pedidos duplicados. Nenhuma unidade é revelada ou entregue pelo bot.
 

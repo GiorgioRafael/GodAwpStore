@@ -33,6 +33,14 @@ export type PaidOrderSummary = {
   totalReceivedCents: number;
 };
 
+export type AdminOrder = Tables<"orders"> & {
+  items: Array<{
+    productId: string;
+    productName: string;
+    quantity: number;
+  }>;
+};
+
 export type GameRow = Pick<
   Tables<"games">,
   | "id"
@@ -223,7 +231,7 @@ export async function getPaidOrderSummary(
 export async function listOrders(
   period: OrdersPeriodRange,
   limit = 500,
-): Promise<Tables<"orders">[]> {
+): Promise<AdminOrder[]> {
   const supabase = await client();
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
   let query = supabase.from("orders").select("*");
@@ -235,7 +243,31 @@ export async function listOrders(
     .order("created_at", { ascending: false })
     .limit(safeLimit);
   assertQuerySucceeded(error, "carregar os pedidos");
-  return data ?? [];
+  const orders = data ?? [];
+  if (orders.length === 0) return [];
+
+  const { data: itemRows, error: itemError } = await supabase
+    .from("order_items")
+    .select("order_id,position,product_id,quantity,products(name)")
+    .in("order_id", orders.map((order) => order.id))
+    .order("position");
+  assertQuerySucceeded(itemError, "carregar os itens dos pedidos");
+
+  const itemsByOrder = new Map<string, AdminOrder["items"]>();
+  for (const item of itemRows ?? []) {
+    const items = itemsByOrder.get(item.order_id) ?? [];
+    items.push({
+      productId: item.product_id,
+      productName: item.products?.name ?? "Produto",
+      quantity: toSafeNumber(item.quantity),
+    });
+    itemsByOrder.set(item.order_id, items);
+  }
+
+  return orders.map((order) => ({
+    ...order,
+    items: itemsByOrder.get(order.id) ?? [],
+  }));
 }
 
 export async function listGames(): Promise<GameRow[]> {
