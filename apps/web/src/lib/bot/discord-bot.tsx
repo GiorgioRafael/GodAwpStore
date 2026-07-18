@@ -59,6 +59,8 @@ const DISCORD_MODAL_SUBMIT = 5;
 const DISCORD_DEFERRED_CHANNEL_MESSAGE = 5;
 const DISCORD_MODAL_RESPONSE = 9;
 const QUANTITY_MODAL_PREFIX = "gwstore_quantity:";
+const UNPAID_ORDER_EXPIRATION_NOTICE =
+  "⏰ **Atenção:** pedidos não pagos são cancelados automaticamente após **2 horas**, e o estoque reservado é restabelecido.";
 
 let botSingleton: ReturnType<typeof createBot> | undefined;
 
@@ -619,6 +621,7 @@ export function purchaseResultCard(
         ) : null}
         <Divider />
         {message.statusText ? <CardText>{message.statusText}</CardText> : null}
+        <CardText>{UNPAID_ORDER_EXPIRATION_NOTICE}</CardText>
         {message.paymentPrompt ? <CardText>{message.paymentPrompt}</CardText> : null}
         {checkoutUrl ? (
           <Actions>

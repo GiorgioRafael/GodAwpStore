@@ -10,6 +10,7 @@ export type PayableOrder = {
   status: string;
   amountCents: number;
   currency: string;
+  paymentExpiresAt: string | null;
 };
 
 export type StoredCheckout = {
@@ -77,17 +78,22 @@ export class LivePixPaymentService {
   constructor(
     private readonly repository: LivePixPaymentRepository,
     private readonly client: PaymentClient,
+    private readonly now: () => number = Date.now,
   ) {}
 
   async createCheckout(orderId: string, siteUrl: string): Promise<StoredCheckout> {
     assertUuid(orderId);
-    const existing = await this.repository.findCheckoutByOrder(orderId);
-    if (existing) return existing;
-
     const order = await this.repository.findPayableOrder(orderId);
-    if (!order || order.status !== "awaiting_payment" || order.currency !== "BRL") {
+    if (
+      !order ||
+      order.status !== "awaiting_payment" ||
+      order.currency !== "BRL" ||
+      !isFutureInstant(order.paymentExpiresAt, this.now())
+    ) {
       throw new Error("O pedido não está disponível para pagamento.");
     }
+    const existing = await this.repository.findCheckoutByOrder(orderId);
+    if (existing) return existing;
     if (
       !Number.isSafeInteger(order.amountCents) ||
       order.amountCents < LIVEPIX_MINIMUM_BRL_CENTS
@@ -179,6 +185,12 @@ async function reconciliationDigest(payment: LivePixPayment) {
 
 function assertUuid(value: string) {
   if (!UUID_PATTERN.test(value)) throw new Error("ID do pedido inválido.");
+}
+
+function isFutureInstant(value: string | null, now: number) {
+  if (!value) return false;
+  const instant = Date.parse(value);
+  return Number.isFinite(instant) && instant > now;
 }
 
 function readOrigin(value: string) {

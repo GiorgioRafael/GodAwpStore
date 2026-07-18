@@ -34,6 +34,9 @@ const baseOrder = {
   payment_status: "paid" as const,
   payment_expires_at: null,
   payment_provider_created_at: "2026-07-17T12:00:00.000Z",
+  stock_released_at: null,
+  stock_release_reason: null,
+  late_payment_detected_at: null,
   discord_ticket_channel_id: null,
   discord_ticket_status: "not_started" as const,
   discord_ticket_claimed_at: null,
@@ -59,6 +62,15 @@ describe("aba Pedidos", () => {
         payment_status: "pending",
         paid_at: null,
         sale_price_cents: 9_900,
+      },
+      {
+        ...baseOrder,
+        id: "71000000-0000-4000-8000-000000000005",
+        status: "cancelled",
+        payment_status: "paid",
+        stock_released_at: "2026-07-17T14:00:00.000Z",
+        stock_release_reason: "payment_timeout",
+        late_payment_detected_at: "2026-07-17T14:05:00.000Z",
       },
     ]);
 
@@ -87,6 +99,7 @@ describe("aba Pedidos", () => {
     const table = screen.getByRole("table");
     expect(within(table).getByText("paid")).toHaveClass("text-[#94e5b2]");
     expect(within(table).getByText("awaiting_payment")).toHaveClass("text-[#f3c878]");
+    expect(within(table).getByText(/Pago após o prazo/)).toHaveClass("text-danger");
   });
 
   it("mostra o estado vazio para um período sem pedidos", async () => {

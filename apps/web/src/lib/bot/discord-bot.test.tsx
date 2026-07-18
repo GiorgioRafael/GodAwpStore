@@ -1,6 +1,7 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { toCardElement } from "chat";
+import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 
 vi.mock("server-only", () => ({}));
 
@@ -235,6 +236,35 @@ describe("Discord catalog cards", () => {
     expect(String(request?.body)).toContain("🐉🔥");
     expect(String(request?.body)).toContain("3 unidades");
     expect(String(request?.body)).toContain("R$ 1,20");
+    expect(String(request?.body)).toContain("cancelados automaticamente após **2 horas**");
+    expect(String(request?.body)).toContain("estoque reservado é restabelecido");
+  });
+
+  it("mantém o aviso de expiração mesmo quando os textos editáveis estão vazios", () => {
+    const customization = structuredClone(DEFAULT_BOT_MESSAGE_CUSTOMIZATION);
+    customization.order.statusText = "";
+    customization.order.paymentPrompt = "";
+
+    const card = purchaseResultCard(
+      {
+        kind: "duplicate",
+        orderId: "cddc0f6c-d177-4435-9bf7-476380f0654c",
+        productName: "Dragon's Breath",
+        quantity: 3,
+        unitPriceCents: 40,
+        subtotalPriceCents: 120,
+        totalPriceCents: 120,
+        discountBps: 0,
+        discountAmountCents: 0,
+        discountReason: null,
+      },
+      null,
+      customization,
+    );
+
+    const serialized = JSON.stringify(toCardElement(card));
+    expect(serialized).toContain("cancelados automaticamente após **2 horas**");
+    expect(serialized).toContain("estoque reservado é restabelecido");
   });
 
   it("mostra subtotal e desconto de booster no checkout privado", async () => {

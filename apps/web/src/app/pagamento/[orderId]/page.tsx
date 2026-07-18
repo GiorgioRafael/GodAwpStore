@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  paymentReturnCopy,
+  resolvePaymentReturnStatus,
+} from "@/lib/livepix/payment-return";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = {
@@ -19,7 +23,7 @@ export default async function PaymentReturnPage({
 }) {
   const { orderId } = await params;
   const status = await readPaymentStatus(orderId);
-  const content = paymentCopy(status);
+  const content = paymentReturnCopy(status);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12 text-foreground">
@@ -44,43 +48,9 @@ async function readPaymentStatus(orderId: string) {
 
   const { data, error } = await client
     .from("orders")
-    .select("status,payment_status,discord_ticket_status")
+    .select("status,payment_status,discord_ticket_status,late_payment_detected_at")
     .eq("id", orderId)
     .maybeSingle();
   if (error || !data) return "unknown" as const;
-  if (data.discord_ticket_status === "open") return "ticket_open" as const;
-  if (["paid", "processing", "delivered"].includes(data.status)) return "paid" as const;
-  if (data.payment_status === "failed" || data.status === "failed") return "failed" as const;
-  return "pending" as const;
-}
-
-function paymentCopy(status: Awaited<ReturnType<typeof readPaymentStatus>>) {
-  if (status === "ticket_open") {
-    return {
-      title: "Pagamento confirmado",
-      description: "Seu ticket privado já foi criado no Discord. Volte ao servidor para receber o atendimento.",
-    };
-  }
-  if (status === "paid") {
-    return {
-      title: "Pagamento confirmado",
-      description: "Recebemos a confirmação e estamos abrindo seu ticket privado no Discord.",
-    };
-  }
-  if (status === "failed") {
-    return {
-      title: "Não foi possível confirmar",
-      description: "A cobrança não foi confirmada. Volte ao Discord e tente novamente ou fale com um administrador.",
-    };
-  }
-  if (status === "pending") {
-    return {
-      title: "Aguardando confirmação",
-      description: "Se você concluiu o Pix, aguarde alguns instantes enquanto a LivePix confirma o pagamento.",
-    };
-  }
-  return {
-    title: "Status indisponível",
-    description: "Não encontramos esse retorno de pagamento. Volte ao Discord e confira o pedido.",
-  };
+  return resolvePaymentReturnStatus(data);
 }

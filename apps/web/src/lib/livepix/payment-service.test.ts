@@ -14,7 +14,13 @@ function repository(overrides: Partial<LivePixPaymentRepository> = {}): LivePixP
       providerReference: "provider-ref",
       checkoutUrl: "https://checkout.livepix.gg/provider-ref",
     })),
-    findPayableOrder: vi.fn(async () => ({ id: orderId, status: "awaiting_payment", amountCents: 500, currency: "BRL" })),
+    findPayableOrder: vi.fn(async () => ({
+      id: orderId,
+      status: "awaiting_payment",
+      amountCents: 500,
+      currency: "BRL",
+      paymentExpiresAt: "2099-07-16T15:00:00.000Z",
+    })),
     claimCheckout: vi.fn(async () => ({ claimed: true, checkout: null })),
     registerCheckout: vi.fn(async (input) => ({
       orderId: input.orderId,
@@ -95,6 +101,36 @@ describe("LivePixPaymentService", () => {
     const service = new LivePixPaymentService(repo, api);
 
     await expect(service.createCheckout(orderId, "https://gwstore.vercel.app")).resolves.toEqual(existing);
+    expect(api.createPayment).not.toHaveBeenCalled();
+  });
+
+  it("não reutiliza checkout depois do prazo de duas horas", async () => {
+    const existing = {
+      orderId,
+      providerReference: "provider-ref",
+      checkoutUrl: "https://checkout.livepix.gg/provider-ref",
+    };
+    const repo = repository({
+      findCheckoutByOrder: vi.fn(async () => existing),
+      findPayableOrder: vi.fn(async () => ({
+        id: orderId,
+        status: "awaiting_payment",
+        amountCents: 500,
+        currency: "BRL",
+        paymentExpiresAt: "2026-07-16T15:00:00.000Z",
+      })),
+    });
+    const api = client();
+    const service = new LivePixPaymentService(
+      repo,
+      api,
+      () => Date.parse("2026-07-16T15:00:00.000Z"),
+    );
+
+    await expect(service.createCheckout(orderId, "https://gwstore.vercel.app")).rejects.toThrow(
+      "não está disponível",
+    );
+    expect(repo.findCheckoutByOrder).not.toHaveBeenCalled();
     expect(api.createPayment).not.toHaveBeenCalled();
   });
 

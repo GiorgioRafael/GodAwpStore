@@ -151,7 +151,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               <td className="px-5 py-4">
                 <Badge tone={orderStatusTone(row.status)}>{row.status}</Badge>
               </td>
-              <td className="px-5 py-4 text-xs text-muted">{row.paid_at ? dateTime(row.paid_at) : "Pendente"}</td>
+              <td className="px-5 py-4 text-xs text-muted">
+                {row.late_payment_detected_at ? (
+                  <span className="font-medium text-danger">
+                    Pago após o prazo · {dateTime(row.paid_at ?? row.late_payment_detected_at)}
+                  </span>
+                ) : row.paid_at ? dateTime(row.paid_at) : "Pendente"}
+              </td>
               <td className="px-5 py-4 text-xs text-muted">{dateTime(row.created_at)}</td>
             </tr>
           ))

@@ -81,6 +81,25 @@ describe("LivePix webhook route", () => {
     expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
   });
 
+  it("aceita o webhook tardio sem abrir ticket para o pedido cancelado", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({
+      orderId,
+      orderStatus: "cancelled",
+      firstConfirmation: true,
+    });
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      received: true,
+      ticket: "not_applicable",
+    });
+    expect(mocks.claimTicket).not.toHaveBeenCalled();
+    expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
+  });
+
   it("libera o lease e pede retry quando o Discord falha", async () => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
     mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus: "paid" });

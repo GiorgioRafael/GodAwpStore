@@ -146,9 +146,7 @@ describe("Discord game nickname interactions", () => {
       wasChanged: false,
       wasCreated: false,
     });
-    const fetchMock = vi.fn(
-      async (_input: string | URL | Request, _init?: RequestInit) => Response.json({}),
-    );
+    const fetchMock = vi.fn(async () => Response.json({}));
     const fetcher = fetchMock as unknown as typeof fetch;
 
     await completeDiscordGameNicknameSubmission(
@@ -178,9 +176,7 @@ describe("Discord game nickname interactions", () => {
       wasChanged: true,
       wasCreated: true,
     });
-    const fetchMock = vi.fn(
-      async (_input: string | URL | Request, _init?: RequestInit) => Response.json({}),
-    );
+    const fetchMock = vi.fn(async () => Response.json({}));
     fetchMock
       .mockResolvedValueOnce(Response.json({}, { status: 503 }))
       .mockResolvedValueOnce(Response.json({ id: "523456789012345678" }));
@@ -237,9 +233,7 @@ describe("Discord game nickname interactions", () => {
       wasChanged: false,
       wasCreated: false,
     });
-    const fetchMock = vi.fn(
-      async (_input: string | URL | Request, _init?: RequestInit) => Response.json({}),
-    );
+    const fetchMock = vi.fn(async () => Response.json({}));
     const fetcher = fetchMock as unknown as typeof fetch;
 
     await completeDiscordGameNicknameSubmission(
@@ -263,9 +257,7 @@ describe("Discord game nickname interactions", () => {
       wasChanged: false,
       wasCreated: false,
     });
-    const fetchMock = vi.fn(
-      async (_input: string | URL | Request, _init?: RequestInit) => Response.json({}),
-    );
+    const fetchMock = vi.fn(async () => Response.json({}));
     const duplicate = modalSubmission("FirstNick");
     duplicate.data.components.push({
       type: 1,

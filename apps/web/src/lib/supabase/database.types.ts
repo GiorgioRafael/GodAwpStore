@@ -210,6 +210,9 @@ type OrderRow = {
   payment_status: Database["public"]["Enums"]["payment_status"];
   payment_expires_at: string | null;
   payment_provider_created_at: string | null;
+  stock_released_at: string | null;
+  stock_release_reason: string | null;
+  late_payment_detected_at: string | null;
   discord_ticket_channel_id: string | null;
   discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
   discord_ticket_claimed_at: string | null;
@@ -707,6 +710,14 @@ export type Database = {
       release_livepix_checkout_claim: {
         Args: { p_order_id: string; p_claim_token: string };
         Returns: boolean;
+      };
+      expire_unpaid_orders: {
+        Args: { p_batch_size?: number };
+        Returns: {
+          expired_order_id: string;
+          expired_product_id: string;
+          restored_quantity: number;
+        }[];
       };
       confirm_livepix_payment: {
         Args: {
