@@ -106,7 +106,7 @@ begin
   )
   on conflict (order_id, position) do nothing;
   return new;
-end
+end;
 $$;
 
 revoke all on function private.sync_single_order_item()
@@ -487,7 +487,7 @@ begin
   );
 
   return query select v_order.id, true, false;
-end
+end;
 $$;
 
 comment on function public.create_bot_cart_with_reservation(text, uuid, uuid, text, jsonb, integer, text, integer) is
@@ -639,7 +639,7 @@ begin
   );
 
   return query select v_order.id, v_order.product_id, v_restored_quantity;
-end
+end;
 $$;
 
 comment on function private.expire_unpaid_order(uuid, timestamptz, text) is
@@ -745,7 +745,7 @@ begin
     v_order.id, true, v_discord_guild_id, v_order.buyer_discord_id,
     v_product_name, v_order.sale_price_cents, v_order.discord_ticket_status,
     v_order.discord_ticket_channel_id, v_order_quantity;
-end
+end;
 $$;
 
 comment on function public.claim_discord_ticket(uuid) is
