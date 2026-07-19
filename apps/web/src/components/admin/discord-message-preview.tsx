@@ -12,6 +12,7 @@ import {
   interpolateBotMessage,
   type BotMessageCustomization,
 } from "@/lib/bot/message-customization";
+import { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } from "@/lib/bot/ticket-close-admins";
 import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 export type DiscordPreviewScenario =
@@ -62,6 +63,7 @@ const PREVIEW_TOKENS: Record<string, string | number> = {
 interface DiscordMessagePreviewProps {
   config: BotMessageCustomization;
   notificationDiscordUserIds?: readonly string[];
+  ticketCloseAdminDiscordUserIds?: readonly string[];
   scenario: DiscordPreviewScenario;
   onScenarioChange: (scenario: DiscordPreviewScenario) => void;
 }
@@ -69,6 +71,7 @@ interface DiscordMessagePreviewProps {
 export function DiscordMessagePreview({
   config,
   notificationDiscordUserIds = DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+  ticketCloseAdminDiscordUserIds = DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS,
   scenario,
   onScenarioChange,
 }: DiscordMessagePreviewProps) {
@@ -131,6 +134,7 @@ export function DiscordMessagePreview({
                 <TicketPreview
                   config={config}
                   notificationDiscordUserIds={notificationDiscordUserIds}
+                  ticketCloseAdminDiscordUserIds={ticketCloseAdminDiscordUserIds}
                 />
               ) : (
                 <CardMessagePreview config={config} scenario={scenario} />
@@ -219,9 +223,11 @@ function QuantityPreview({ config }: { config: BotMessageCustomization }) {
 function TicketPreview({
   config,
   notificationDiscordUserIds,
+  ticketCloseAdminDiscordUserIds,
 }: {
   config: BotMessageCustomization;
   notificationDiscordUserIds: readonly string[];
+  ticketCloseAdminDiscordUserIds: readonly string[];
 }) {
   const ticket = config.ticket;
   const fields = [
@@ -261,9 +267,35 @@ function TicketPreview({
         </div>
       </div>
 
-      <div className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-md bg-[#5865f2] px-3 text-sm font-medium text-white">
-        <Send aria-hidden="true" className="size-3.5 shrink-0" />
-        <DiscordText>{renderText(ticket.nicknameButtonLabel)}</DiscordText>
+      <div className="flex flex-wrap gap-2">
+        <div className="inline-flex min-h-9 max-w-full items-center gap-2 rounded-md bg-[#5865f2] px-3 text-sm font-medium text-white">
+          <Send aria-hidden="true" className="size-3.5 shrink-0" />
+          <DiscordText>{renderText(ticket.nicknameButtonLabel)}</DiscordText>
+        </div>
+        <div className="inline-flex min-h-9 max-w-full items-center rounded-md bg-[#da373c] px-3 text-sm font-medium text-white">
+          <DiscordText>{renderText(ticket.closeButtonLabel)}</DiscordText>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-[#da373c]/45 bg-[#2b2d31] p-4">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[.16em] text-[#ff9b9f]">
+          Confirmação de fechamento
+        </p>
+        <DiscordText className="text-sm leading-5 text-[#dbdee1]">
+          {renderText(ticket.closeConfirmationText)}
+        </DiscordText>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="rounded-md bg-[#da373c] px-3 py-2 text-xs font-medium text-white">
+            {renderText(ticket.closeConfirmButtonLabel)}
+          </span>
+          <span className="rounded-md bg-[#4e5058] px-3 py-2 text-xs font-medium text-white">
+            {renderText(ticket.closeCancelButtonLabel)}
+          </span>
+        </div>
+        <p className="mt-3 text-[11px] leading-5 text-[#949ba4]">
+          {ticketCloseAdminDiscordUserIds.length.toLocaleString("pt-BR")} administrador(es)
+          autorizado(s). Essa permissão não gera menção na mensagem.
+        </p>
       </div>
 
       <div className="rounded-lg border border-[#1e1f22] bg-[#232428] p-4 shadow-[0_14px_36px_rgba(0,0,0,.3)]">

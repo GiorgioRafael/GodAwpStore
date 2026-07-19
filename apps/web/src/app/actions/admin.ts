@@ -23,10 +23,12 @@ import {
   withStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
+import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
 import { botMessageCustomizationSchema } from "@/lib/bot/message-customization-validation";
 import { loadBotMessageCustomization } from "@/lib/bot/message-customization-server";
 import { SupabaseBotCommerceRepository } from "@/lib/bot/supabase-repository";
+import { ticketCloseAdminDiscordUserIdsSchema } from "@/lib/bot/ticket-close-admins-validation";
 import { ticketNotificationDiscordUserIdsSchema } from "@/lib/bot/ticket-notifications-validation";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -417,6 +419,7 @@ export async function saveBotMessageCustomizationAction(
   const expectedUpdatedAt = isoDateTimeSchema.safeParse(text(formData, "expectedUpdatedAt"));
   let rawConfig: unknown;
   let rawNotificationDiscordUserIds: unknown;
+  let rawTicketCloseAdminDiscordUserIds: unknown;
   try {
     rawConfig = JSON.parse(text(formData, "config"));
   } catch {
@@ -435,11 +438,30 @@ export async function saveBotMessageCustomizationAction(
       fieldErrors: { notificationDiscordUserIds: ["Lista inválida."] },
     };
   }
+  try {
+    rawTicketCloseAdminDiscordUserIds = JSON.parse(
+      text(formData, "ticketCloseAdminDiscordUserIds"),
+    );
+  } catch {
+    return {
+      ok: false,
+      message:
+        "A lista de administradores de fechamento é inválida. Recarregue a página e tente novamente.",
+      fieldErrors: { ticketCloseAdminDiscordUserIds: ["Lista inválida."] },
+    };
+  }
 
   const parsed = botMessageCustomizationSchema.safeParse(rawConfig);
   const parsedNotificationDiscordUserIds =
     ticketNotificationDiscordUserIdsSchema.safeParse(rawNotificationDiscordUserIds);
-  if (!parsed.success || !parsedNotificationDiscordUserIds.success || !expectedUpdatedAt.success) {
+  const parsedTicketCloseAdminDiscordUserIds =
+    ticketCloseAdminDiscordUserIdsSchema.safeParse(rawTicketCloseAdminDiscordUserIds);
+  if (
+    !parsed.success ||
+    !parsedNotificationDiscordUserIds.success ||
+    !parsedTicketCloseAdminDiscordUserIds.success ||
+    !expectedUpdatedAt.success
+  ) {
     const configMessages = parsed.success
       ? []
       : [...new Set(parsed.error.issues.map((issue) => issue.message))].slice(0, 4);
@@ -448,6 +470,13 @@ export async function saveBotMessageCustomizationAction(
       : [
           ...new Set(
             parsedNotificationDiscordUserIds.error.issues.map((issue) => issue.message),
+          ),
+        ].slice(0, 4);
+    const closeAdminMessages = parsedTicketCloseAdminDiscordUserIds.success
+      ? []
+      : [
+          ...new Set(
+            parsedTicketCloseAdminDiscordUserIds.error.issues.map((issue) => issue.message),
           ),
         ].slice(0, 4);
     return {
@@ -460,7 +489,13 @@ export async function saveBotMessageCustomizationAction(
         ...(notificationMessages.length > 0
           ? { notificationDiscordUserIds: notificationMessages }
           : {}),
-        ...(!expectedUpdatedAt.success && configMessages.length === 0 && notificationMessages.length === 0
+        ...(closeAdminMessages.length > 0
+          ? { ticketCloseAdminDiscordUserIds: closeAdminMessages }
+          : {}),
+        ...(!expectedUpdatedAt.success &&
+        configMessages.length === 0 &&
+        notificationMessages.length === 0 &&
+        closeAdminMessages.length === 0
           ? { config: ["Versão carregada inválida."] }
           : {}),
       },
@@ -473,6 +508,7 @@ export async function saveBotMessageCustomizationAction(
     .update({
       bot_message_config: botMessageCustomizationToJson(parsed.data),
       ticket_notification_discord_user_ids: parsedNotificationDiscordUserIds.data,
+      ticket_close_admin_discord_user_ids: parsedTicketCloseAdminDiscordUserIds.data,
       updated_by: identity.authUserId,
     })
     .eq("id", 1)
@@ -489,26 +525,46 @@ export async function saveBotMessageCustomizationAction(
 
   revalidatePath("/customizacao-bot");
 
-  try {
-    const storefronts = await synchronizePublishedDiscordStorefronts();
-    if (storefronts.failed > 0) {
-      return {
-        ok: true,
-        message: `Personalização salva. ${storefronts.failed} vitrine(s) não puderam ser atualizadas agora.`,
-      };
-    }
-    if (storefronts.published > 0) {
-      return {
-        ok: true,
-        message: "Personalização salva e vitrines publicadas atualizadas.",
-      };
-    }
-  } catch (syncError) {
-    const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
-    console.error(`[admin:bot-customization-sync] ${message}`);
+  const [storefrontSync, ticketControlsSync] = await Promise.allSettled([
+    synchronizePublishedDiscordStorefronts(),
+    synchronizeAllOpenDiscordTicketControls(),
+  ]);
+  const warnings: string[] = [];
+
+  if (storefrontSync.status === "rejected") {
+    const message =
+      storefrontSync.reason instanceof Error
+        ? storefrontSync.reason.message
+        : "erro desconhecido";
+    console.error(`[admin:bot-customization-storefront-sync] ${message}`);
+    warnings.push("As vitrines não puderam ser atualizadas agora.");
+  } else if (storefrontSync.value.failed > 0) {
+    warnings.push(
+      `${storefrontSync.value.failed} vitrine(s) não puderam ser atualizadas agora.`,
+    );
+  }
+
+  if (ticketControlsSync.status === "rejected") {
+    const message =
+      ticketControlsSync.reason instanceof Error
+        ? ticketControlsSync.reason.message
+        : "erro desconhecido";
+    console.error(`[admin:bot-customization-ticket-sync] ${message}`);
+    warnings.push("Os controles dos tickets abertos não puderam ser atualizados agora.");
+  } else if (ticketControlsSync.value.failed > 0) {
+    warnings.push(
+      `${ticketControlsSync.value.failed} ticket(s) aberto(s) não puderam receber os novos controles agora.`,
+    );
+  }
+
+  if (warnings.length > 0) {
+    return { ok: true, message: `Personalização salva. ${warnings.join(" ")}` };
+  }
+
+  if (storefrontSync.status === "fulfilled" && storefrontSync.value.published > 0) {
     return {
       ok: true,
-      message: "Personalização salva. As vitrines não puderam ser atualizadas agora.",
+      message: "Personalização salva e vitrines publicadas atualizadas.",
     };
   }
 

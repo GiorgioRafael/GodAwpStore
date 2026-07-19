@@ -62,7 +62,10 @@ begin
     'public.admin_change_inventory_status(uuid,text,text)',
     'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
     'public.create_bot_cart_with_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
-    'public.submit_paid_order_game_nickname(uuid,text,text,text,text)'
+    'public.submit_paid_order_game_nickname(uuid,text,text,text,text)',
+    'public.claim_discord_ticket_close(uuid,text,text,text,uuid)',
+    'public.complete_discord_ticket_close(uuid,text,uuid)',
+    'public.release_discord_ticket_close(uuid,uuid)'
   ]
   loop
     if to_regprocedure(required_function) is null then
@@ -181,6 +184,57 @@ begin
       )
   ) <> 4 then
     raise exception 'orders game nickname constraints are missing';
+  end if;
+
+  if (
+    select count(*)
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'orders'
+      and (
+        (column_name = 'discord_ticket_close_claim_token' and data_type = 'uuid')
+        or (
+          column_name in (
+            'discord_ticket_close_claimed_at',
+            'discord_ticket_closed_at'
+          )
+          and data_type = 'timestamp with time zone'
+        )
+        or (
+          column_name in (
+            'discord_ticket_close_claimed_by_discord_user_id',
+            'discord_ticket_closed_by_discord_user_id'
+          )
+          and data_type = 'text'
+        )
+      )
+      and is_nullable = 'YES'
+  ) <> 5 then
+    raise exception 'orders Discord ticket close state columns are missing or invalid';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.orders'::regclass
+      and conname in (
+        'orders_discord_ticket_close_claimed_by_format',
+        'orders_discord_ticket_closed_by_format',
+        'orders_discord_ticket_close_claim_state',
+        'orders_discord_ticket_closed_state'
+      )
+  ) <> 4 then
+    raise exception 'orders Discord ticket close constraints are missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'orders'
+      and indexname = 'orders_discord_ticket_close_reconciliation_idx'
+  ) then
+    raise exception 'Discord ticket close reconciliation index is missing';
   end if;
 
   if exists (
@@ -308,6 +362,48 @@ begin
     raise exception 'Paid order game nickname RPC must be SECURITY DEFINER';
   end if;
 
+  if (
+    select count(*)
+    from pg_proc as procedure
+    join pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'public'
+      and procedure.proname in (
+        'claim_discord_ticket_close',
+        'complete_discord_ticket_close',
+        'release_discord_ticket_close'
+      )
+      and procedure.prosecdef
+      and procedure.proconfig @> array['search_path=pg_catalog']::text[]
+  ) <> 3 then
+    raise exception 'Discord ticket close RPCs must be SECURITY DEFINER with a safe search_path';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.routine_privileges as privilege
+    where privilege.routine_schema = 'public'
+      and privilege.routine_name in (
+        'claim_discord_ticket_close',
+        'complete_discord_ticket_close',
+        'release_discord_ticket_close'
+      )
+      and privilege.grantee in ('PUBLIC', 'anon', 'authenticated')
+      and privilege.privilege_type = 'EXECUTE'
+  ) or (
+    select count(distinct privilege.routine_name)
+    from information_schema.routine_privileges as privilege
+    where privilege.routine_schema = 'public'
+      and privilege.routine_name in (
+        'claim_discord_ticket_close',
+        'complete_discord_ticket_close',
+        'release_discord_ticket_close'
+      )
+      and privilege.grantee = 'service_role'
+      and privilege.privilege_type = 'EXECUTE'
+  ) <> 3 then
+    raise exception 'Discord ticket close RPC execute privileges are invalid';
+  end if;
+
   if exists (
     select 1
     from pg_proc as procedure
@@ -369,6 +465,19 @@ begin
       and not trigger.tgisinternal
   ) then
     raise exception 'Transactional catalog media audit trigger is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_trigger as trigger
+    join pg_class as relation on relation.oid = trigger.tgrelid
+    join pg_namespace as namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'public'
+      and relation.relname = 'orders'
+      and trigger.tgname = 'orders_prevent_closed_discord_ticket_mutation'
+      and not trigger.tgisinternal
+  ) then
+    raise exception 'Closed Discord ticket terminal-state trigger is missing';
   end if;
 
   if not exists (
@@ -491,6 +600,34 @@ begin
     or has_table_privilege('anon', 'public.platform_settings', 'SELECT')
     or not has_table_privilege('service_role', 'public.platform_settings', 'SELECT') then
     raise exception 'Ticket notification settings privileges are invalid';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'platform_settings'
+      and column_name = 'ticket_close_admin_discord_user_ids'
+      and data_type = 'ARRAY'
+      and udt_name = '_text'
+      and is_nullable = 'NO'
+      and column_default like '%234486394414825472%'
+      and column_default like '%385924725332901909%'
+      and column_default like '%911402638975844354%'
+  ) then
+    raise exception 'platform_settings ticket close administrator IDs column is missing or invalid';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.platform_settings'::regclass
+      and conname in (
+        'platform_settings_ticket_close_admin_ids_cardinality',
+        'platform_settings_ticket_close_admin_ids_valid'
+      )
+  ) <> 2 then
+    raise exception 'platform_settings ticket close administrator constraints are missing';
   end if;
 
   if not exists (

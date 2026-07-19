@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "alias": ["gwstore.vercel.app"]
+  "alias": ["gwstore.vercel.app"],
+  "crons": [
+    {
+      "path": "/api/cron/discord-ticket-close-reconciliation",
+      "schedule": "17 3 * * *"
+    }
+  ]
 }

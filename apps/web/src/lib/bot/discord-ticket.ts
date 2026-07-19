@@ -8,30 +8,26 @@ import {
   type BotMessageCustomization,
 } from "./message-customization";
 import { loadBotRuntimeSettings } from "./message-customization-server";
-import { gameNicknameInteractionId } from "./discord-game-nickname";
+import {
+  buildPaidTicketControlComponents,
+  buildTicketPermissionOverwrites,
+  samePermissionOverwrites,
+  ticketTopicMarker,
+  welcomeMessageMarker,
+  type DiscordPermissionOverwrite,
+} from "./discord-ticket-controls";
 import {
   DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
   normalizeTicketNotificationDiscordUserIds,
 } from "./ticket-notifications";
 
+export { buildTicketPermissionOverwrites } from "./discord-ticket-controls";
+
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const VIEW_CHANNEL = 1n << 10n;
-const SEND_MESSAGES = 1n << 11n;
-const EMBED_LINKS = 1n << 14n;
-const READ_MESSAGE_HISTORY = 1n << 16n;
-const TICKET_MEMBER_PERMISSIONS =
-  VIEW_CHANNEL | SEND_MESSAGES | EMBED_LINKS | READ_MESSAGE_HISTORY;
 const DISCORD_REQUEST_TIMEOUT_MS = 4_000;
 const DISCORD_MAX_RETRY_AFTER_MS = 1_500;
-
-type DiscordPermissionOverwrite = {
-  id: string;
-  type: 0 | 1;
-  allow: string;
-  deny: string;
-};
 
 type DiscordChannel = {
   id: string;
@@ -104,6 +100,7 @@ export function ensurePaidOrderTicket(
         options.fetcher ?? fetch,
         settings.customization,
         settings.ticketNotificationDiscordUserIds,
+        settings.ticketCloseAdminDiscordUserIds,
       ),
     )
     .finally(() => {
@@ -118,6 +115,7 @@ async function ensurePaidOrderTicketInternal(
   fetcher: typeof fetch,
   customization: BotMessageCustomization,
   notificationDiscordUserIds: readonly string[],
+  closeAdminDiscordUserIds: readonly string[],
 ): Promise<PaidOrderTicketResult> {
   const config = getDiscordConfig();
   const headers = discordHeaders(config.token);
@@ -134,6 +132,8 @@ async function ensurePaidOrderTicketInternal(
     guildId: input.guildId,
     buyerDiscordId: input.buyerDiscordId,
     botDiscordId: botUser.id,
+    closerDiscordUserIds: closeAdminDiscordUserIds,
+    notificationDiscordUserIds,
   });
   const marker = ticketTopicMarker(input.orderId);
   const readyTopic = `${marker};welcome=1`;
@@ -229,20 +229,6 @@ async function ensurePaidOrderTicketInternal(
   };
 }
 
-export function buildTicketPermissionOverwrites(input: {
-  guildId: string;
-  buyerDiscordId: string;
-  botDiscordId: string;
-}): DiscordPermissionOverwrite[] {
-  const memberPermissions = TICKET_MEMBER_PERMISSIONS.toString();
-
-  return [
-    { id: input.guildId, type: 0, allow: "0", deny: VIEW_CHANNEL.toString() },
-    { id: input.buyerDiscordId, type: 1, allow: memberPermissions, deny: "0" },
-    { id: input.botDiscordId, type: 1, allow: memberPermissions, deny: "0" },
-  ];
-}
-
 export function paidTicketWelcomeMessage(
   input: PaidOrderTicketInput,
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
@@ -307,19 +293,7 @@ export function paidTicketWelcomeMessage(
         footer: { text: orderMarker },
       },
     ],
-    components: [
-      {
-        type: 1,
-        components: [
-          {
-            type: 2,
-            style: 1,
-            custom_id: gameNicknameInteractionId(input.orderId),
-            label: interpolateBotMessageLimited(message.nicknameButtonLabel, {}, 80),
-          },
-        ],
-      },
-    ],
+    components: buildPaidTicketControlComponents(input.orderId, customization),
   };
 }
 
@@ -343,17 +317,6 @@ async function channelHasWelcomeMessage(
       message.author?.id === botUserId &&
       message.embeds?.some((embed) => embed.footer?.text === marker),
   );
-}
-
-function samePermissionOverwrites(
-  left: DiscordPermissionOverwrite[],
-  right: DiscordPermissionOverwrite[],
-) {
-  const normalize = (values: DiscordPermissionOverwrite[]) =>
-    values
-      .map((value) => `${value.type}:${value.id}:${value.allow || "0"}:${value.deny || "0"}`)
-      .sort();
-  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
 }
 
 function validateTicketInput(input: PaidOrderTicketInput): PaidOrderTicketInput {
@@ -426,14 +389,6 @@ function readRetryAfterMs(payload: unknown) {
   return typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0
     ? Math.ceil(seconds * 1_000)
     : null;
-}
-
-function ticketTopicMarker(orderId: string) {
-  return `gwstore-order:${orderId}`;
-}
-
-function welcomeMessageMarker(orderId: string) {
-  return `GWStore ticket · ${orderId}`;
 }
 
 function ticketChannelName(orderId: string) {

@@ -7,8 +7,19 @@ vi.mock("@/lib/bot/message-customization-server", async () => {
   const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import(
     "@/lib/bot/message-customization"
   );
+  const { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } = await import(
+    "@/lib/bot/ticket-notifications"
+  );
+  const { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } = await import(
+    "@/lib/bot/ticket-close-admins"
+  );
   return {
     loadBotMessageCustomization: vi.fn(async () => DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
+    loadBotRuntimeSettings: vi.fn(async () => ({
+      customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticketNotificationDiscordUserIds: [...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS],
+      ticketCloseAdminDiscordUserIds: [...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS],
+    })),
   };
 });
 vi.mock("@/lib/bot/supabase-repository", () => ({
@@ -207,5 +218,93 @@ describe("Discord native quantity interactions", () => {
         ],
       },
     });
+  });
+});
+
+describe("Discord native ticket close interactions", () => {
+  it("verifica a assinatura e devolve confirmacao efemera ao fechador autorizado", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const orderId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      guild_id: "323456789012345678",
+      channel_id: "423456789012345678",
+      member: { user: { id: "385924725332901909" } },
+      data: {
+        component_type: 2,
+        custom_id: `gwstore_ticket_close:${orderId}`,
+      },
+    });
+    const timestamp = String(Math.floor(Date.now() / 1_000));
+    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
+
+    const response = await POST(
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      type: 4,
+      data: {
+        flags: 64,
+        components: [
+          {
+            components: [
+              { custom_id: `gwstore_ticket_close_confirm:${orderId}`, style: 4 },
+              { custom_id: `gwstore_ticket_close_cancel:${orderId}`, style: 2 },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("rejeita uma interacao destrutiva assinada mas antiga", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      guild_id: "323456789012345678",
+      channel_id: "423456789012345678",
+      member: { user: { id: "385924725332901909" } },
+      data: {
+        component_type: 2,
+        custom_id: "gwstore_ticket_close:9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+      },
+    });
+    const timestamp = String(Math.floor((Date.now() - 10 * 60 * 1_000) / 1_000));
+    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
+
+    const response = await POST(
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.text()).resolves.toBe("Stale interaction");
   });
 });

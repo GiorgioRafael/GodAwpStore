@@ -34,6 +34,12 @@ describe("personalização das mensagens do bot", () => {
     expect(legacyTicket.ticket.nicknameSavedText).toBe(
       DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.nicknameSavedText,
     );
+    expect(legacyTicket.ticket.closeButtonLabel).toBe(
+      DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeButtonLabel,
+    );
+    expect(legacyTicket.ticket.closeUnauthorizedText).toBe(
+      DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeUnauthorizedText,
+    );
   });
 
   it("interpola apenas tokens entregues e mantém desconhecidos literais", () => {
@@ -175,6 +181,43 @@ describe("personalização das mensagens do bot", () => {
         ticket: {
           ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
           nicknameUpdatedText: "Nick atualizado com sucesso.",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("valida todos os textos do fluxo de fechamento do ticket", () => {
+    const parsed = botMessageCustomizationSchema.safeParse({
+      ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticket: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+        closeButtonLabel: "Encerrar atendimento",
+        closeConfirmationText: "Confirma o encerramento?",
+        closeConfirmButtonLabel: "Sim, fechar",
+        closeCancelButtonLabel: "Voltar",
+        closeUnauthorizedText: "Sem permissão.",
+        closeInProgressText: "Encerrando...",
+        closeSuccessText: "Encerrado.",
+        closeUnavailableText: "Tente novamente.",
+      },
+    });
+    expect(parsed.success).toBe(true);
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          closeButtonLabel: "x".repeat(81),
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          closeUnauthorizedText: "",
         },
       }).success,
     ).toBe(false);

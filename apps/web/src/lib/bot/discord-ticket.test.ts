@@ -6,11 +6,15 @@ vi.mock("./message-customization-server", async () => {
   const { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } = await import(
     "./ticket-notifications"
   );
+  const { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } = await import(
+    "./ticket-close-admins"
+  );
   return {
     loadBotMessageCustomization: vi.fn(async () => DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
     loadBotRuntimeSettings: vi.fn(async () => ({
       customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
       ticketNotificationDiscordUserIds: [...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS],
+      ticketCloseAdminDiscordUserIds: [...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS],
     })),
   };
 });
@@ -29,6 +33,11 @@ const order = {
 const botId = "323456789012345678";
 const channelId = "623456789012345678";
 const defaultNotificationUserId = "385924725332901909";
+const defaultCloseAdminUserIds = [
+  "234486394414825472",
+  "385924725332901909",
+  "911402638975844354",
+];
 
 beforeAll(async () => {
   ticket = await import("./discord-ticket");
@@ -100,6 +109,12 @@ describe("Discord paid-order ticket", () => {
         { id: order.guildId, type: 0, allow: "0", deny: "1024" },
         { id: order.buyerDiscordId, type: 1, allow: "84992", deny: "0" },
         { id: botId, type: 1, allow: "84992", deny: "0" },
+        ...defaultCloseAdminUserIds.map((id) => ({
+          id,
+          type: 1,
+          allow: "84992",
+          deny: "0",
+        })),
       ]),
     });
 
@@ -128,6 +143,11 @@ describe("Discord paid-order ticket", () => {
               type: 2,
               style: 1,
               custom_id: `gwstore_game_nickname:${order.orderId}`,
+            },
+            {
+              type: 2,
+              style: 4,
+              custom_id: `gwstore_ticket_close:${order.orderId}`,
             },
           ],
         },
@@ -255,6 +275,7 @@ describe("Discord paid-order ticket", () => {
       guildId: order.guildId,
       buyerDiscordId: order.buyerDiscordId,
       botDiscordId: botId,
+      closerDiscordUserIds: defaultCloseAdminUserIds,
     });
     const readyChannel = channelResponse(`gwstore-order:${order.orderId};welcome=1`, permissions);
     let channelRequests = 0;

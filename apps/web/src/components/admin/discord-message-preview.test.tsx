@@ -44,6 +44,7 @@ describe("prévia das mensagens do Discord", () => {
       <DiscordMessagePreview
         config={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         notificationDiscordUserIds={["385924725332901909", "911402638975844354"]}
+        ticketCloseAdminDiscordUserIds={["234486394414825472"]}
         scenario="ticket"
         onScenarioChange={vi.fn()}
       />,
@@ -54,5 +55,17 @@ describe("prévia das mensagens do Discord", () => {
     );
     expect(screen.getByText("@385924725332901909")).toBeInTheDocument();
     expect(screen.getByText("@911402638975844354")).toBeInTheDocument();
+    expect(screen.queryByText("@234486394414825472")).not.toBeInTheDocument();
+    expect(screen.getByText(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeButtonLabel)).toBeInTheDocument();
+    expect(
+      screen.getByText(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeConfirmationText),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeConfirmButtonLabel),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeCancelButtonLabel),
+    ).toHaveLength(2);
+    expect(screen.getByText(/1 administrador\(es\) autorizado\(s\)/)).toBeInTheDocument();
   });
 });

@@ -175,6 +175,14 @@ const ticketSchema = z.object({
   nicknameInvalidText: textField("ticket.nicknameInvalidText"),
   nicknameUnauthorizedText: textField("ticket.nicknameUnauthorizedText"),
   nicknameUnavailableText: textField("ticket.nicknameUnavailableText"),
+  closeButtonLabel: textField("ticket.closeButtonLabel"),
+  closeConfirmationText: textField("ticket.closeConfirmationText"),
+  closeConfirmButtonLabel: textField("ticket.closeConfirmButtonLabel"),
+  closeCancelButtonLabel: textField("ticket.closeCancelButtonLabel"),
+  closeUnauthorizedText: textField("ticket.closeUnauthorizedText"),
+  closeInProgressText: textField("ticket.closeInProgressText"),
+  closeSuccessText: textField("ticket.closeSuccessText"),
+  closeUnavailableText: textField("ticket.closeUnavailableText"),
 }).strict();
 
 export const botMessageCustomizationSchema = z.object({

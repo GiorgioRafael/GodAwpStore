@@ -13,6 +13,7 @@ import {
   ReceiptText,
   RotateCcw,
   Save,
+  ShieldCheck,
   Store,
   TicketCheck,
   Trash2,
@@ -41,6 +42,10 @@ import {
   type BotMessageCustomization,
 } from "@/lib/bot/message-customization";
 import {
+  DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS,
+  MAX_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS,
+} from "@/lib/bot/ticket-close-admins";
+import {
   DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
   DISCORD_USER_ID_PATTERN,
   MAX_TICKET_NOTIFICATION_DISCORD_USER_IDS,
@@ -54,7 +59,8 @@ type EditorSectionId =
   | "order"
   | "helpError"
   | "ticket"
-  | "notifications";
+  | "notifications"
+  | "closing";
 
 type FieldDefinition = {
   section: ConfigSection;
@@ -347,6 +353,30 @@ const EDITOR_SECTIONS: EditorSection[] = [
           }),
         ],
       },
+      {
+        title: "Fechamento do ticket",
+        description: "Botões, confirmação e respostas usadas ao encerrar um atendimento.",
+        fields: [
+          f("ticket", "closeButtonLabel", "Botão para fechar o ticket", 80),
+          f("ticket", "closeConfirmationText", "Confirmação de fechamento", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "closeConfirmButtonLabel", "Botão para confirmar", 80),
+          f("ticket", "closeCancelButtonLabel", "Botão para cancelar", 80),
+          f("ticket", "closeUnauthorizedText", "Usuário sem permissão", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "closeInProgressText", "Fechamento em andamento", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "closeSuccessText", "Fechamento concluído", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "closeUnavailableText", "Falha ao fechar", 1_000, {
+            multiline: true,
+          }),
+        ],
+      },
     ],
   },
   {
@@ -357,17 +387,27 @@ const EDITOR_SECTIONS: EditorSection[] = [
     preview: "ticket",
     groups: [],
   },
+  {
+    id: "closing",
+    label: "Fechamento",
+    description: "Administradores autorizados a fechar os tickets pelo Discord.",
+    icon: ShieldCheck,
+    preview: "ticket",
+    groups: [],
+  },
 ];
 
 interface BotCustomizationEditorProps {
   initialConfig: BotMessageCustomization;
   initialNotificationDiscordUserIds: string[];
+  initialTicketCloseAdminDiscordUserIds: string[];
   updatedAt: string | null;
 }
 
 export function BotCustomizationEditor({
   initialConfig,
   initialNotificationDiscordUserIds,
+  initialTicketCloseAdminDiscordUserIds,
   updatedAt,
 }: BotCustomizationEditorProps) {
   const [config, setConfig] = useState<BotMessageCustomization>(() => cloneConfig(initialConfig));
@@ -378,6 +418,13 @@ export function BotCustomizationEditor({
   const [notificationDiscordUserIdError, setNotificationDiscordUserIdError] = useState<string | null>(
     null,
   );
+  const [ticketCloseAdminDiscordUserIds, setTicketCloseAdminDiscordUserIds] = useState<string[]>(
+    () => [...initialTicketCloseAdminDiscordUserIds],
+  );
+  const [ticketCloseAdminDiscordUserIdInput, setTicketCloseAdminDiscordUserIdInput] = useState("");
+  const [ticketCloseAdminDiscordUserIdError, setTicketCloseAdminDiscordUserIdError] = useState<
+    string | null
+  >(null);
   const [activeSectionId, setActiveSectionId] = useState<EditorSectionId>("storefront");
   const [previewScenario, setPreviewScenario] = useState<DiscordPreviewScenario>("storefront");
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
@@ -391,6 +438,10 @@ export function BotCustomizationEditor({
   const serializedNotificationDiscordUserIds = useMemo(
     () => JSON.stringify(notificationDiscordUserIds),
     [notificationDiscordUserIds],
+  );
+  const serializedTicketCloseAdminDiscordUserIds = useMemo(
+    () => JSON.stringify(ticketCloseAdminDiscordUserIds),
+    [ticketCloseAdminDiscordUserIds],
   );
   const activeSection =
     EDITOR_SECTIONS.find((section) => section.id === activeSectionId) ?? EDITOR_SECTIONS[0];
@@ -423,6 +474,9 @@ export function BotCustomizationEditor({
     setNotificationDiscordUserIds([...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]);
     setNotificationDiscordUserIdInput("");
     setNotificationDiscordUserIdError(null);
+    setTicketCloseAdminDiscordUserIds([...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]);
+    setTicketCloseAdminDiscordUserIdInput("");
+    setTicketCloseAdminDiscordUserIdError(null);
     setRestoredLocally(true);
   }
 
@@ -454,6 +508,39 @@ export function BotCustomizationEditor({
       current.filter((candidate) => candidate !== discordUserId),
     );
     setNotificationDiscordUserIdError(null);
+    setRestoredLocally(false);
+  }
+
+  function addTicketCloseAdminDiscordUserId() {
+    const discordUserId = ticketCloseAdminDiscordUserIdInput.trim();
+    if (!/^[0-9]{15,22}$/.test(discordUserId)) {
+      setTicketCloseAdminDiscordUserIdError(
+        "Informe um Discord ID válido com 15 a 22 dígitos.",
+      );
+      return;
+    }
+    if (ticketCloseAdminDiscordUserIds.includes(discordUserId)) {
+      setTicketCloseAdminDiscordUserIdError("Este Discord ID já está na lista de fechamento.");
+      return;
+    }
+    if (ticketCloseAdminDiscordUserIds.length >= MAX_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS) {
+      setTicketCloseAdminDiscordUserIdError(
+        `A lista pode ter no máximo ${MAX_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS} administradores.`,
+      );
+      return;
+    }
+
+    setTicketCloseAdminDiscordUserIds((current) => [...current, discordUserId]);
+    setTicketCloseAdminDiscordUserIdInput("");
+    setTicketCloseAdminDiscordUserIdError(null);
+    setRestoredLocally(false);
+  }
+
+  function removeTicketCloseAdminDiscordUserId(discordUserId: string) {
+    setTicketCloseAdminDiscordUserIds((current) =>
+      current.filter((candidate) => candidate !== discordUserId),
+    );
+    setTicketCloseAdminDiscordUserIdError(null);
     setRestoredLocally(false);
   }
 
@@ -498,6 +585,11 @@ export function BotCustomizationEditor({
             type="hidden"
             name="notificationDiscordUserIds"
             value={serializedNotificationDiscordUserIds}
+          />
+          <input
+            type="hidden"
+            name="ticketCloseAdminDiscordUserIds"
+            value={serializedTicketCloseAdminDiscordUserIds}
           />
           <input type="hidden" name="expectedUpdatedAt" value={updatedAt ?? ""} />
 
@@ -670,6 +762,117 @@ export function BotCustomizationEditor({
                         menção e acompanhar o atendimento.
                       </div>
                     </div>
+                  ) : activeSection.id === "closing" ? (
+                    <div className="space-y-5">
+                      <div className="rounded-xl border border-border bg-surface-muted p-4">
+                        <Field
+                          label="Discord ID autorizado a fechar"
+                          htmlFor={`${formId}-ticket-close-admin-discord-user-id`}
+                          hint={`${ticketCloseAdminDiscordUserIds.length}/${MAX_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS}`}
+                          error={
+                            ticketCloseAdminDiscordUserIdError ??
+                            fieldError(state, "ticketCloseAdminDiscordUserIds")
+                          }
+                        >
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              id={`${formId}-ticket-close-admin-discord-user-id`}
+                              value={ticketCloseAdminDiscordUserIdInput}
+                              inputMode="numeric"
+                              maxLength={22}
+                              autoComplete="off"
+                              placeholder="Ex.: 234486394414825472"
+                              aria-describedby={`${formId}-ticket-close-admin-discord-user-id-help`}
+                              onChange={(event) => {
+                                setTicketCloseAdminDiscordUserIdInput(event.target.value);
+                                setTicketCloseAdminDiscordUserIdError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter") return;
+                                event.preventDefault();
+                                addTicketCloseAdminDiscordUserId();
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="sm:min-w-28"
+                              onClick={addTicketCloseAdminDiscordUserId}
+                              disabled={pending}
+                            >
+                              <Plus aria-hidden="true" className="size-4" />
+                              Adicionar administrador
+                            </Button>
+                          </div>
+                          <p
+                            id={`${formId}-ticket-close-admin-discord-user-id-help`}
+                            className="text-xs leading-5 text-muted"
+                          >
+                            Esta lista é independente das pessoas mencionadas quando o ticket abre.
+                          </p>
+                        </Field>
+                      </div>
+
+                      <div className="rounded-xl border border-border bg-surface-muted p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-semibold text-foreground">
+                              Administradores de fechamento
+                            </h4>
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              Somente estes Discord IDs poderão confirmar o encerramento pelo bot.
+                            </p>
+                          </div>
+                          <Badge tone="neutral">
+                            {ticketCloseAdminDiscordUserIds.length.toLocaleString("pt-BR")}
+                          </Badge>
+                        </div>
+
+                        {ticketCloseAdminDiscordUserIds.length > 0 ? (
+                          <ul
+                            className="mt-4 space-y-2"
+                            aria-label="Discord IDs autorizados a fechar tickets"
+                          >
+                            {ticketCloseAdminDiscordUserIds.map((discordUserId) => (
+                              <li
+                                key={discordUserId}
+                                className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5"
+                              >
+                                <span className="min-w-0 break-all font-mono text-sm text-foreground">
+                                  {discordUserId}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 shrink-0 text-danger"
+                                  aria-label={`Remover administrador de fechamento ${discordUserId}`}
+                                  onClick={() => removeTicketCloseAdminDiscordUserId(discordUserId)}
+                                  disabled={pending}
+                                >
+                                  <Trash2 aria-hidden="true" className="size-4" />
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="mt-4 rounded-lg border border-dashed border-border-strong px-4 py-5 text-center">
+                            <p className="text-sm font-medium text-muted-strong">
+                              Nenhum administrador poderá fechar tickets pelo bot
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              Adicione um Discord ID para habilitar o encerramento administrativo.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-warning/25 bg-warning/[0.06] px-4 py-3 text-xs leading-5 text-[#e7d39b]">
+                        Administradores desta lista recebem acesso aos tickets pagos para visualizar o
+                        atendimento e usar o botão de fechamento. Isso não os adiciona à lista de
+                        notificações.
+                      </div>
+                    </div>
                   ) : (
                     activeSection.groups.map((group) => (
                       <fieldset key={group.title} className="space-y-4">
@@ -766,6 +969,7 @@ export function BotCustomizationEditor({
           <DiscordMessagePreview
             config={config}
             notificationDiscordUserIds={notificationDiscordUserIds}
+            ticketCloseAdminDiscordUserIds={ticketCloseAdminDiscordUserIds}
             scenario={previewScenario}
             onScenarioChange={setPreviewScenario}
           />

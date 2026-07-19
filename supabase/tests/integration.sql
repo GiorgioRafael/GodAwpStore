@@ -223,6 +223,14 @@ begin
     raise exception 'unauthorized authenticated user updated ticket notification IDs';
   end if;
 
+  update public.platform_settings
+  set ticket_close_admin_discord_user_ids = array['223456789012345678']::text[]
+  where id = 1;
+  get diagnostics updated_settings = row_count;
+  if updated_settings <> 0 then
+    raise exception 'unauthorized authenticated user updated ticket close administrator IDs';
+  end if;
+
   begin
     perform *
     from public.admin_check_inventory_fingerprints(
@@ -252,6 +260,7 @@ declare
   override_rate integer;
   settings_audits integer;
   notification_audits integer;
+  close_admin_audits integer;
 begin
   select effective_commission_bps
   into global_rate
@@ -286,6 +295,7 @@ begin
   into settings_audits
   from public.audit_events
   where action = 'settings.update'
+    and actor_auth_user_id = '10000000-0000-4000-8000-000000000001'
     and metadata -> 'changed_fields' ? 'bot_message_config';
 
   if settings_audits <> 1 then
@@ -322,6 +332,7 @@ begin
   into notification_audits
   from public.audit_events
   where action = 'settings.update'
+    and actor_auth_user_id = '10000000-0000-4000-8000-000000000001'
     and metadata -> 'changed_fields' ? 'ticket_notification_discord_user_ids';
 
   if notification_audits <> 1 then
@@ -395,6 +406,36 @@ begin
     where id = 1
   )) <> 0 then
     raise exception 'empty ticket notification Discord user ID list was rejected';
+  end if;
+
+  if (
+    select ticket_close_admin_discord_user_ids
+    from public.platform_settings
+    where id = 1
+  ) is distinct from array[
+    '234486394414825472',
+    '385924725332901909',
+    '911402638975844354'
+  ]::text[] then
+    raise exception 'default ticket close administrator Discord user IDs are invalid';
+  end if;
+
+  update public.platform_settings
+  set ticket_close_admin_discord_user_ids = array[
+    '234486394414825472',
+    '385924725332901909'
+  ]::text[]
+  where id = 1;
+
+  select count(*)
+  into close_admin_audits
+  from public.audit_events
+  where action = 'settings.update'
+    and actor_auth_user_id = '10000000-0000-4000-8000-000000000001'
+    and metadata -> 'changed_fields' ? 'ticket_close_admin_discord_user_ids';
+
+  if close_admin_audits <> 1 then
+    raise exception 'ticket close administrator update was not audited exactly once';
   end if;
 
   begin
@@ -506,8 +547,15 @@ begin
     '60000000-0000-4000-8000-000000000001'
   );
 
-  select count(*) into batch_count from public.inventory_batches;
-  select count(*) into unit_count from public.inventory_units;
+  select count(*)
+  into batch_count
+  from public.inventory_batches
+  where product_id = '50000000-0000-4000-8000-000000000001';
+
+  select count(*)
+  into unit_count
+  from public.inventory_units
+  where product_id = '50000000-0000-4000-8000-000000000001';
   if not was_reused or batch_count <> 1 or unit_count <> 2 then
     raise exception 'idempotent inventory retry created duplicate state';
   end if;
@@ -751,3 +799,4 @@ select 'GodAwpStore transactional integration checks passed' as result;
 \ir order_game_nickname_verification.sql
 \ir order_cart_verification.sql
 \ir ticket_notification_verification.sql
+\ir ticket_close_verification.sql

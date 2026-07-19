@@ -7,6 +7,7 @@ import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
   normalizeBotMessageCustomization,
 } from "@/lib/bot/message-customization";
+import { normalizeTicketCloseAdminDiscordUserIds } from "@/lib/bot/ticket-close-admins";
 import { normalizeTicketNotificationDiscordUserIds } from "@/lib/bot/ticket-notifications";
 import { getPlatformSettings } from "@/lib/data/admin-repository";
 
@@ -19,6 +20,9 @@ export default async function BotCustomizationPage() {
   );
   const notificationDiscordUserIds = normalizeTicketNotificationDiscordUserIds(
     settings?.ticket_notification_discord_user_ids,
+  );
+  const ticketCloseAdminDiscordUserIds = normalizeTicketCloseAdminDiscordUserIds(
+    settings?.ticket_close_admin_discord_user_ids,
   );
 
   return (
@@ -37,6 +41,7 @@ export default async function BotCustomizationPage() {
       <BotCustomizationEditor
         initialConfig={customization}
         initialNotificationDiscordUserIds={notificationDiscordUserIds}
+        initialTicketCloseAdminDiscordUserIds={ticketCloseAdminDiscordUserIds}
         updatedAt={settings?.updated_at ?? null}
       />
     </div>

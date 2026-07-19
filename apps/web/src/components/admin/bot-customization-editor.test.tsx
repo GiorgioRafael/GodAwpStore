@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "@/lib/bot/message-customization";
+import { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } from "@/lib/bot/ticket-close-admins";
 import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 const actionMocks = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ describe("editor de mensagens do bot", () => {
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
         updatedAt="2026-07-17T15:00:00.000Z"
       />,
     );
@@ -48,6 +50,7 @@ describe("editor de mensagens do bot", () => {
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
         updatedAt={null}
       />,
     );
@@ -68,6 +71,7 @@ describe("editor de mensagens do bot", () => {
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
         updatedAt={null}
       />,
     );
@@ -112,6 +116,7 @@ describe("editor de mensagens do bot", () => {
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
         updatedAt={null}
       />,
     );
@@ -142,6 +147,7 @@ describe("editor de mensagens do bot", () => {
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         initialNotificationDiscordUserIds={[]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
         updatedAt={null}
       />,
     );
@@ -169,5 +175,83 @@ describe("editor de mensagens do bot", () => {
     expect(JSON.parse(serialized?.value ?? "[]")).toEqual([
       "385924725332901909",
     ]);
+    const closeAdmins = container.querySelector<HTMLInputElement>(
+      'input[name="ticketCloseAdminDiscordUserIds"]',
+    );
+    expect(JSON.parse(closeAdmins?.value ?? "[]")).toEqual(
+      DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS,
+    );
+  });
+
+  it("edita os textos completos do fechamento e atualiza a prévia", () => {
+    const { container } = render(
+      <BotCustomizationEditor
+        initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
+        updatedAt={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Ticket" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Botão para fechar o ticket" }), {
+      target: { value: "Encerrar atendimento" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Confirmação de fechamento" }), {
+      target: { value: "Deseja realmente encerrar?" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Botão para confirmar" }), {
+      target: { value: "Sim, encerrar" },
+    });
+
+    expect(screen.getByText("Encerrar atendimento")).toBeInTheDocument();
+    expect(screen.getByText("Deseja realmente encerrar?", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Sim, encerrar")).toBeInTheDocument();
+
+    const serialized = container.querySelector<HTMLInputElement>('input[name="config"]');
+    expect(JSON.parse(serialized?.value ?? "{}")).toMatchObject({
+      ticket: {
+        closeButtonLabel: "Encerrar atendimento",
+        closeConfirmationText: "Deseja realmente encerrar?",
+        closeConfirmButtonLabel: "Sim, encerrar",
+      },
+    });
+  });
+
+  it("mantém administradores de fechamento separados das pessoas notificadas", () => {
+    const { container } = render(
+      <BotCustomizationEditor
+        initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={["385924725332901909"]}
+        initialTicketCloseAdminDiscordUserIds={[]}
+        updatedAt={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Fechamento" }));
+    expect(
+      screen.getByText("Nenhum administrador poderá fechar tickets pelo bot"),
+    ).toBeInTheDocument();
+
+    const input = screen.getByRole("textbox", { name: "Discord ID autorizado a fechar" });
+    fireEvent.change(input, { target: { value: "911402638975844354" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText("911402638975844354")).toBeInTheDocument();
+    expect(screen.queryByText("@911402638975844354")).not.toBeInTheDocument();
+    expect(screen.getByText(/1 administrador\(es\) autorizado\(s\)/)).toBeInTheDocument();
+
+    const closeAdmins = container.querySelector<HTMLInputElement>(
+      'input[name="ticketCloseAdminDiscordUserIds"]',
+    );
+    const notifications = container.querySelector<HTMLInputElement>(
+      'input[name="notificationDiscordUserIds"]',
+    );
+    expect(JSON.parse(closeAdmins?.value ?? "[]")).toEqual(["911402638975844354"]);
+    expect(JSON.parse(notifications?.value ?? "[]")).toEqual(["385924725332901909"]);
+
+    fireEvent.change(input, { target: { value: "911402638975844354" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar administrador" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("já está na lista de fechamento");
   });
 });

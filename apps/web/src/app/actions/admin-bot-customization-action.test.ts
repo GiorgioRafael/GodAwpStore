@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "@/lib/bot/message-customization";
+import { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } from "@/lib/bot/ticket-close-admins";
 import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 const mocks = vi.hoisted(() => ({
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createServerSupabaseClient: vi.fn(),
   createAdminSupabaseClient: vi.fn(),
   synchronizePublishedDiscordStorefronts: vi.fn(),
+  synchronizeAllOpenDiscordTicketControls: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -22,6 +24,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/bot/discord-storefront-sync", () => ({
   synchronizePublishedDiscordStorefronts: mocks.synchronizePublishedDiscordStorefronts,
+}));
+vi.mock("@/lib/bot/discord-ticket-controls-sync", () => ({
+  synchronizeAllOpenDiscordTicketControls: mocks.synchronizeAllOpenDiscordTicketControls,
 }));
 vi.mock("@/lib/bot/discord-storefront", () => ({
   listDiscordTextChannels: vi.fn(),
@@ -59,6 +64,13 @@ describe("action de personalização do bot", () => {
     mocks.synchronizePublishedDiscordStorefronts.mockResolvedValue({
       published: 1,
       failed: 0,
+    });
+    mocks.synchronizeAllOpenDiscordTicketControls.mockResolvedValue({
+      processed: 2,
+      synchronized: 2,
+      failed: 0,
+      permissionsUpdated: 2,
+      welcomeMessagesUpdated: 2,
     });
   });
 
@@ -107,6 +119,31 @@ describe("action de personalização do bot", () => {
     expect(mocks.requireAdmin).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["inválida", ["discord-inválido"]],
+    ["duplicada", ["234486394414825472", "234486394414825472"]],
+    [
+      "acima do limite",
+      Array.from({ length: 26 }, (_, index) => `6${String(index).padStart(17, "0")}`),
+    ],
+  ])(
+    "rejeita lista de administradores de fechamento %s antes de autenticar",
+    async (_label, ticketCloseAdminDiscordUserIds) => {
+      const result = await saveBotMessageCustomizationAction(
+        previousState,
+        customizationForm(
+          DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+          DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+          ticketCloseAdminDiscordUserIds,
+        ),
+      );
+
+      expect(result.ok).toBe(false);
+      expect(result.fieldErrors?.ticketCloseAdminDiscordUserIds).toBeDefined();
+      expect(mocks.requireAdmin).not.toHaveBeenCalled();
+    },
+  );
+
   it("salva com trava otimista, identifica o admin e atualiza as vitrines", async () => {
     const client = clientMock({ id: 1 });
     mocks.createServerSupabaseClient.mockResolvedValue(client);
@@ -124,6 +161,7 @@ describe("action de personalização do bot", () => {
       expect.objectContaining({
         bot_message_config: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
         ticket_notification_discord_user_ids: DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+        ticket_close_admin_discord_user_ids: DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS,
         updated_by: "10000000-0000-4000-8000-000000000001",
       }),
     );
@@ -131,6 +169,7 @@ describe("action de personalização do bot", () => {
     expect(client.eq).toHaveBeenNthCalledWith(2, "updated_at", updatedAt);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/customizacao-bot");
     expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
+    expect(mocks.synchronizeAllOpenDiscordTicketControls).toHaveBeenCalledOnce();
   });
 
   it("não sobrescreve uma edição concorrente", async () => {
@@ -145,16 +184,42 @@ describe("action de personalização do bot", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/Outro administrador/);
     expect(mocks.synchronizePublishedDiscordStorefronts).not.toHaveBeenCalled();
+    expect(mocks.synchronizeAllOpenDiscordTicketControls).not.toHaveBeenCalled();
+  });
+
+  it("salva e informa quando um ticket aberto não pôde ser sincronizado", async () => {
+    const client = clientMock({ id: 1 });
+    mocks.createServerSupabaseClient.mockResolvedValue(client);
+    mocks.synchronizeAllOpenDiscordTicketControls.mockResolvedValue({
+      processed: 2,
+      synchronized: 1,
+      failed: 1,
+      permissionsUpdated: 1,
+      welcomeMessagesUpdated: 1,
+    });
+
+    const result = await saveBotMessageCustomizationAction(
+      previousState,
+      customizationForm(DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      message:
+        "Personalização salva. 1 ticket(s) aberto(s) não puderam receber os novos controles agora.",
+    });
   });
 });
 
 function customizationForm(
   config: unknown,
   notificationDiscordUserIds: unknown = DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+  ticketCloseAdminDiscordUserIds: unknown = DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS,
 ) {
   const formData = new FormData();
   formData.set("config", JSON.stringify(config));
   formData.set("notificationDiscordUserIds", JSON.stringify(notificationDiscordUserIds));
+  formData.set("ticketCloseAdminDiscordUserIds", JSON.stringify(ticketCloseAdminDiscordUserIds));
   formData.set("expectedUpdatedAt", updatedAt);
   return formData;
 }

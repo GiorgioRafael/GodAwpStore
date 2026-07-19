@@ -97,6 +97,14 @@ export type BotMessageCustomization = {
     nicknameInvalidText: string;
     nicknameUnauthorizedText: string;
     nicknameUnavailableText: string;
+    closeButtonLabel: string;
+    closeConfirmationText: string;
+    closeConfirmButtonLabel: string;
+    closeCancelButtonLabel: string;
+    closeUnauthorizedText: string;
+    closeInProgressText: string;
+    closeSuccessText: string;
+    closeUnavailableText: string;
   };
 };
 
@@ -222,6 +230,16 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
       "⛔ Somente o comprador deste pedido pode informar o nick no jogo.",
     nicknameUnavailableText:
       "⚠️ Não foi possível vincular o nick a este pedido. Confirme se o pagamento foi aprovado e tente novamente.",
+    closeButtonLabel: "Fechar ticket",
+    closeConfirmationText:
+      "⚠️ Tem certeza de que deseja fechar este ticket? O canal será excluído e esta ação não poderá ser desfeita.",
+    closeConfirmButtonLabel: "Confirmar fechamento",
+    closeCancelButtonLabel: "Cancelar",
+    closeUnauthorizedText: "⛔ Você não tem permissão para fechar este ticket.",
+    closeInProgressText: "⏳ Fechando o ticket...",
+    closeSuccessText: "✅ Ticket fechado com sucesso.",
+    closeUnavailableText:
+      "⚠️ Não foi possível fechar o ticket agora. Confirme se ele ainda está aberto e tente novamente.",
   },
 };
 
@@ -306,6 +324,14 @@ export const BOT_MESSAGE_FIELD_LIMITS = {
   "ticket.nicknameInvalidText": 1_000,
   "ticket.nicknameUnauthorizedText": 1_000,
   "ticket.nicknameUnavailableText": 1_000,
+  "ticket.closeButtonLabel": 80,
+  "ticket.closeConfirmationText": 1_000,
+  "ticket.closeConfirmButtonLabel": 80,
+  "ticket.closeCancelButtonLabel": 80,
+  "ticket.closeUnauthorizedText": 1_000,
+  "ticket.closeInProgressText": 1_000,
+  "ticket.closeSuccessText": 1_000,
+  "ticket.closeUnavailableText": 1_000,
 } as const satisfies Record<string, number>;
 
 export const BOT_MESSAGE_TOKEN_ALLOWLIST: Record<string, readonly string[]> = {
