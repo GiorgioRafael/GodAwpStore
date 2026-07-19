@@ -3,7 +3,12 @@ import "server-only";
 import type { BotRuntimeSettings } from "./message-customization-server";
 import type { BotMessageCustomization } from "./message-customization";
 import { interpolateBotMessageLimited } from "./message-customization";
-import { discordBotJson } from "./discord-api";
+import {
+  DiscordApiError,
+  assertConfiguredDiscordBotIdentity,
+  assertDiscordBotGuildAccess,
+  discordBotJson,
+} from "./discord-api";
 import { gameNicknameInteractionId } from "./discord-game-nickname";
 import { ticketCloseInteractionId } from "./discord-ticket-close";
 import { normalizeTicketCloseAdminDiscordUserIds } from "./ticket-close-admins";
@@ -44,7 +49,16 @@ type DiscordMessage = {
   components?: unknown;
 };
 
-type DiscordUser = { id: string };
+export class DiscordTicketChannelMissingError extends Error {
+  constructor(
+    readonly orderId: string,
+    readonly channelId: string,
+    cause: DiscordApiError,
+  ) {
+    super("O canal inicial do ticket Discord não existe mais.", { cause });
+    this.name = "DiscordTicketChannelMissingError";
+  }
+}
 
 export function buildTicketPermissionOverwrites(input: {
   guildId: string;
@@ -121,20 +135,21 @@ export async function synchronizeOpenDiscordTicketControls(
 ) {
   const normalized = validateSynchronizationInput(input);
   const fetcher = options.fetcher ?? fetch;
-  const [channel, botUser] = await Promise.all([
-    discordBotJson<DiscordChannel>(`/channels/${normalized.channelId}`, {}, fetcher),
-    discordBotJson<DiscordUser>("/users/@me", {}, fetcher),
-  ]);
+  const botUserId = await assertConfiguredDiscordBotIdentity(fetcher);
+  await assertDiscordBotGuildAccess(normalized.guildId, fetcher);
+  const channel = await readInitialTicketChannel(
+    normalized.orderId,
+    normalized.guildId,
+    normalized.channelId,
+    fetcher,
+  );
 
   assertTicketChannel(channel, normalized.orderId, normalized.guildId, normalized.channelId);
-  if (!SNOWFLAKE_PATTERN.test(botUser.id)) {
-    throw new Error("Discord retornou um ID de bot inválido.");
-  }
 
   const expectedOverwrites = buildTicketPermissionOverwrites({
     guildId: normalized.guildId,
     buyerDiscordId: normalized.buyerDiscordId,
-    botDiscordId: botUser.id,
+    botDiscordId: botUserId,
     closerDiscordUserIds: normalized.settings.ticketCloseAdminDiscordUserIds,
     notificationDiscordUserIds:
       normalized.settings.ticketNotificationDiscordUserIds,
@@ -160,7 +175,7 @@ export async function synchronizeOpenDiscordTicketControls(
   const welcome = await findTicketWelcomeMessage(
     normalized.channelId,
     normalized.orderId,
-    botUser.id,
+    botUserId,
     fetcher,
   );
   if (!welcome || !SNOWFLAKE_PATTERN.test(welcome.id)) {
@@ -185,6 +200,29 @@ export async function synchronizeOpenDiscordTicketControls(
   }
 
   return { permissionsUpdated, welcomeMessageUpdated };
+}
+
+async function readInitialTicketChannel(
+  orderId: string,
+  guildId: string,
+  channelId: string,
+  fetcher: typeof fetch,
+) {
+  try {
+    return await discordBotJson<DiscordChannel>(`/channels/${channelId}`, {}, fetcher);
+  } catch (error) {
+    if (
+      error instanceof DiscordApiError &&
+      error.status === 404 &&
+      error.discordCode === 10_003 &&
+      error.method === "GET" &&
+      error.path === `/channels/${channelId}`
+    ) {
+      await assertDiscordBotGuildAccess(guildId, fetcher);
+      throw new DiscordTicketChannelMissingError(orderId, channelId, error);
+    }
+    throw error;
+  }
 }
 
 async function findTicketWelcomeMessage(

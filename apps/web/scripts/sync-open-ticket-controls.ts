@@ -13,6 +13,7 @@ async function main() {
     [
       `Tickets processados: ${result.processed}`,
       `sincronizados: ${result.synchronized}`,
+      `canais ausentes fechados: ${result.missingChannelsClosed}`,
       `falhas: ${result.failed}`,
       `permissões atualizadas: ${result.permissionsUpdated}`,
       `mensagens atualizadas: ${result.welcomeMessagesUpdated}`,

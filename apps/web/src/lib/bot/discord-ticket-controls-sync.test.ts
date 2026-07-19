@@ -1,10 +1,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  createAdminSupabaseClient: vi.fn(),
-  loadBotRuntimeSettingsStrict: vi.fn(),
-  synchronizeOpenDiscordTicketControls: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class DiscordTicketChannelMissingError extends Error {
+    constructor(
+      readonly orderId: string,
+      readonly channelId: string,
+    ) {
+      super("Canal inicial ausente");
+      this.name = "DiscordTicketChannelMissingError";
+    }
+  }
+
+  return {
+    createAdminSupabaseClient: vi.fn(),
+    loadBotRuntimeSettingsStrict: vi.fn(),
+    synchronizeOpenDiscordTicketControls: vi.fn(),
+    DiscordTicketChannelMissingError,
+  };
+});
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/admin", () => ({
@@ -15,6 +28,7 @@ vi.mock("./message-customization-server", () => ({
 }));
 vi.mock("./discord-ticket-controls", () => ({
   synchronizeOpenDiscordTicketControls: mocks.synchronizeOpenDiscordTicketControls,
+  DiscordTicketChannelMissingError: mocks.DiscordTicketChannelMissingError,
 }));
 
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
@@ -59,6 +73,7 @@ describe("sincronização retroativa dos controles de ticket", () => {
     ).resolves.toEqual({
       processed: 1,
       synchronized: 1,
+      missingChannelsClosed: 0,
       failed: 0,
       permissionsUpdated: 1,
       welcomeMessagesUpdated: 1,
@@ -105,10 +120,188 @@ describe("sincronização retroativa dos controles de ticket", () => {
 
     await expect(
       synchronizeAllOpenDiscordTicketControls({ client: client as never, concurrency: 1 }),
-    ).resolves.toMatchObject({ processed: 2, synchronized: 0, failed: 2 });
+    ).resolves.toMatchObject({
+      processed: 2,
+      synchronized: 0,
+      missingChannelsClosed: 0,
+      failed: 2,
+    });
     expect(consoleError).toHaveBeenCalledWith(
       expect.stringContaining("Discord indisponível"),
     );
+  });
+
+  it("fecha no banco somente ticket cujo canal inicial retornou 404", async () => {
+    const order = openTicket(1, "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9");
+    const client = clientMock({
+      orders: [order],
+      guilds: [
+        {
+          id: order.guild_id,
+          discord_guild_id: "123456789012345678",
+        },
+      ],
+      rpcResult: {
+        data: {
+          reconciled_order_id: order.id,
+          was_closed: true,
+          ticket_status: "closed",
+          ticket_channel_id: order.discord_ticket_channel_id,
+          closed_at: "2026-07-19T12:00:00.000Z",
+          closed_by_discord_user_id: null,
+        },
+        error: null,
+      },
+    });
+    mocks.synchronizeOpenDiscordTicketControls.mockRejectedValueOnce(
+      new mocks.DiscordTicketChannelMissingError(
+        order.id,
+        order.discord_ticket_channel_id,
+      ),
+    );
+
+    await expect(
+      synchronizeAllOpenDiscordTicketControls({ client: client as never }),
+    ).resolves.toEqual({
+      processed: 1,
+      synchronized: 0,
+      missingChannelsClosed: 1,
+      failed: 0,
+      permissionsUpdated: 0,
+      welcomeMessagesUpdated: 0,
+    });
+    expect(client.rpc).toHaveBeenCalledWith("reconcile_missing_discord_ticket", {
+      p_order_id: order.id,
+      p_ticket_channel_id: order.discord_ticket_channel_id,
+    });
+    expect(client.rpcSingle).toHaveBeenCalledOnce();
+  });
+
+  it("trata reconciliação concorrente como sucesso idempotente", async () => {
+    const order = openTicket(2, "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9");
+    const client = clientMock({
+      orders: [order],
+      guilds: [
+        {
+          id: order.guild_id,
+          discord_guild_id: "123456789012345678",
+        },
+      ],
+      rpcResult: {
+        data: {
+          reconciled_order_id: order.id,
+          was_closed: false,
+          ticket_status: "closed",
+          ticket_channel_id: order.discord_ticket_channel_id,
+          closed_at: "2026-07-19T12:00:00.000Z",
+          closed_by_discord_user_id: null,
+        },
+        error: null,
+      },
+    });
+    mocks.synchronizeOpenDiscordTicketControls.mockRejectedValueOnce(
+      new mocks.DiscordTicketChannelMissingError(
+        order.id,
+        order.discord_ticket_channel_id,
+      ),
+    );
+
+    await expect(
+      synchronizeAllOpenDiscordTicketControls({ client: client as never }),
+    ).resolves.toMatchObject({
+      processed: 1,
+      synchronized: 0,
+      missingChannelsClosed: 0,
+      failed: 0,
+    });
+  });
+
+  it("contabiliza falha quando a RPC de canal ausente falha", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const order = openTicket(3, "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9");
+    const client = clientMock({
+      orders: [order],
+      guilds: [
+        {
+          id: order.guild_id,
+          discord_guild_id: "123456789012345678",
+        },
+      ],
+      rpcResult: {
+        data: null,
+        error: { message: "database unavailable" },
+      },
+    });
+    mocks.synchronizeOpenDiscordTicketControls.mockRejectedValueOnce(
+      new mocks.DiscordTicketChannelMissingError(
+        order.id,
+        order.discord_ticket_channel_id,
+      ),
+    );
+
+    await expect(
+      synchronizeAllOpenDiscordTicketControls({ client: client as never }),
+    ).resolves.toMatchObject({
+      processed: 1,
+      synchronized: 0,
+      missingChannelsClosed: 0,
+      failed: 1,
+    });
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining("database unavailable"),
+    );
+  });
+
+  it("não reconcilia 404 posterior que não seja o canal inicial", async () => {
+    const order = openTicket(4, "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9");
+    const client = clientMock({
+      orders: [order],
+      guilds: [
+        {
+          id: order.guild_id,
+          discord_guild_id: "123456789012345678",
+        },
+      ],
+    });
+    mocks.synchronizeOpenDiscordTicketControls.mockRejectedValueOnce(
+      new Error("Discord recusou a mensagem posterior (404)."),
+    );
+
+    await expect(
+      synchronizeAllOpenDiscordTicketControls({ client: client as never }),
+    ).resolves.toMatchObject({
+      processed: 1,
+      synchronized: 0,
+      missingChannelsClosed: 0,
+      failed: 1,
+    });
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("não reconcilia falha de identidade causada por application ID ausente", async () => {
+    const order = openTicket(5, "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9");
+    const client = clientMock({
+      orders: [order],
+      guilds: [
+        {
+          id: order.guild_id,
+          discord_guild_id: "123456789012345678",
+        },
+      ],
+    });
+    mocks.synchronizeOpenDiscordTicketControls.mockRejectedValueOnce(
+      new Error("DISCORD_APPLICATION_ID não configurado ou inválido."),
+    );
+
+    await expect(
+      synchronizeAllOpenDiscordTicketControls({ client: client as never }),
+    ).resolves.toMatchObject({
+      processed: 1,
+      synchronized: 0,
+      missingChannelsClosed: 0,
+      failed: 1,
+    });
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
   it("retorna vazio sem consultar servidores quando não há tickets abertos", async () => {
@@ -116,7 +309,14 @@ describe("sincronização retroativa dos controles de ticket", () => {
 
     await expect(
       synchronizeAllOpenDiscordTicketControls({ client: client as never }),
-    ).resolves.toMatchObject({ processed: 0, synchronized: 0, failed: 0 });
+    ).resolves.toEqual({
+      processed: 0,
+      synchronized: 0,
+      missingChannelsClosed: 0,
+      failed: 0,
+      permissionsUpdated: 0,
+      welcomeMessagesUpdated: 0,
+    });
     expect(client.guildIn).not.toHaveBeenCalled();
     expect(mocks.synchronizeOpenDiscordTicketControls).not.toHaveBeenCalled();
   });
@@ -143,6 +343,7 @@ describe("sincronização retroativa dos controles de ticket", () => {
     ).resolves.toEqual({
       processed: 1_205,
       synchronized: 1_205,
+      missingChannelsClosed: 0,
       failed: 0,
       permissionsUpdated: 1_205,
       welcomeMessagesUpdated: 1_205,
@@ -175,6 +376,10 @@ function openTicket(index: number, guildId: string) {
 function clientMock(input: {
   orders: Array<Record<string, unknown>>;
   guilds: Array<{ id: string; discord_guild_id: string }>;
+  rpcResult?: {
+    data: Record<string, unknown> | null;
+    error: { message: string } | null;
+  };
 }) {
   const orderGt = vi.fn();
   const orderOrder = vi.fn();
@@ -185,6 +390,8 @@ function clientMock(input: {
     error: null,
   }));
   const guildSelect = vi.fn(() => ({ in: guildIn }));
+  const rpcSingle = vi.fn(async () => input.rpcResult ?? { data: null, error: null });
+  const rpc = vi.fn(() => ({ single: rpcSingle }));
   const from = vi.fn((table: string) => {
     if (table !== "orders") return { select: guildSelect };
 
@@ -218,5 +425,14 @@ function clientMock(input: {
     };
     return query;
   });
-  return { from, guildIn, orderGt, orderOrder, orderLimit, pageCursors };
+  return {
+    from,
+    rpc,
+    rpcSingle,
+    guildIn,
+    orderGt,
+    orderOrder,
+    orderLimit,
+    pageCursors,
+  };
 }

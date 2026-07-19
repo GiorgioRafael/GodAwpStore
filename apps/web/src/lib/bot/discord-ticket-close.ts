@@ -4,7 +4,13 @@ import { randomUUID } from "node:crypto";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { readDiscordInteraction } from "./discord-context";
-import { discordApiUrl, discordBotRequest } from "./discord-api";
+import {
+  assertConfiguredDiscordBotIdentity,
+  assertDiscordBotGuildAccess,
+  discordApiUrl,
+  discordBotRequest,
+  isDiscordUnknownChannelResponse,
+} from "./discord-api";
 import type { BotRuntimeSettings } from "./message-customization-server";
 import { interpolateBotMessageLimited } from "./message-customization";
 
@@ -241,7 +247,7 @@ export async function completeDiscordTicketClose(
   const message = settings.customization.ticket;
   const fetcher = options.fetcher ?? fetch;
   if (interaction?.kind !== "confirm" || !context) {
-    await updateOriginalInteraction(raw, message.closeUnavailableText, fetcher);
+    await updateOriginalInteractionSafely(raw, message.closeUnavailableText, fetcher);
     return { status: "unavailable" as const };
   }
 
@@ -284,16 +290,20 @@ export async function completeDiscordTicketClose(
       claimToken: claim.claimToken,
     };
 
+    await assertConfiguredDiscordBotIdentity(fetcher);
+    await assertDiscordBotGuildAccess(context.guildId, fetcher);
     await updateOriginalInteractionSafely(raw, message.closeInProgressText, fetcher);
     const channelResponse = await discordBotRequest(
       `/channels/${activeClaim.ticketChannelId}`,
       {},
       fetcher,
     );
-    if (channelResponse.status === 404) {
+    if (await isDiscordUnknownChannelResponse(channelResponse)) {
+      await assertDiscordBotGuildAccess(context.guildId, fetcher);
       deletionOutcome = "removed";
     } else {
       if (!channelResponse.ok) {
+        if (channelResponse.status === 404) deletionOutcome = "ambiguous";
         throw new Error(`Discord recusou a leitura do ticket (${channelResponse.status}).`);
       }
       const channel = (await channelResponse.json()) as {
@@ -329,21 +339,25 @@ export async function completeDiscordTicketClose(
           cause: error,
         });
       }
-      if (!deleteResponse.ok && deleteResponse.status !== 404) {
-        if (deleteResponse.status < 500 && deleteResponse.status !== 429) {
+      const channelIsMissing = await isDiscordUnknownChannelResponse(deleteResponse);
+      if (!deleteResponse.ok && !channelIsMissing) {
+        if (
+          deleteResponse.status < 500 &&
+          deleteResponse.status !== 429 &&
+          deleteResponse.status !== 404
+        ) {
           deletionOutcome = "not_removed";
         }
         throw new Error(`Discord recusou o fechamento do ticket (${deleteResponse.status}).`);
       }
+      if (channelIsMissing) {
+        await assertDiscordBotGuildAccess(context.guildId, fetcher);
+      }
       deletionOutcome = "removed";
       if (deleteResponse.ok) {
         const deletedChannel: unknown = await deleteResponse.json().catch(() => null);
-        if (
-          isObject(deletedChannel) &&
-          typeof deletedChannel.id === "string" &&
-          deletedChannel.id !== activeClaim.ticketChannelId
-        ) {
-          throw new Error("Discord retornou outro canal após o fechamento.");
+        if (!isObject(deletedChannel) || deletedChannel.id !== activeClaim.ticketChannelId) {
+          throw new Error("Discord retornou uma confirmação de canal inválida após o fechamento.");
         }
       }
     }

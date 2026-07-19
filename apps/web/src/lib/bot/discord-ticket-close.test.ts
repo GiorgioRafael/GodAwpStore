@@ -271,6 +271,186 @@ describe("Discord ticket close interactions", () => {
     expect(requests.some((request) => request.method === "DELETE")).toBe(false);
   });
 
+  it.each([
+    ["HTML", "html" as const],
+    ["outro código Discord", { code: 10_008, message: "Unknown Message" }],
+  ])("preserva a reserva diante de 404 %s no GET", async (_label, channelErrorBody) => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, { channelStatus: 404, channelErrorBody }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).not.toHaveBeenCalled();
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  it("preserva a reserva diante de 404 sem Unknown Channel no DELETE", async () => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, {
+          deleteStatus: 404,
+          deleteErrorBody: { code: 10_008, message: "Unknown Message" },
+        }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).not.toHaveBeenCalled();
+  });
+
+  it("conclui quando o DELETE confirma Unknown Channel após o GET validado", async () => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, { deleteStatus: 404 }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "closed", channelId });
+
+    expect(repository.complete).toHaveBeenCalledOnce();
+    expect(repository.release).not.toHaveBeenCalled();
+  });
+
+  it("preserva a reserva quando DELETE 2xx não confirma o ID do canal", async () => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, { deleteSuccessBody: {} }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).not.toHaveBeenCalled();
+  });
+
+  it("não consulta nem apaga o canal quando o token pertence a outro bot", async () => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, {
+          botUser: { id: "623456789012345678", bot: true },
+        }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).toHaveBeenCalledWith({ orderId, claimToken });
+    expect(
+      requests.some((request) => request.url.endsWith(`/channels/${channelId}`)),
+    ).toBe(false);
+  });
+
+  it.each([
+    [403, { code: 50_001, message: "Missing Access" }],
+    [404, { code: 10_003, message: "Unknown Channel" }],
+  ])("não fecha nem consulta o canal quando o guild retorna %s", async (status, guildErrorBody) => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, { guildStatus: status, guildErrorBody }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).toHaveBeenCalledWith({ orderId, claimToken });
+    expect(
+      requests.some((request) => request.url.endsWith(`/channels/${channelId}`)),
+    ).toBe(false);
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  it("não fecha nem consulta o Discord sem application ID configurado", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", "");
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.claim).not.toHaveBeenCalled();
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
+  });
+
+  it("revalida o guild após Unknown Channel no GET antes de concluir", async () => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, {
+          channelStatus: 404,
+          guildResponses: [
+            { status: 200, body: { id: guildId } },
+            { status: 403, body: { code: 50_001, message: "Missing Access" } },
+          ],
+        }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).toHaveBeenCalledWith({ orderId, claimToken });
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  it("revalida o guild após Unknown Channel no DELETE antes de concluir", async () => {
+    const repository = fakeRepository();
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests, {
+          deleteStatus: 404,
+          guildResponses: [
+            { status: 200, body: { id: guildId } },
+            { status: 403, body: { code: 50_001, message: "Missing Access" } },
+          ],
+        }),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "unavailable" });
+
+    expect(repository.complete).not.toHaveBeenCalled();
+    expect(repository.release).not.toHaveBeenCalled();
+    expect(requests.some((request) => request.method === "DELETE")).toBe(true);
+  });
+
   it("preserva a reserva quando a resposta da exclusao e ambigua", async () => {
     const repository = fakeRepository();
     const requests: Array<{ url: string; method: string; body: unknown }> = [];
@@ -411,11 +591,20 @@ function fakeRepository(
 function discordFetcher(
   requests: Array<{ url: string; method: string; body: unknown }>,
   options: {
+    botUser?: { id: string; bot: boolean };
+    guild?: { id: string };
+    guildStatus?: number;
+    guildErrorBody?: { code: number; message: string };
+    guildResponses?: Array<{ status: number; body: unknown }>;
     channel?: { id: string; guild_id: string; type: number; topic: string };
     channelStatus?: number;
+    channelErrorBody?: "html" | { code: number; message: string };
     deleteStatus?: number;
+    deleteErrorBody?: "html" | { code: number; message: string };
+    deleteSuccessBody?: unknown;
   } = {},
 ) {
+  let guildResponseIndex = 0;
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -423,9 +612,38 @@ function discordFetcher(
     requests.push({ url, method, body });
 
     if (url.includes("/webhooks/")) return Response.json({ id: interactionId });
+    if (url.endsWith("/users/@me")) {
+      return Response.json(options.botUser ?? { id: applicationId, bot: true });
+    }
+    if (url.endsWith(`/guilds/${guildId}`)) {
+      const sequencedResponse = options.guildResponses?.[guildResponseIndex++];
+      if (sequencedResponse) {
+        return Response.json(sequencedResponse.body, {
+          status: sequencedResponse.status,
+        });
+      }
+      const status = options.guildStatus ?? 200;
+      return Response.json(
+        status === 200
+          ? (options.guild ?? { id: guildId })
+          : (options.guildErrorBody ?? { message: "Discord guild unavailable" }),
+        { status },
+      );
+    }
     if (url.endsWith(`/channels/${channelId}`) && method === "GET") {
       const status = options.channelStatus ?? 200;
-      if (status === 404) return Response.json({ message: "Unknown Channel" }, { status });
+      if (status === 404) {
+        if (options.channelErrorBody === "html") {
+          return new Response("upstream not found", {
+            status,
+            headers: { "content-type": "text/html" },
+          });
+        }
+        return Response.json(
+          options.channelErrorBody ?? { code: 10_003, message: "Unknown Channel" },
+          { status },
+        );
+      }
       return Response.json(
         options.channel ?? {
           id: channelId,
@@ -438,8 +656,19 @@ function discordFetcher(
     }
     if (url.endsWith(`/channels/${channelId}`) && method === "DELETE") {
       const status = options.deleteStatus ?? 200;
+      if (options.deleteErrorBody === "html") {
+        return new Response("upstream not found", {
+          status,
+          headers: { "content-type": "text/html" },
+        });
+      }
       return Response.json(
-        status === 200 ? { id: channelId } : { message: "Discord unavailable" },
+        status === 200
+          ? (options.deleteSuccessBody ?? { id: channelId })
+          : (options.deleteErrorBody ??
+            (status === 404
+              ? { code: 10_003, message: "Unknown Channel" }
+              : { message: "Discord unavailable" })),
         { status },
       );
     }

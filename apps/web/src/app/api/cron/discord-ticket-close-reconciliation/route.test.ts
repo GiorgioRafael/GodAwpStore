@@ -14,7 +14,7 @@ const result = {
   scanned: 2,
   completed: 1,
   alreadyClosed: 0,
-  released: 1,
+  resumed: 1,
   superseded: 0,
   active: 0,
   failed: 0,

@@ -2,7 +2,10 @@ import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
-import { synchronizeOpenDiscordTicketControls } from "./discord-ticket-controls";
+import {
+  DiscordTicketChannelMissingError,
+  synchronizeOpenDiscordTicketControls,
+} from "./discord-ticket-controls";
 import {
   loadBotRuntimeSettingsStrict,
   type BotRuntimeSettings,
@@ -20,6 +23,7 @@ type OpenTicketRow = {
 export type OpenDiscordTicketControlsSyncResult = {
   processed: number;
   synchronized: number;
+  missingChannelsClosed: number;
   failed: number;
   permissionsUpdated: number;
   welcomeMessagesUpdated: number;
@@ -142,9 +146,26 @@ async function synchronizeOpenTicketPage(
         if (repaired.permissionsUpdated) result.permissionsUpdated += 1;
         if (repaired.welcomeMessageUpdated) result.welcomeMessagesUpdated += 1;
       } catch (error) {
+        if (
+          error instanceof DiscordTicketChannelMissingError &&
+          error.orderId === order.id &&
+          error.channelId === channelId
+        ) {
+          try {
+            const wasClosed = await reconcileMissingDiscordTicket(
+              client,
+              order.id,
+              channelId,
+            );
+            if (wasClosed) result.missingChannelsClosed += 1;
+          } catch (reconciliationError) {
+            result.failed += 1;
+            logTicketSyncError(order.id, reconciliationError);
+          }
+          continue;
+        }
         result.failed += 1;
-        const message = error instanceof Error ? error.message : "erro desconhecido";
-        console.error(`[discord-ticket-controls-sync:${order.id}] ${message}`);
+        logTicketSyncError(order.id, error);
       }
     }
   }
@@ -152,10 +173,50 @@ async function synchronizeOpenTicketPage(
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 }
 
+async function reconcileMissingDiscordTicket(
+  client: AdminClient,
+  orderId: string,
+  channelId: string,
+) {
+  const { data, error } = await client
+    .rpc("reconcile_missing_discord_ticket", {
+      p_order_id: orderId,
+      p_ticket_channel_id: channelId,
+    })
+    .single();
+  if (error) {
+    throw new Error(`Não foi possível reconciliar o ticket ausente: ${error.message}`);
+  }
+  if (
+    !isObject(data) ||
+    data.reconciled_order_id !== orderId ||
+    typeof data.was_closed !== "boolean" ||
+    data.ticket_status !== "closed" ||
+    data.ticket_channel_id !== channelId ||
+    typeof data.closed_at !== "string" ||
+    Number.isNaN(Date.parse(data.closed_at)) ||
+    (data.closed_by_discord_user_id !== null &&
+      typeof data.closed_by_discord_user_id !== "string")
+  ) {
+    throw new Error("Supabase retornou uma reconciliação de ticket inválida.");
+  }
+  return data.was_closed;
+}
+
+function logTicketSyncError(orderId: string, error: unknown) {
+  const message = error instanceof Error ? error.message : "erro desconhecido";
+  console.error(`[discord-ticket-controls-sync:${orderId}] ${message}`);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function emptyResult(): OpenDiscordTicketControlsSyncResult {
   return {
     processed: 0,
     synchronized: 0,
+    missingChannelsClosed: 0,
     failed: 0,
     permissionsUpdated: 0,
     welcomeMessagesUpdated: 0,

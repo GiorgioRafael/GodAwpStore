@@ -79,22 +79,39 @@ insert into public.orders (
   discord_ticket_status,
   discord_ticket_claimed_at
 )
-values (
-  '74000000-0000-4000-8000-000000000005',
-  '74000000-0000-4000-8000-000000000004',
-  '74000000-0000-4000-8000-000000000003',
-  '740000000000000003',
-  'paid',
-  100,
-  100,
-  100,
-  3000,
-  'paid',
-  now(),
-  '740000000000000004',
-  'open',
-  now()
-);
+values
+  (
+    '74000000-0000-4000-8000-000000000005',
+    '74000000-0000-4000-8000-000000000004',
+    '74000000-0000-4000-8000-000000000003',
+    '740000000000000003',
+    'paid',
+    100,
+    100,
+    100,
+    3000,
+    'paid',
+    now(),
+    '740000000000000004',
+    'open',
+    now()
+  ),
+  (
+    '74000000-0000-4000-8000-000000000006',
+    '74000000-0000-4000-8000-000000000004',
+    '74000000-0000-4000-8000-000000000003',
+    '740000000000000005',
+    'paid',
+    100,
+    100,
+    100,
+    3000,
+    'paid',
+    now(),
+    '740000000000000006',
+    'open',
+    now()
+  );
 
 do $$
 begin
@@ -121,6 +138,30 @@ begin
   ) or not has_function_privilege(
     'service_role',
     'public.complete_discord_ticket_close(uuid,text,uuid)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.complete_discord_ticket_close(uuid,text,uuid,text)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.complete_discord_ticket_close(uuid,text,uuid,text)',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.complete_discord_ticket_close(uuid,text,uuid,text)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.renew_discord_ticket_close_claim(uuid,text,uuid)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.renew_discord_ticket_close_claim(uuid,text,uuid)',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.renew_discord_ticket_close_claim(uuid,text,uuid)',
     'EXECUTE'
   ) or has_function_privilege(
     'anon',
@@ -489,6 +530,165 @@ begin
 end
 $$;
 
+do $$
+declare
+  v_claim record;
+  v_complete record;
+  v_renew record;
+  v_audit_count integer;
+begin
+  select * into strict v_claim
+  from public.claim_discord_ticket_close(
+    '74000000-0000-4000-8000-000000000006',
+    '740000000000000001',
+    '740000000000000006',
+    '911402638975844354',
+    '74000000-0000-4000-8000-000000000015'
+  );
+
+  if not v_claim.claimed then
+    raise exception 'reconciliation-source ticket close lease was not acquired';
+  end if;
+
+  update public.orders
+  set discord_ticket_close_claimed_at = statement_timestamp() - interval '6 minutes'
+  where id = '74000000-0000-4000-8000-000000000006';
+
+  begin
+    perform public.renew_discord_ticket_close_claim(
+      '74000000-0000-4000-8000-000000000006',
+      '740000000000000006',
+      '74000000-0000-4000-8000-000000000099'
+    );
+    raise exception 'reconciliation lease renewal accepted a mismatched token';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  select * into strict v_renew
+  from public.renew_discord_ticket_close_claim(
+    '74000000-0000-4000-8000-000000000006',
+    '740000000000000006',
+    '74000000-0000-4000-8000-000000000015'
+  );
+
+  if not v_renew.renewed
+    or v_renew.active
+    or v_renew.ticket_status <> 'open'
+    or v_renew.ticket_channel_id <> '740000000000000006'
+    or v_renew.claim_expires_at <= statement_timestamp() then
+    raise exception 'reconciliation lease was not renewed atomically';
+  end if;
+
+  select * into strict v_renew
+  from public.renew_discord_ticket_close_claim(
+    '74000000-0000-4000-8000-000000000006',
+    '740000000000000006',
+    '74000000-0000-4000-8000-000000000015'
+  );
+
+  if v_renew.renewed
+    or not v_renew.active
+    or v_renew.claim_expires_at <= statement_timestamp() then
+    raise exception 'an overlapping reconciliation renewed an active lease';
+  end if;
+
+  begin
+    perform public.complete_discord_ticket_close(
+      '74000000-0000-4000-8000-000000000006',
+      '740000000000000006',
+      '74000000-0000-4000-8000-000000000099',
+      'discord_close_reconciliation'
+    );
+    raise exception 'source-aware completion accepted a mismatched claim token';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    perform public.complete_discord_ticket_close(
+      '74000000-0000-4000-8000-000000000006',
+      '740000000000000006',
+      '74000000-0000-4000-8000-000000000015',
+      'untrusted_reconciliation_source'
+    );
+    raise exception 'source-aware completion accepted an untrusted audit source';
+  exception
+    when invalid_parameter_value then null;
+  end;
+
+  select * into strict v_complete
+  from public.complete_discord_ticket_close(
+    '74000000-0000-4000-8000-000000000006',
+    '740000000000000006',
+    '74000000-0000-4000-8000-000000000015',
+    'discord_close_reconciliation'
+  );
+
+  if not v_complete.was_closed
+    or v_complete.ticket_status <> 'closed'
+    or v_complete.ticket_channel_id <> '740000000000000006'
+    or v_complete.closed_at is null
+    or v_complete.closed_by_discord_user_id <> '911402638975844354' then
+    raise exception 'source-aware reconciliation did not preserve the requested actor';
+  end if;
+
+  select count(*) into v_audit_count
+  from public.audit_events
+  where action = 'bot.order.ticket.close'
+    and entity_type = 'order'
+    and entity_id = '74000000-0000-4000-8000-000000000006'
+    and actor_discord_user_id = '911402638975844354'
+    and metadata @> jsonb_build_object(
+      'discord_ticket_channel_id', '740000000000000006',
+      'discord_guild_id', '740000000000000001',
+      'source', 'discord_close_reconciliation'
+    );
+  if v_audit_count <> 1 then
+    raise exception 'reconciliation completion audit source or actor is invalid';
+  end if;
+
+  select * into strict v_complete
+  from public.complete_discord_ticket_close(
+    '74000000-0000-4000-8000-000000000006',
+    '740000000000000006',
+    '74000000-0000-4000-8000-000000000015',
+    'discord_close_reconciliation'
+  );
+  if v_complete.was_closed then
+    raise exception 'source-aware reconciliation completion was not idempotent';
+  end if;
+
+  select * into strict v_complete
+  from public.complete_discord_ticket_close(
+    '74000000-0000-4000-8000-000000000006',
+    '740000000000000006',
+    '74000000-0000-4000-8000-000000000015'
+  );
+  if v_complete.was_closed then
+    raise exception 'compatibility completion duplicated a reconciled close';
+  end if;
+
+  select count(*) into v_audit_count
+  from public.audit_events
+  where action = 'bot.order.ticket.close'
+    and entity_id = '74000000-0000-4000-8000-000000000006';
+  if v_audit_count <> 1 then
+    raise exception 'idempotent completion paths duplicated the reconciliation audit';
+  end if;
+
+  if exists (
+    select 1
+    from public.audit_events
+    where action = 'bot.order.ticket.close'
+      and entity_id = '74000000-0000-4000-8000-000000000006'
+      and metadata ->> 'source' <> 'discord_close_reconciliation'
+  ) then
+    raise exception 'idempotent compatibility completion rewrote the original audit source';
+  end if;
+end
+$$;
+
 set local role authenticated;
 
 do $$
@@ -513,6 +713,29 @@ begin
       '74000000-0000-4000-8000-000000000020'
     );
     raise exception 'authenticated unexpectedly completed a Discord ticket close';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    perform public.complete_discord_ticket_close(
+      '74000000-0000-4000-8000-000000000006',
+      '740000000000000006',
+      '74000000-0000-4000-8000-000000000020',
+      'discord_close_reconciliation'
+    );
+    raise exception 'authenticated unexpectedly completed a source-aware Discord ticket close';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  begin
+    perform public.renew_discord_ticket_close_claim(
+      '74000000-0000-4000-8000-000000000006',
+      '740000000000000006',
+      '74000000-0000-4000-8000-000000000020'
+    );
+    raise exception 'authenticated unexpectedly renewed a Discord ticket close';
   exception
     when insufficient_privilege then null;
   end;

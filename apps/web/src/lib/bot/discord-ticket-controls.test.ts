@@ -1,13 +1,15 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
 import {
   buildPaidTicketControlComponents,
   buildTicketPermissionOverwrites,
+  DiscordTicketChannelMissingError,
   synchronizeOpenDiscordTicketControls,
   welcomeMessageMarker,
 } from "./discord-ticket-controls";
+import { DiscordApiError } from "./discord-api";
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 import type { BotRuntimeSettings } from "./message-customization-server";
 
@@ -32,6 +34,11 @@ const settings: BotRuntimeSettings = {
   ticketNotificationDiscordUserIds: [notificationOnlyId],
   ticketCloseAdminDiscordUserIds: [closeAdminId],
 };
+
+beforeEach(() => {
+  vi.stubEnv("DISCORD_APPLICATION_ID", botId);
+  vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -169,7 +176,8 @@ describe("Discord ticket controls", () => {
           permission_overwrites: expectedOverwrites,
         });
       }
-      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId, bot: true });
+      if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
       if (url.includes(`/channels/${channelId}/messages?limit=100&before=`)) {
         return Response.json([
           {
@@ -220,6 +228,229 @@ describe("Discord ticket controls", () => {
 
     expect(requests.some((request) => request.method === "PATCH")).toBe(false);
   });
+
+  it("identifica somente o 404 do GET inicial como canal de ticket ausente", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
+    const requestedUrls: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.endsWith("/users/@me")) {
+        return Response.json({ id: botId, bot: true });
+      }
+      if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
+      return Response.json(
+        { code: 10_003, message: "Unknown Channel" },
+        { status: 404 },
+      );
+    }) as unknown as typeof fetch;
+
+    const error = await synchronizeOpenDiscordTicketControls(
+      { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+      { fetcher },
+    ).catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(DiscordTicketChannelMissingError);
+    expect(error).toMatchObject({ orderId, channelId });
+    expect((error as Error).cause).toBeInstanceOf(DiscordApiError);
+    expect(requestedUrls).toEqual([
+      "https://discord.com/api/v10/users/@me",
+      `https://discord.com/api/v10/guilds/${guildId}`,
+      `https://discord.com/api/v10/channels/${channelId}`,
+      `https://discord.com/api/v10/guilds/${guildId}`,
+    ]);
+  });
+
+  it.each<[string, () => Response, number | null]>([
+    [
+      "404 sem JSON Discord",
+      () => new Response("proxy not found", { status: 404 }),
+      null,
+    ],
+    [
+      "outro recurso Discord ausente",
+      () =>
+        Response.json(
+          { code: 10_008, message: "Unknown Message" },
+          { status: 404 },
+        ),
+      10_008,
+    ],
+  ])(
+    "não classifica %s como canal ausente",
+    async (_label, createResponse, discordCode) => {
+      vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
+      const fetcher = vi.fn(async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.endsWith("/users/@me")) {
+          return Response.json({ id: botId, bot: true });
+        }
+        if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
+        return createResponse();
+      }) as unknown as typeof fetch;
+
+      const error = await synchronizeOpenDiscordTicketControls(
+        { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+        { fetcher },
+      ).catch((failure: unknown) => failure);
+
+      expect(error).toBeInstanceOf(DiscordApiError);
+      expect(error).not.toBeInstanceOf(DiscordTicketChannelMissingError);
+      expect(error).toMatchObject({ status: 404, discordCode });
+      expect(fetcher).toHaveBeenCalledTimes(3);
+    },
+  );
+
+  it("valida a identidade do bot antes de consultar o canal", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
+    vi.stubEnv("DISCORD_APPLICATION_ID", "623456789012345678");
+    const requestedUrls: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      requestedUrls.push(String(input));
+      return Response.json({ id: botId, bot: true });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      synchronizeOpenDiscordTicketControls(
+        { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+        { fetcher },
+      ),
+    ).rejects.toThrow(/n.o corresponde ao aplicativo Discord/);
+
+    expect(requestedUrls).toEqual(["https://discord.com/api/v10/users/@me"]);
+  });
+
+  it("exige o ID do aplicativo antes de qualquer consulta ou reconciliação", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", "");
+    const fetcher = vi.fn();
+
+    const error = await synchronizeOpenDiscordTicketControls(
+      { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+      { fetcher },
+    ).catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(DiscordTicketChannelMissingError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [403, { code: 50_001, message: "Missing Access" }],
+    [404, { code: 10_003, message: "Unknown Channel" }],
+  ])("não reconcilia canal quando o guild retorna %s", async (status, payload) => {
+    const requestedUrls: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.endsWith("/users/@me")) {
+        return Response.json({ id: botId, bot: true });
+      }
+      if (url.endsWith(`/guilds/${guildId}`)) {
+        return Response.json(payload, { status });
+      }
+      return Response.json(
+        { code: 10_003, message: "Unknown Channel" },
+        { status: 404 },
+      );
+    }) as unknown as typeof fetch;
+
+    const error = await synchronizeOpenDiscordTicketControls(
+      { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+      { fetcher },
+    ).catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(DiscordApiError);
+    expect(error).not.toBeInstanceOf(DiscordTicketChannelMissingError);
+    expect(requestedUrls).toEqual([
+      "https://discord.com/api/v10/users/@me",
+      `https://discord.com/api/v10/guilds/${guildId}`,
+    ]);
+  });
+
+  it("revalida o guild depois de Unknown Channel antes de sinalizar reconciliação", async () => {
+    let guildChecks = 0;
+    const requestedUrls: string[] = [];
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.endsWith("/users/@me")) {
+        return Response.json({ id: botId, bot: true });
+      }
+      if (url.endsWith(`/guilds/${guildId}`)) {
+        guildChecks += 1;
+        return guildChecks === 1
+          ? Response.json({ id: guildId })
+          : Response.json(
+              { code: 50_001, message: "Missing Access" },
+              { status: 403 },
+            );
+      }
+      return Response.json(
+        { code: 10_003, message: "Unknown Channel" },
+        { status: 404 },
+      );
+    }) as unknown as typeof fetch;
+
+    const error = await synchronizeOpenDiscordTicketControls(
+      { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+      { fetcher },
+    ).catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(DiscordApiError);
+    expect(error).not.toBeInstanceOf(DiscordTicketChannelMissingError);
+    expect(requestedUrls).toEqual([
+      "https://discord.com/api/v10/users/@me",
+      `https://discord.com/api/v10/guilds/${guildId}`,
+      `https://discord.com/api/v10/channels/${channelId}`,
+      `https://discord.com/api/v10/guilds/${guildId}`,
+    ]);
+  });
+
+  it("mantem 404 posterior da mensagem como falha da API Discord", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
+    const expectedOverwrites = buildTicketPermissionOverwrites({
+      guildId,
+      buyerDiscordId: buyerId,
+      botDiscordId: botId,
+      closerDiscordUserIds: settings.ticketCloseAdminDiscordUserIds,
+      notificationDiscordUserIds: settings.ticketNotificationDiscordUserIds,
+    });
+    const fetcher = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith(`/channels/${channelId}`)) {
+        return Response.json({
+          id: channelId,
+          guild_id: guildId,
+          type: 0,
+          topic: `gwstore-order:${orderId};welcome=1`,
+          permission_overwrites: expectedOverwrites,
+        });
+      }
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId, bot: true });
+      if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
+      if (url.includes(`/channels/${channelId}/messages?`)) {
+        return Response.json(
+          { code: 10_008, message: "Unknown Message" },
+          { status: 404 },
+        );
+      }
+      throw new Error(`unexpected request ${url}`);
+    }) as unknown as typeof fetch;
+
+    const error = await synchronizeOpenDiscordTicketControls(
+      { orderId, guildId, buyerDiscordId: buyerId, channelId, settings },
+      { fetcher },
+    ).catch((failure: unknown) => failure);
+
+    expect(error).toBeInstanceOf(DiscordApiError);
+    expect(error).not.toBeInstanceOf(DiscordTicketChannelMissingError);
+    expect(error).toMatchObject({
+      status: 404,
+      path: `/channels/${channelId}/messages?limit=100`,
+      method: "GET",
+      discordCode: 10_008,
+    });
+  });
 });
 
 function controlsFetcher(
@@ -246,7 +477,10 @@ function controlsFetcher(
         permission_overwrites: options.permissionOverwrites,
       });
     }
-    if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+    if (url.endsWith("/users/@me")) {
+      return Response.json({ id: botId, bot: true });
+    }
+    if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
     if (url.endsWith(`/channels/${channelId}/messages?limit=100`)) {
       return Response.json([
         {

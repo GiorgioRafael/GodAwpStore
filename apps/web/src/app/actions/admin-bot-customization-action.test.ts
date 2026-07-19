@@ -68,6 +68,7 @@ describe("action de personalização do bot", () => {
     mocks.synchronizeAllOpenDiscordTicketControls.mockResolvedValue({
       processed: 2,
       synchronized: 2,
+      missingChannelsClosed: 0,
       failed: 0,
       permissionsUpdated: 2,
       welcomeMessagesUpdated: 2,
@@ -193,6 +194,7 @@ describe("action de personalização do bot", () => {
     mocks.synchronizeAllOpenDiscordTicketControls.mockResolvedValue({
       processed: 2,
       synchronized: 1,
+      missingChannelsClosed: 0,
       failed: 1,
       permissionsUpdated: 1,
       welcomeMessagesUpdated: 1,

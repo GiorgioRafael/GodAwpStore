@@ -14,6 +14,7 @@ import * as route from "./route";
 const syncResult = {
   processed: 12,
   synchronized: 11,
+  missingChannelsClosed: 1,
   failed: 1,
   permissionsUpdated: 10,
   welcomeMessagesUpdated: 9,

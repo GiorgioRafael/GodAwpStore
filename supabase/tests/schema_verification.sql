@@ -65,7 +65,10 @@ begin
     'public.submit_paid_order_game_nickname(uuid,text,text,text,text)',
     'public.claim_discord_ticket_close(uuid,text,text,text,uuid)',
     'public.complete_discord_ticket_close(uuid,text,uuid)',
-    'public.release_discord_ticket_close(uuid,uuid)'
+    'public.complete_discord_ticket_close(uuid,text,uuid,text)',
+    'public.renew_discord_ticket_close_claim(uuid,text,uuid)',
+    'public.release_discord_ticket_close(uuid,uuid)',
+    'public.reconcile_missing_discord_ticket(uuid,text)'
   ]
   loop
     if to_regprocedure(required_function) is null then
@@ -370,11 +373,13 @@ begin
       and procedure.proname in (
         'claim_discord_ticket_close',
         'complete_discord_ticket_close',
-        'release_discord_ticket_close'
+        'renew_discord_ticket_close_claim',
+        'release_discord_ticket_close',
+        'reconcile_missing_discord_ticket'
       )
       and procedure.prosecdef
       and procedure.proconfig @> array['search_path=pg_catalog']::text[]
-  ) <> 3 then
+  ) <> 6 then
     raise exception 'Discord ticket close RPCs must be SECURITY DEFINER with a safe search_path';
   end if;
 
@@ -385,7 +390,9 @@ begin
       and privilege.routine_name in (
         'claim_discord_ticket_close',
         'complete_discord_ticket_close',
-        'release_discord_ticket_close'
+        'renew_discord_ticket_close_claim',
+        'release_discord_ticket_close',
+        'reconcile_missing_discord_ticket'
       )
       and privilege.grantee in ('PUBLIC', 'anon', 'authenticated')
       and privilege.privilege_type = 'EXECUTE'
@@ -396,11 +403,13 @@ begin
       and privilege.routine_name in (
         'claim_discord_ticket_close',
         'complete_discord_ticket_close',
-        'release_discord_ticket_close'
+        'renew_discord_ticket_close_claim',
+        'release_discord_ticket_close',
+        'reconcile_missing_discord_ticket'
       )
       and privilege.grantee = 'service_role'
       and privilege.privilege_type = 'EXECUTE'
-  ) <> 3 then
+  ) <> 5 then
     raise exception 'Discord ticket close RPC execute privileges are invalid';
   end if;
 
