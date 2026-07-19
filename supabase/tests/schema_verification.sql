@@ -430,6 +430,71 @@ begin
 
   if not exists (
     select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'platform_settings'
+      and column_name = 'ticket_notification_discord_user_ids'
+      and data_type = 'ARRAY'
+      and udt_name = '_text'
+      and is_nullable = 'NO'
+      and column_default like '%385924725332901909%'
+  ) then
+    raise exception 'platform_settings ticket notification IDs column is missing or invalid';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.platform_settings'::regclass
+      and conname in (
+        'platform_settings_ticket_notification_ids_cardinality',
+        'platform_settings_ticket_notification_ids_valid'
+      )
+  ) <> 2 then
+    raise exception 'platform_settings ticket notification ID constraints are missing';
+  end if;
+
+  if to_regprocedure('private.valid_unique_discord_user_ids(text[])') is null then
+    raise exception 'Discord notification ID validation helper is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_proc as procedure
+    join pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'private'
+      and procedure.proname = 'valid_unique_discord_user_ids'
+      and procedure.provolatile = 'i'
+      and procedure.proisstrict
+      and not procedure.prosecdef
+  ) then
+    raise exception 'Discord notification ID validation helper must be immutable, strict, and invoker-secured';
+  end if;
+
+  if has_function_privilege(
+    'anon',
+    'private.valid_unique_discord_user_ids(text[])',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'authenticated',
+    'private.valid_unique_discord_user_ids(text[])',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'service_role',
+    'private.valid_unique_discord_user_ids(text[])',
+    'EXECUTE'
+  ) then
+    raise exception 'Discord notification ID validation helper execute privileges are invalid';
+  end if;
+
+  if not has_schema_privilege('service_role', 'private', 'USAGE')
+    or has_table_privilege('anon', 'public.platform_settings', 'SELECT')
+    or not has_table_privilege('service_role', 'public.platform_settings', 'SELECT') then
+    raise exception 'Ticket notification settings privileges are invalid';
+  end if;
+
+  if not exists (
+    select 1
     from storage.buckets
     where id = 'catalog-media'
       and public

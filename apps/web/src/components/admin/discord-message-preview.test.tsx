@@ -38,4 +38,21 @@ describe("prévia das mensagens do Discord", () => {
     expect(screen.getByText(/Dragon's Breath/)).toBeInTheDocument();
     expect(screen.queryByText(/\{product_name\}/)).not.toBeInTheDocument();
   });
+
+  it("mostra na prévia do ticket todas as pessoas que serão mencionadas", () => {
+    render(
+      <DiscordMessagePreview
+        config={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        notificationDiscordUserIds={["385924725332901909", "911402638975844354"]}
+        scenario="ticket"
+        onScenarioChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByLabelText("Menções da mensagem do ticket")).toHaveTextContent(
+      "@comprador",
+    );
+    expect(screen.getByText("@385924725332901909")).toBeInTheDocument();
+    expect(screen.getByText("@911402638975844354")).toBeInTheDocument();
+  });
 });

@@ -3,8 +3,15 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("./message-customization-server", async () => {
   const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import("./message-customization");
+  const { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } = await import(
+    "./ticket-notifications"
+  );
   return {
     loadBotMessageCustomization: vi.fn(async () => DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
+    loadBotRuntimeSettings: vi.fn(async () => ({
+      customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticketNotificationDiscordUserIds: [...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS],
+    })),
   };
 });
 
@@ -21,6 +28,7 @@ const order = {
 };
 const botId = "323456789012345678";
 const channelId = "623456789012345678";
+const defaultNotificationUserId = "385924725332901909";
 
 beforeAll(async () => {
   ticket = await import("./discord-ticket");
@@ -100,7 +108,11 @@ describe("Discord paid-order ticket", () => {
     );
     expect(welcome?.body).toMatchObject({
       content: expect.stringContaining(`<@${order.buyerDiscordId}>`),
-      allowed_mentions: { parse: [], users: [order.buyerDiscordId], replied_user: false },
+      allowed_mentions: {
+        parse: [],
+        users: [order.buyerDiscordId, defaultNotificationUserId],
+        replied_user: false,
+      },
       enforce_nonce: true,
       embeds: [
         expect.objectContaining({
@@ -121,10 +133,46 @@ describe("Discord paid-order ticket", () => {
         },
       ],
     });
+    expect((welcome?.body as { content: string }).content).toContain(
+      `Equipe notificada: <@${defaultNotificationUserId}>`,
+    );
     expect((welcome?.body as { content: string }).content).toContain("nick");
     expect(String((welcome?.body as { nonce: string }).nonce)).toHaveLength(25);
     expect(JSON.stringify(welcome?.body)).toContain("Dragon Breath @everyone");
     expect(JSON.stringify(welcome?.body)).not.toContain("secret-ticket-token");
+  });
+
+  it("allowlists multiple configured users and deduplicates the buyer", () => {
+    const secondNotificationUserId = "911402638975844354";
+    const payload = ticket.paidTicketWelcomeMessage(order, undefined, [
+      defaultNotificationUserId,
+      order.buyerDiscordId,
+      secondNotificationUserId,
+      defaultNotificationUserId,
+      "@everyone",
+    ]);
+
+    expect(payload.content).toContain(
+      `Equipe notificada: <@${defaultNotificationUserId}> <@${secondNotificationUserId}>`,
+    );
+    expect(payload.content.match(new RegExp(`<@${order.buyerDiscordId}>`, "g"))).toHaveLength(1);
+    expect(payload.allowed_mentions).toEqual({
+      parse: [],
+      users: [order.buyerDiscordId, defaultNotificationUserId, secondNotificationUserId],
+      replied_user: false,
+    });
+    expect(payload.content).not.toContain("@everyone");
+  });
+
+  it("supports an explicitly empty notification list without broad mentions", () => {
+    const payload = ticket.paidTicketWelcomeMessage(order, undefined, []);
+
+    expect(payload.content).not.toContain("Equipe notificada:");
+    expect(payload.allowed_mentions).toEqual({
+      parse: [],
+      users: [order.buyerDiscordId],
+      replied_user: false,
+    });
   });
 
   it("colapsa concorrência e reutiliza o mesmo ticket sem duplicar mensagem", async () => {

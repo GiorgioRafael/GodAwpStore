@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "@/lib/bot/message-customization";
+import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 const mocks = vi.hoisted(() => ({
   requireAdmin: vi.fn(),
@@ -70,9 +71,40 @@ describe("action de personalização do bot", () => {
     const result = await saveBotMessageCustomizationAction(previousState, formData);
 
     expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/Revise os textos/);
+    expect(result.message).toMatch(/Revise os campos/);
     expect(mocks.requireAdmin).not.toHaveBeenCalled();
     expect(mocks.synchronizePublishedDiscordStorefronts).not.toHaveBeenCalled();
+  });
+
+  it("rejeita lista de notificações inválida antes de autenticar ou gravar", async () => {
+    const formData = customizationForm(DEFAULT_BOT_MESSAGE_CUSTOMIZATION, ["discord-inválido"]);
+
+    const result = await saveBotMessageCustomizationAction(previousState, formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.fieldErrors?.notificationDiscordUserIds).toBeDefined();
+    expect(mocks.requireAdmin).not.toHaveBeenCalled();
+    expect(mocks.synchronizePublishedDiscordStorefronts).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "duplicada",
+      ["385924725332901909", "385924725332901909"],
+    ],
+    [
+      "acima do limite",
+      Array.from({ length: 26 }, (_, index) => `3${String(index).padStart(17, "0")}`),
+    ],
+  ])("rejeita lista de notificações %s", async (_label, notificationDiscordUserIds) => {
+    const result = await saveBotMessageCustomizationAction(
+      previousState,
+      customizationForm(DEFAULT_BOT_MESSAGE_CUSTOMIZATION, notificationDiscordUserIds),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(result.fieldErrors?.notificationDiscordUserIds).toBeDefined();
+    expect(mocks.requireAdmin).not.toHaveBeenCalled();
   });
 
   it("salva com trava otimista, identifica o admin e atualiza as vitrines", async () => {
@@ -91,6 +123,7 @@ describe("action de personalização do bot", () => {
     expect(client.update).toHaveBeenCalledWith(
       expect.objectContaining({
         bot_message_config: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket_notification_discord_user_ids: DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
         updated_by: "10000000-0000-4000-8000-000000000001",
       }),
     );
@@ -115,9 +148,13 @@ describe("action de personalização do bot", () => {
   });
 });
 
-function customizationForm(config: unknown) {
+function customizationForm(
+  config: unknown,
+  notificationDiscordUserIds: unknown = DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+) {
   const formData = new FormData();
   formData.set("config", JSON.stringify(config));
+  formData.set("notificationDiscordUserIds", JSON.stringify(notificationDiscordUserIds));
   formData.set("expectedUpdatedAt", updatedAt);
   return formData;
 }

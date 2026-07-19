@@ -215,6 +215,14 @@ begin
     raise exception 'unauthorized authenticated user updated bot message configuration';
   end if;
 
+  update public.platform_settings
+  set ticket_notification_discord_user_ids = array['223456789012345678']::text[]
+  where id = 1;
+  get diagnostics updated_settings = row_count;
+  if updated_settings <> 0 then
+    raise exception 'unauthorized authenticated user updated ticket notification IDs';
+  end if;
+
   begin
     perform *
     from public.admin_check_inventory_fingerprints(
@@ -243,6 +251,7 @@ declare
   global_rate integer;
   override_rate integer;
   settings_audits integer;
+  notification_audits integer;
 begin
   select effective_commission_bps
   into global_rate
@@ -281,6 +290,111 @@ begin
 
   if settings_audits <> 1 then
     raise exception 'bot message configuration update was not audited exactly once';
+  end if;
+
+  if (
+    select ticket_notification_discord_user_ids
+    from public.platform_settings
+    where id = 1
+  ) is distinct from array['385924725332901909']::text[] then
+    raise exception 'default ticket notification Discord user ID is invalid';
+  end if;
+
+  update public.platform_settings
+  set ticket_notification_discord_user_ids = array[
+    '385924725332901909',
+    '911402638975844354'
+  ]::text[]
+  where id = 1;
+
+  if (
+    select ticket_notification_discord_user_ids
+    from public.platform_settings
+    where id = 1
+  ) is distinct from array[
+    '385924725332901909',
+    '911402638975844354'
+  ]::text[] then
+    raise exception 'active admin did not update ticket notification Discord user IDs';
+  end if;
+
+  select count(*)
+  into notification_audits
+  from public.audit_events
+  where action = 'settings.update'
+    and metadata -> 'changed_fields' ? 'ticket_notification_discord_user_ids';
+
+  if notification_audits <> 1 then
+    raise exception 'ticket notification ID update was not audited exactly once';
+  end if;
+
+  begin
+    update public.platform_settings
+    set ticket_notification_discord_user_ids = array['not-a-discord-id']::text[]
+    where id = 1;
+    raise exception 'malformed ticket notification Discord user ID was accepted';
+  exception
+    when check_violation then null;
+  end;
+
+  begin
+    update public.platform_settings
+    set ticket_notification_discord_user_ids = array[
+      '385924725332901909',
+      '385924725332901909'
+    ]::text[]
+    where id = 1;
+    raise exception 'duplicate ticket notification Discord user ID was accepted';
+  exception
+    when check_violation then null;
+  end;
+
+  begin
+    update public.platform_settings
+    set ticket_notification_discord_user_ids = array[
+      '385924725332901909',
+      null
+    ]::text[]
+    where id = 1;
+    raise exception 'null ticket notification Discord user ID was accepted';
+  exception
+    when check_violation then null;
+  end;
+
+  begin
+    update public.platform_settings
+    set ticket_notification_discord_user_ids = array[
+      ['385924725332901909', '911402638975844354'],
+      ['385924725332901910', '911402638975844355']
+    ]::text[]
+    where id = 1;
+    raise exception 'multidimensional ticket notification Discord user IDs were accepted';
+  exception
+    when check_violation then null;
+  end;
+
+  begin
+    update public.platform_settings
+    set ticket_notification_discord_user_ids = array(
+      select (800000000000000000::bigint + sequence_number)::text
+      from generate_series(1, 26) as sequence_number
+    )
+    where id = 1;
+    raise exception 'more than 25 ticket notification Discord user IDs were accepted';
+  exception
+    when check_violation then null;
+  end;
+
+  update public.platform_settings
+  set ticket_notification_discord_user_ids = array[]::text[]
+  where id = 1;
+
+  if cardinality((
+    select ticket_notification_discord_user_ids
+    from public.platform_settings
+    where id = 1
+  )) <> 0 then
+    raise exception 'empty ticket notification Discord user ID list was rejected';
   end if;
 
   begin
@@ -590,6 +704,24 @@ $$;
 
 reset role;
 
+-- The bot's service-role client can read the global list without opening it to anon.
+set local role service_role;
+
+do $$
+begin
+  if (
+    select count(*)
+    from public.platform_settings
+    where id = 1
+      and cardinality(ticket_notification_discord_user_ids) = 0
+  ) <> 1 then
+    raise exception 'service_role could not read ticket notification Discord user IDs';
+  end if;
+end
+$$;
+
+reset role;
+
 -- ADMIN_DISCORD_IDS is renewed by the trusted server as a short database lease.
 -- Once that lease expires, a still-valid Supabase JWT cannot bypass revocation.
 update public.admin_profiles
@@ -618,3 +750,4 @@ select 'GodAwpStore transactional integration checks passed' as result;
 \ir payment_workflow_verification.sql
 \ir order_game_nickname_verification.sql
 \ir order_cart_verification.sql
+\ir ticket_notification_verification.sql

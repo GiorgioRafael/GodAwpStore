@@ -64,6 +64,7 @@ type PlatformSettingsRow = {
   global_commission_bps: number;
   display_timezone: string;
   bot_message_config: Json;
+  ticket_notification_discord_user_ids: string[];
   updated_by: string | null;
   created_at: string;
   updated_at: string;

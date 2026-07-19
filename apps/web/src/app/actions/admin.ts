@@ -27,6 +27,7 @@ import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
 import { botMessageCustomizationSchema } from "@/lib/bot/message-customization-validation";
 import { loadBotMessageCustomization } from "@/lib/bot/message-customization-server";
 import { SupabaseBotCommerceRepository } from "@/lib/bot/supabase-repository";
+import { ticketNotificationDiscordUserIdsSchema } from "@/lib/bot/ticket-notifications-validation";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -415,6 +416,7 @@ export async function saveBotMessageCustomizationAction(
 ): Promise<AdminActionState> {
   const expectedUpdatedAt = isoDateTimeSchema.safeParse(text(formData, "expectedUpdatedAt"));
   let rawConfig: unknown;
+  let rawNotificationDiscordUserIds: unknown;
   try {
     rawConfig = JSON.parse(text(formData, "config"));
   } catch {
@@ -424,19 +426,43 @@ export async function saveBotMessageCustomizationAction(
       fieldErrors: { config: ["JSON inválido."] },
     };
   }
+  try {
+    rawNotificationDiscordUserIds = JSON.parse(text(formData, "notificationDiscordUserIds"));
+  } catch {
+    return {
+      ok: false,
+      message: "A lista de notificações enviada é inválida. Recarregue a página e tente novamente.",
+      fieldErrors: { notificationDiscordUserIds: ["Lista inválida."] },
+    };
+  }
 
   const parsed = botMessageCustomizationSchema.safeParse(rawConfig);
-  if (!parsed.success || !expectedUpdatedAt.success) {
-    const messages = parsed.success
+  const parsedNotificationDiscordUserIds =
+    ticketNotificationDiscordUserIdsSchema.safeParse(rawNotificationDiscordUserIds);
+  if (!parsed.success || !parsedNotificationDiscordUserIds.success || !expectedUpdatedAt.success) {
+    const configMessages = parsed.success
       ? []
       : [...new Set(parsed.error.issues.map((issue) => issue.message))].slice(0, 4);
+    const notificationMessages = parsedNotificationDiscordUserIds.success
+      ? []
+      : [
+          ...new Set(
+            parsedNotificationDiscordUserIds.error.issues.map((issue) => issue.message),
+          ),
+        ].slice(0, 4);
     return {
       ok: false,
       message: expectedUpdatedAt.success
-        ? "Revise os textos destacados antes de salvar."
+        ? "Revise os campos destacados antes de salvar."
         : "As configurações mudaram desde que esta página foi aberta. Recarregue para continuar.",
       fieldErrors: {
-        config: messages.length > 0 ? messages : ["Versão carregada inválida."],
+        ...(configMessages.length > 0 ? { config: configMessages } : {}),
+        ...(notificationMessages.length > 0
+          ? { notificationDiscordUserIds: notificationMessages }
+          : {}),
+        ...(!expectedUpdatedAt.success && configMessages.length === 0 && notificationMessages.length === 0
+          ? { config: ["Versão carregada inválida."] }
+          : {}),
       },
     };
   }
@@ -446,6 +472,7 @@ export async function saveBotMessageCustomizationAction(
     .from("platform_settings")
     .update({
       bot_message_config: botMessageCustomizationToJson(parsed.data),
+      ticket_notification_discord_user_ids: parsedNotificationDiscordUserIds.data,
       updated_by: identity.authUserId,
     })
     .eq("id", 1)

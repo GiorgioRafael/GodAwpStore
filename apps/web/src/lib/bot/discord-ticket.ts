@@ -7,8 +7,12 @@ import {
   interpolateBotMessageLimited,
   type BotMessageCustomization,
 } from "./message-customization";
-import { loadBotMessageCustomization } from "./message-customization-server";
+import { loadBotRuntimeSettings } from "./message-customization-server";
 import { gameNicknameInteractionId } from "./discord-game-nickname";
+import {
+  DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+  normalizeTicketNotificationDiscordUserIds,
+} from "./ticket-notifications";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -93,9 +97,14 @@ export function ensurePaidOrderTicket(
   const existingTask = ticketTasks.get(taskKey);
   if (existingTask) return existingTask;
 
-  const task = loadBotMessageCustomization()
-    .then((customization) =>
-      ensurePaidOrderTicketInternal(normalized, options.fetcher ?? fetch, customization),
+  const task = loadBotRuntimeSettings()
+    .then((settings) =>
+      ensurePaidOrderTicketInternal(
+        normalized,
+        options.fetcher ?? fetch,
+        settings.customization,
+        settings.ticketNotificationDiscordUserIds,
+      ),
     )
     .finally(() => {
       if (ticketTasks.get(taskKey) === task) ticketTasks.delete(taskKey);
@@ -108,6 +117,7 @@ async function ensurePaidOrderTicketInternal(
   input: PaidOrderTicketInput,
   fetcher: typeof fetch,
   customization: BotMessageCustomization,
+  notificationDiscordUserIds: readonly string[],
 ): Promise<PaidOrderTicketResult> {
   const config = getDiscordConfig();
   const headers = discordHeaders(config.token);
@@ -186,7 +196,9 @@ async function ensurePaidOrderTicketInternal(
         {
           method: "POST",
           headers,
-          body: JSON.stringify(paidTicketWelcomeMessage(input, customization)),
+          body: JSON.stringify(
+            paidTicketWelcomeMessage(input, customization, notificationDiscordUserIds),
+          ),
         },
         fetcher,
       );
@@ -234,17 +246,31 @@ export function buildTicketPermissionOverwrites(input: {
 export function paidTicketWelcomeMessage(
   input: PaidOrderTicketInput,
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  notificationDiscordUserIds: readonly string[] =
+    DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
 ) {
   const productName = sanitizeDiscordText(input.productName, 256);
   const orderMarker = welcomeMessageMarker(input.orderId);
   const message = customization.ticket;
   const nicknamePrompt = interpolateBotMessageLimited(message.nicknamePromptText, {}, 1_000);
+  const configuredNotificationUserIds = normalizeTicketNotificationDiscordUserIds(
+    notificationDiscordUserIds,
+  );
+  const mentionedUserIds = [...new Set([input.buyerDiscordId, ...configuredNotificationUserIds])];
+  const teamNotificationUserIds = mentionedUserIds.filter(
+    (userId) => userId !== input.buyerDiscordId,
+  );
+  const teamNotificationLine = teamNotificationUserIds.length
+    ? `🔔 Equipe notificada: ${teamNotificationUserIds.map((userId) => `<@${userId}>`).join(" ")}`
+    : "";
 
   return {
-    content: [`<@${input.buyerDiscordId}>`, nicknamePrompt].filter(Boolean).join("\n"),
+    content: [`<@${input.buyerDiscordId}>`, teamNotificationLine, nicknamePrompt]
+      .filter(Boolean)
+      .join("\n"),
     allowed_mentions: {
       parse: [],
-      users: [input.buyerDiscordId],
+      users: mentionedUserIds,
       replied_user: false,
     },
     nonce: messageNonce(input.orderId),

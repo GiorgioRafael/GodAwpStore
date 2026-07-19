@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "@/lib/bot/message-customization";
+import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 const actionMocks = vi.hoisted(() => ({
   saveBotMessageCustomizationAction: vi.fn(async () => ({
@@ -19,6 +20,7 @@ describe("editor de mensagens do bot", () => {
     const { container } = render(
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
         updatedAt="2026-07-17T15:00:00.000Z"
       />,
     );
@@ -45,6 +47,7 @@ describe("editor de mensagens do bot", () => {
     render(
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
         updatedAt={null}
       />,
     );
@@ -64,6 +67,7 @@ describe("editor de mensagens do bot", () => {
     const { container } = render(
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
         updatedAt={null}
       />,
     );
@@ -101,5 +105,69 @@ describe("editor de mensagens do bot", () => {
         nicknameSavedText: "Recebido: {game_nickname}",
       },
     });
+  });
+
+  it("adiciona e remove pessoas notificadas e serializa a lista", () => {
+    const { container } = render(
+      <BotCustomizationEditor
+        initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        updatedAt={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Notificações" }));
+    expect(screen.getByText("385924725332901909")).toBeInTheDocument();
+
+    const input = screen.getByRole("textbox", { name: "Discord ID" });
+    fireEvent.change(input, { target: { value: "911402638975844354" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByText("911402638975844354")).toBeInTheDocument();
+    expect(screen.getByText("@911402638975844354")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remover Discord ID 385924725332901909" }),
+    );
+    expect(screen.queryByText("385924725332901909")).not.toBeInTheDocument();
+
+    const serialized = container.querySelector<HTMLInputElement>(
+      'input[name="notificationDiscordUserIds"]',
+    );
+    expect(JSON.parse(serialized?.value ?? "[]")).toEqual(["911402638975844354"]);
+  });
+
+  it("mostra erros para Discord ID inválido e duplicado e restaura o padrão", () => {
+    const { container } = render(
+      <BotCustomizationEditor
+        initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[]}
+        updatedAt={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Notificações" }));
+    expect(screen.getByText("Ninguém será notificado")).toBeInTheDocument();
+
+    const input = screen.getByRole("textbox", { name: "Discord ID" });
+    fireEvent.change(input, { target: { value: "123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("15 a 22 dígitos");
+
+    fireEvent.change(input, { target: { value: "385924725332901909" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    fireEvent.change(input, { target: { value: "385924725332901909" } });
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("já está na lista");
+
+    fireEvent.click(screen.getByRole("button", { name: "Remover Discord ID 385924725332901909" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restaurar padrões" }));
+
+    const serialized = container.querySelector<HTMLInputElement>(
+      'input[name="notificationDiscordUserIds"]',
+    );
+    expect(JSON.parse(serialized?.value ?? "[]")).toEqual([
+      "385924725332901909",
+    ]);
   });
 });

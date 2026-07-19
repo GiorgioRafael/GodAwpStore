@@ -3,16 +3,19 @@
 import { useActionState, useId, useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  BellRing,
   CircleHelp,
   Hash,
   LoaderCircle,
   PackageSearch,
   Palette,
+  Plus,
   ReceiptText,
   RotateCcw,
   Save,
   Store,
   TicketCheck,
+  Trash2,
 } from "lucide-react";
 
 import { saveBotMessageCustomizationAction } from "@/app/actions/admin";
@@ -37,9 +40,21 @@ import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
   type BotMessageCustomization,
 } from "@/lib/bot/message-customization";
+import {
+  DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+  DISCORD_USER_ID_PATTERN,
+  MAX_TICKET_NOTIFICATION_DISCORD_USER_IDS,
+} from "@/lib/bot/ticket-notifications";
 
 type ConfigSection = Exclude<keyof BotMessageCustomization, "version">;
-type EditorSectionId = "storefront" | "product" | "quantity" | "order" | "helpError" | "ticket";
+type EditorSectionId =
+  | "storefront"
+  | "product"
+  | "quantity"
+  | "order"
+  | "helpError"
+  | "ticket"
+  | "notifications";
 
 type FieldDefinition = {
   section: ConfigSection;
@@ -334,18 +349,35 @@ const EDITOR_SECTIONS: EditorSection[] = [
       },
     ],
   },
+  {
+    id: "notifications",
+    label: "Notificações",
+    description: "Pessoas mencionadas quando o pagamento é confirmado e o ticket é aberto.",
+    icon: BellRing,
+    preview: "ticket",
+    groups: [],
+  },
 ];
 
 interface BotCustomizationEditorProps {
   initialConfig: BotMessageCustomization;
+  initialNotificationDiscordUserIds: string[];
   updatedAt: string | null;
 }
 
 export function BotCustomizationEditor({
   initialConfig,
+  initialNotificationDiscordUserIds,
   updatedAt,
 }: BotCustomizationEditorProps) {
   const [config, setConfig] = useState<BotMessageCustomization>(() => cloneConfig(initialConfig));
+  const [notificationDiscordUserIds, setNotificationDiscordUserIds] = useState<string[]>(() => [
+    ...initialNotificationDiscordUserIds,
+  ]);
+  const [notificationDiscordUserIdInput, setNotificationDiscordUserIdInput] = useState("");
+  const [notificationDiscordUserIdError, setNotificationDiscordUserIdError] = useState<string | null>(
+    null,
+  );
   const [activeSectionId, setActiveSectionId] = useState<EditorSectionId>("storefront");
   const [previewScenario, setPreviewScenario] = useState<DiscordPreviewScenario>("storefront");
   const [mobileView, setMobileView] = useState<"editor" | "preview">("editor");
@@ -356,6 +388,10 @@ export function BotCustomizationEditor({
   );
   const formId = useId();
   const serializedConfig = useMemo(() => JSON.stringify(config), [config]);
+  const serializedNotificationDiscordUserIds = useMemo(
+    () => JSON.stringify(notificationDiscordUserIds),
+    [notificationDiscordUserIds],
+  );
   const activeSection =
     EDITOR_SECTIONS.find((section) => section.id === activeSectionId) ?? EDITOR_SECTIONS[0];
 
@@ -384,7 +420,41 @@ export function BotCustomizationEditor({
 
   function restoreDefaults() {
     setConfig(cloneConfig(DEFAULT_BOT_MESSAGE_CUSTOMIZATION));
+    setNotificationDiscordUserIds([...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]);
+    setNotificationDiscordUserIdInput("");
+    setNotificationDiscordUserIdError(null);
     setRestoredLocally(true);
+  }
+
+  function addNotificationDiscordUserId() {
+    const discordUserId = notificationDiscordUserIdInput.trim();
+    if (!DISCORD_USER_ID_PATTERN.test(discordUserId)) {
+      setNotificationDiscordUserIdError("Informe um Discord ID válido com 15 a 22 dígitos.");
+      return;
+    }
+    if (notificationDiscordUserIds.includes(discordUserId)) {
+      setNotificationDiscordUserIdError("Este Discord ID já está na lista.");
+      return;
+    }
+    if (notificationDiscordUserIds.length >= MAX_TICKET_NOTIFICATION_DISCORD_USER_IDS) {
+      setNotificationDiscordUserIdError(
+        `A lista pode ter no máximo ${MAX_TICKET_NOTIFICATION_DISCORD_USER_IDS} pessoas.`,
+      );
+      return;
+    }
+
+    setNotificationDiscordUserIds((current) => [...current, discordUserId]);
+    setNotificationDiscordUserIdInput("");
+    setNotificationDiscordUserIdError(null);
+    setRestoredLocally(false);
+  }
+
+  function removeNotificationDiscordUserId(discordUserId: string) {
+    setNotificationDiscordUserIds((current) =>
+      current.filter((candidate) => candidate !== discordUserId),
+    );
+    setNotificationDiscordUserIdError(null);
+    setRestoredLocally(false);
   }
 
   return (
@@ -424,6 +494,11 @@ export function BotCustomizationEditor({
           className={cn(mobileView === "editor" ? "block" : "hidden", "xl:block")}
         >
           <input type="hidden" name="config" value={serializedConfig} />
+          <input
+            type="hidden"
+            name="notificationDiscordUserIds"
+            value={serializedNotificationDiscordUserIds}
+          />
           <input type="hidden" name="expectedUpdatedAt" value={updatedAt ?? ""} />
 
           <Card>
@@ -488,64 +563,173 @@ export function BotCustomizationEditor({
                     <p className="mt-1 text-sm leading-6 text-muted">{activeSection.description}</p>
                   </div>
 
-                  {activeSection.groups.map((group) => (
-                    <fieldset key={group.title} className="space-y-4">
-                      <legend className="text-sm font-semibold text-foreground">{group.title}</legend>
-                      <p className="-mt-2 text-xs leading-5 text-muted">{group.description}</p>
-                      <div className="space-y-5 rounded-xl border border-border bg-surface-muted p-4">
-                        {group.fields.map((field) => {
-                          const id = `${formId}-${field.section}-${field.key}`;
-                          const value = fieldValue(config, field);
-                          return (
-                            <Field
-                              key={`${field.section}.${field.key}`}
-                              label={field.label}
-                              htmlFor={id}
-                              hint={`${value.length}/${field.maxLength}`}
+                  {activeSection.id === "notifications" ? (
+                    <div className="space-y-5">
+                      <div className="rounded-xl border border-border bg-surface-muted p-4">
+                        <Field
+                          label="Discord ID"
+                          htmlFor={`${formId}-notification-discord-user-id`}
+                          hint={`${notificationDiscordUserIds.length}/${MAX_TICKET_NOTIFICATION_DISCORD_USER_IDS}`}
+                          error={
+                            notificationDiscordUserIdError ??
+                            fieldError(state, "notificationDiscordUserIds")
+                          }
+                        >
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              id={`${formId}-notification-discord-user-id`}
+                              value={notificationDiscordUserIdInput}
+                              inputMode="numeric"
+                              maxLength={22}
+                              autoComplete="off"
+                              placeholder="Ex.: 385924725332901909"
+                              aria-describedby={`${formId}-notification-discord-user-id-help`}
+                              onChange={(event) => {
+                                setNotificationDiscordUserIdInput(event.target.value);
+                                setNotificationDiscordUserIdError(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter") return;
+                                event.preventDefault();
+                                addNotificationDiscordUserId();
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className="sm:min-w-28"
+                              onClick={addNotificationDiscordUserId}
+                              disabled={pending}
                             >
-                              {field.multiline ? (
-                                <Textarea
-                                  id={id}
-                                  value={value}
-                                  maxLength={field.maxLength}
-                                  rows={field.tall ? 8 : 4}
-                                  onChange={(event) => updateField(field, event.target.value)}
-                                />
-                              ) : (
-                                <Input
-                                  id={id}
-                                  value={value}
-                                  maxLength={field.maxLength}
-                                  onChange={(event) => updateField(field, event.target.value)}
-                                />
-                              )}
-
-                              {field.description ? (
-                                <p className="text-xs leading-5 text-muted">{field.description}</p>
-                              ) : null}
-
-                              {field.tokens?.length ? (
-                                <div className="flex flex-wrap items-center gap-1.5" aria-label={`Variáveis de ${field.label}`}>
-                                  <span className="mr-1 text-[11px] text-muted">Variáveis:</span>
-                                  {field.tokens.map((token) => (
-                                    <button
-                                      key={token}
-                                      type="button"
-                                      onClick={() => appendToken(field, token)}
-                                      className="rounded-md border border-border-strong bg-surface px-1.5 py-1 font-mono text-[10px] text-gold-bright transition-colors hover:border-gold/45 hover:bg-gold/[0.06]"
-                                      aria-label={`Adicionar ${token} em ${field.label}`}
-                                    >
-                                      {token}
-                                    </button>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </Field>
-                          );
-                        })}
+                              <Plus aria-hidden="true" className="size-4" />
+                              Adicionar
+                            </Button>
+                          </div>
+                          <p
+                            id={`${formId}-notification-discord-user-id-help`}
+                            className="text-xs leading-5 text-muted"
+                          >
+                            Ative o modo desenvolvedor do Discord para copiar o ID de um membro.
+                          </p>
+                        </Field>
                       </div>
-                    </fieldset>
-                  ))}
+
+                      <div className="rounded-xl border border-border bg-surface-muted p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-semibold text-foreground">
+                              Pessoas notificadas
+                            </h4>
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              Todas serão mencionadas na mensagem inicial do ticket pago.
+                            </p>
+                          </div>
+                          <Badge tone="neutral">
+                            {notificationDiscordUserIds.length.toLocaleString("pt-BR")}
+                          </Badge>
+                        </div>
+
+                        {notificationDiscordUserIds.length > 0 ? (
+                          <ul className="mt-4 space-y-2" aria-label="Discord IDs notificados">
+                            {notificationDiscordUserIds.map((discordUserId) => (
+                              <li
+                                key={discordUserId}
+                                className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-surface px-3 py-2.5"
+                              >
+                                <span className="min-w-0 break-all font-mono text-sm text-foreground">
+                                  {discordUserId}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8 shrink-0 text-danger"
+                                  aria-label={`Remover Discord ID ${discordUserId}`}
+                                  onClick={() => removeNotificationDiscordUserId(discordUserId)}
+                                  disabled={pending}
+                                >
+                                  <Trash2 aria-hidden="true" className="size-4" />
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="mt-4 rounded-lg border border-dashed border-border-strong px-4 py-5 text-center">
+                            <p className="text-sm font-medium text-muted-strong">
+                              Ninguém será notificado
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-muted">
+                              Adicione ao menos um Discord ID para avisar a equipe sobre novas compras.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-warning/25 bg-warning/[0.06] px-4 py-3 text-xs leading-5 text-[#e7d39b]">
+                        O membro precisa estar no servidor e já ter acesso aos tickets para visualizar a
+                        menção e acompanhar o atendimento.
+                      </div>
+                    </div>
+                  ) : (
+                    activeSection.groups.map((group) => (
+                      <fieldset key={group.title} className="space-y-4">
+                        <legend className="text-sm font-semibold text-foreground">{group.title}</legend>
+                        <p className="-mt-2 text-xs leading-5 text-muted">{group.description}</p>
+                        <div className="space-y-5 rounded-xl border border-border bg-surface-muted p-4">
+                          {group.fields.map((field) => {
+                            const id = `${formId}-${field.section}-${field.key}`;
+                            const value = fieldValue(config, field);
+                            return (
+                              <Field
+                                key={`${field.section}.${field.key}`}
+                                label={field.label}
+                                htmlFor={id}
+                                hint={`${value.length}/${field.maxLength}`}
+                              >
+                                {field.multiline ? (
+                                  <Textarea
+                                    id={id}
+                                    value={value}
+                                    maxLength={field.maxLength}
+                                    rows={field.tall ? 8 : 4}
+                                    onChange={(event) => updateField(field, event.target.value)}
+                                  />
+                                ) : (
+                                  <Input
+                                    id={id}
+                                    value={value}
+                                    maxLength={field.maxLength}
+                                    onChange={(event) => updateField(field, event.target.value)}
+                                  />
+                                )}
+
+                                {field.description ? (
+                                  <p className="text-xs leading-5 text-muted">{field.description}</p>
+                                ) : null}
+
+                                {field.tokens?.length ? (
+                                  <div className="flex flex-wrap items-center gap-1.5" aria-label={`Variáveis de ${field.label}`}>
+                                    <span className="mr-1 text-[11px] text-muted">Variáveis:</span>
+                                    {field.tokens.map((token) => (
+                                      <button
+                                        key={token}
+                                        type="button"
+                                        onClick={() => appendToken(field, token)}
+                                        className="rounded-md border border-border-strong bg-surface px-1.5 py-1 font-mono text-[10px] text-gold-bright transition-colors hover:border-gold/45 hover:bg-gold/[0.06]"
+                                        aria-label={`Adicionar ${token} em ${field.label}`}
+                                      >
+                                        {token}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </Field>
+                            );
+                          })}
+                        </div>
+                      </fieldset>
+                    ))
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -581,6 +765,7 @@ export function BotCustomizationEditor({
         >
           <DiscordMessagePreview
             config={config}
+            notificationDiscordUserIds={notificationDiscordUserIds}
             scenario={previewScenario}
             onScenarioChange={setPreviewScenario}
           />

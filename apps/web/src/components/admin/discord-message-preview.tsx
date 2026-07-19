@@ -12,6 +12,7 @@ import {
   interpolateBotMessage,
   type BotMessageCustomization,
 } from "@/lib/bot/message-customization";
+import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 export type DiscordPreviewScenario =
   | "storefront"
@@ -60,12 +61,14 @@ const PREVIEW_TOKENS: Record<string, string | number> = {
 
 interface DiscordMessagePreviewProps {
   config: BotMessageCustomization;
+  notificationDiscordUserIds?: readonly string[];
   scenario: DiscordPreviewScenario;
   onScenarioChange: (scenario: DiscordPreviewScenario) => void;
 }
 
 export function DiscordMessagePreview({
   config,
+  notificationDiscordUserIds = DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
   scenario,
   onScenarioChange,
 }: DiscordMessagePreviewProps) {
@@ -125,7 +128,10 @@ export function DiscordMessagePreview({
               {scenario === "quantity" ? (
                 <QuantityPreview config={config} />
               ) : scenario === "ticket" ? (
-                <TicketPreview config={config} />
+                <TicketPreview
+                  config={config}
+                  notificationDiscordUserIds={notificationDiscordUserIds}
+                />
               ) : (
                 <CardMessagePreview config={config} scenario={scenario} />
               )}
@@ -210,7 +216,13 @@ function QuantityPreview({ config }: { config: BotMessageCustomization }) {
   );
 }
 
-function TicketPreview({ config }: { config: BotMessageCustomization }) {
+function TicketPreview({
+  config,
+  notificationDiscordUserIds,
+}: {
+  config: BotMessageCustomization;
+  notificationDiscordUserIds: readonly string[];
+}) {
   const ticket = config.ticket;
   const fields = [
     [ticket.productLabel, PREVIEW_TOKENS.product_name],
@@ -222,7 +234,12 @@ function TicketPreview({ config }: { config: BotMessageCustomization }) {
   return (
     <div className="space-y-3">
       <div className="text-sm leading-5 text-[#dbdee1]">
-        <DiscordText>@comprador</DiscordText>
+        <div className="flex flex-wrap gap-1.5" aria-label="Menções da mensagem do ticket">
+          <DiscordMention label="comprador" />
+          {notificationDiscordUserIds.map((discordUserId) => (
+            <DiscordMention key={discordUserId} label={discordUserId} />
+          ))}
+        </div>
         <DiscordText>{renderText(ticket.nicknamePromptText)}</DiscordText>
       </div>
       <div className="rounded border-l-4 border-[#a855f7] bg-[#2b2d31] px-4 py-3.5">
@@ -283,6 +300,14 @@ function TicketPreview({ config }: { config: BotMessageCustomization }) {
         </DiscordText>
       </div>
     </div>
+  );
+}
+
+function DiscordMention({ label }: { label: string }) {
+  return (
+    <span className="inline-flex rounded bg-[#5865f2]/35 px-1.5 py-0.5 text-sm font-medium text-[#c9cdfb]">
+      @{label}
+    </span>
   );
 }
 
