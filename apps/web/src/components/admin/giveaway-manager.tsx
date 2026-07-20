@@ -140,7 +140,7 @@ export function GiveawayManager({
               <Field label="Título" htmlFor={`${formId}-title`} error={fieldError(state, "title")}>
                 <Input id={`${formId}-title`} name="title" placeholder="Ex.: Pacote Grow a Garden" maxLength={120} required />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Início" htmlFor={`${formId}-starts`} hint="Horário de Brasília" error={fieldError(state, "startsAt")}>
                   <Input id={`${formId}-starts`} name="startsAt" type="datetime-local" defaultValue={defaultStartsAt} required />
                 </Field>
