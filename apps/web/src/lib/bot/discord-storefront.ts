@@ -24,6 +24,17 @@ export type DiscordStorefrontChannel = {
   categoryName: string | null;
 };
 
+export type DiscordCategoryChannel = {
+  id: string;
+  name: string;
+  position: number;
+};
+
+export type DiscordGuildChannels = {
+  textChannels: DiscordStorefrontChannel[];
+  categories: DiscordCategoryChannel[];
+};
+
 export type DiscordStorefrontConfiguration = {
   channel_id: string;
   channel_name: string;
@@ -52,6 +63,13 @@ export async function listDiscordTextChannels(
   guildId: string,
   fetcher: typeof fetch = fetch,
 ): Promise<DiscordStorefrontChannel[]> {
+  return (await listDiscordGuildChannels(guildId, fetcher)).textChannels;
+}
+
+export async function listDiscordGuildChannels(
+  guildId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<DiscordGuildChannels> {
   assertSnowflake(guildId, "servidor");
   const response = await fetcher(`${discordApiUrl()}/guilds/${guildId}/channels`, {
     headers: discordHeaders(),
@@ -65,16 +83,23 @@ export async function listDiscordTextChannels(
   const body: unknown = await response.json();
   if (!Array.isArray(body)) throw new Error("Resposta de canais inválida do Discord.");
 
-  const categories = new Map<string, string>();
+  const categoryNames = new Map<string, string>();
+  const categories: DiscordCategoryChannel[] = [];
   for (const item of body) {
     if (!isObject(item) || item.type !== DISCORD_CATEGORY_CHANNEL_TYPE) continue;
     const id = asSnowflake(item.id);
     const name = asChannelName(item.name);
-    if (id && name) categories.set(id, name);
+    if (!id || !name) continue;
+    categoryNames.set(id, name);
+    categories.push({
+      id,
+      name,
+      position: Number.isInteger(item.position) ? Number(item.position) : 0,
+    });
   }
 
-  return body
-    .map((item) => normalizeTextChannel(item, categories))
+  const textChannels = body
+    .map((item) => normalizeTextChannel(item, categoryNames))
     .filter((item): item is DiscordStorefrontChannel => item !== null)
     .sort((left, right) => {
       const categoryComparison = (left.categoryName ?? "").localeCompare(
@@ -85,6 +110,14 @@ export async function listDiscordTextChannels(
       if (left.position !== right.position) return left.position - right.position;
       return left.name.localeCompare(right.name, "pt-BR");
     });
+
+  return {
+    textChannels,
+    categories: categories.sort(
+      (left, right) =>
+        left.position - right.position || left.name.localeCompare(right.name, "pt-BR"),
+    ),
+  };
 }
 
 export function readStorefrontConfiguration(

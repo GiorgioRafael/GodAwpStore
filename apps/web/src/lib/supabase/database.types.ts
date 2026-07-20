@@ -184,6 +184,82 @@ type GuildRow = {
   updated_at: string;
 };
 
+type GiveawayRow = {
+  id: string;
+  public_slug: string;
+  guild_id: string;
+  publication_channel_id: string;
+  publication_channel_name: string;
+  publication_message_id: string | null;
+  publication_error: string | null;
+  ticket_category_id: string | null;
+  ticket_category_name: string | null;
+  title: string;
+  description: string;
+  rules_text: string;
+  starts_at: string;
+  ends_at: string;
+  status: Database["public"]["Enums"]["giveaway_status"];
+  required_valid_invites: number;
+  minimum_account_age_days: number;
+  minimum_stay_minutes: number;
+  winner_entry_id: string | null;
+  winner_discord_user_id: string | null;
+  winner_display_name: string | null;
+  drawn_at: string | null;
+  processing_claim_token: string | null;
+  processing_claimed_at: string | null;
+  discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+  discord_ticket_channel_id: string | null;
+  discord_ticket_claim_token: string | null;
+  discord_ticket_claimed_at: string | null;
+  failure_reason: string | null;
+  stock_reserved_at: string;
+  stock_released_at: string | null;
+  cancelled_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type GiveawayPrizeRow = {
+  giveaway_id: string;
+  position: number;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  created_at: string;
+};
+
+type GiveawayEntryRow = {
+  id: string;
+  giveaway_id: string;
+  discord_user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  referral_token: string;
+  valid_invite_count: number;
+  joined_at: string;
+  updated_at: string;
+};
+
+type GiveawayReferralRow = {
+  id: string;
+  giveaway_id: string;
+  referrer_entry_id: string;
+  invitee_discord_user_id: string;
+  invitee_display_name: string;
+  invitee_avatar_url: string | null;
+  invitee_account_created_at: string;
+  joined_at: string;
+  status: Database["public"]["Enums"]["giveaway_referral_status"];
+  validated_at: string | null;
+  invalid_reason: string | null;
+  last_checked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type OrderRow = {
   id: string;
   guild_id: string;
@@ -461,6 +537,100 @@ export type Database = {
           >,
         ];
       };
+      giveaways: {
+        Row: GiveawayRow;
+        Insert: InsertRow<
+          GiveawayRow,
+          | "public_slug"
+          | "guild_id"
+          | "publication_channel_id"
+          | "publication_channel_name"
+          | "title"
+          | "starts_at"
+          | "ends_at"
+          | "status"
+        >;
+        Update: UpdateRow<GiveawayRow>;
+        Relationships: [
+          Relationship<"giveaways_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
+          Relationship<
+            "giveaways_winner_entry_fkey",
+            ["winner_entry_id"],
+            "giveaway_entries",
+            ["id"]
+          >,
+          Relationship<
+            "giveaways_created_by_fkey",
+            ["created_by"],
+            "admin_profiles",
+            ["auth_user_id"]
+          >,
+        ];
+      };
+      giveaway_prizes: {
+        Row: GiveawayPrizeRow;
+        Insert: InsertRow<
+          GiveawayPrizeRow,
+          "giveaway_id" | "position" | "product_id" | "product_name" | "quantity"
+        >;
+        Update: UpdateRow<GiveawayPrizeRow>;
+        Relationships: [
+          Relationship<
+            "giveaway_prizes_giveaway_id_fkey",
+            ["giveaway_id"],
+            "giveaways",
+            ["id"]
+          >,
+          Relationship<
+            "giveaway_prizes_product_id_fkey",
+            ["product_id"],
+            "products",
+            ["id"]
+          >,
+        ];
+      };
+      giveaway_entries: {
+        Row: GiveawayEntryRow;
+        Insert: InsertRow<
+          GiveawayEntryRow,
+          "giveaway_id" | "discord_user_id" | "display_name"
+        >;
+        Update: UpdateRow<GiveawayEntryRow>;
+        Relationships: [
+          Relationship<
+            "giveaway_entries_giveaway_id_fkey",
+            ["giveaway_id"],
+            "giveaways",
+            ["id"]
+          >,
+        ];
+      };
+      giveaway_referrals: {
+        Row: GiveawayReferralRow;
+        Insert: InsertRow<
+          GiveawayReferralRow,
+          | "giveaway_id"
+          | "referrer_entry_id"
+          | "invitee_discord_user_id"
+          | "invitee_display_name"
+          | "invitee_account_created_at"
+        >;
+        Update: UpdateRow<GiveawayReferralRow>;
+        Relationships: [
+          Relationship<
+            "giveaway_referrals_giveaway_id_fkey",
+            ["giveaway_id"],
+            "giveaways",
+            ["id"]
+          >,
+          Relationship<
+            "giveaway_referrals_referrer_entry_id_fkey",
+            ["referrer_entry_id"],
+            "giveaway_entries",
+            ["id"]
+          >,
+        ];
+      };
       orders: {
         Row: OrderRow;
         Insert: InsertRow<
@@ -669,6 +839,117 @@ export type Database = {
       };
     };
     Functions: {
+      admin_create_giveaway: {
+        Args: {
+          p_public_slug: string;
+          p_guild_id: string;
+          p_publication_channel_id: string;
+          p_publication_channel_name: string;
+          p_ticket_category_id: string | null;
+          p_ticket_category_name: string | null;
+          p_title: string;
+          p_description: string;
+          p_rules_text: string;
+          p_starts_at: string;
+          p_ends_at: string;
+          p_required_valid_invites: number;
+          p_minimum_account_age_days: number;
+          p_minimum_stay_minutes: number;
+          p_prizes: Json;
+        };
+        Returns: {
+          created_giveaway_id: string;
+          created_status: Database["public"]["Enums"]["giveaway_status"];
+          created_public_slug: string;
+        }[];
+      };
+      admin_cancel_giveaway: {
+        Args: { p_giveaway_id: string };
+        Returns: { cancelled_giveaway_id: string; was_cancelled: boolean }[];
+      };
+      record_giveaway_publication: {
+        Args: { p_giveaway_id: string; p_message_id: string | null; p_error: string | null };
+        Returns: boolean;
+      };
+      register_giveaway_participant: {
+        Args: {
+          p_giveaway_id: string;
+          p_discord_user_id: string;
+          p_display_name: string;
+          p_avatar_url: string | null;
+        };
+        Returns: {
+          entry_id: string;
+          referral_token: string;
+          valid_invite_count: number;
+          was_created: boolean;
+        }[];
+      };
+      register_giveaway_referral: {
+        Args: {
+          p_giveaway_id: string;
+          p_referral_token: string;
+          p_invitee_discord_user_id: string;
+          p_invitee_display_name: string;
+          p_invitee_avatar_url: string | null;
+          p_invitee_account_created_at: string;
+          p_initially_valid: boolean;
+        };
+        Returns: {
+          referral_id: string;
+          referral_status: Database["public"]["Enums"]["giveaway_referral_status"];
+          was_created: boolean;
+        }[];
+      };
+      set_giveaway_referral_status: {
+        Args: {
+          p_referral_id: string;
+          p_status: Database["public"]["Enums"]["giveaway_referral_status"];
+          p_invalid_reason: string | null;
+        };
+        Returns: boolean;
+      };
+      activate_due_giveaways: { Args: Record<never, never>; Returns: number };
+      claim_due_giveaway: {
+        Args: { p_claim_token: string };
+        Returns: {
+          giveaway_id: string;
+          discord_guild_id: string;
+          required_valid_invites: number;
+        }[];
+      };
+      complete_giveaway_draw: {
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_winner_entry_id: string | null;
+        };
+        Returns: {
+          completed_giveaway_id: string;
+          resulting_status: Database["public"]["Enums"]["giveaway_status"];
+          winner_discord_user_id: string | null;
+        }[];
+      };
+      claim_giveaway_ticket: {
+        Args: { p_claim_token: string };
+        Returns: {
+          giveaway_id: string;
+          discord_guild_id: string;
+          winner_discord_user_id: string;
+          winner_display_name: string;
+          ticket_category_id: string | null;
+          giveaway_title: string;
+          prizes: Json;
+        }[];
+      };
+      complete_giveaway_ticket: {
+        Args: { p_giveaway_id: string; p_claim_token: string; p_channel_id: string };
+        Returns: boolean;
+      };
+      fail_giveaway_ticket: {
+        Args: { p_giveaway_id: string; p_claim_token: string; p_error: string | null };
+        Returns: boolean;
+      };
       admin_import_inventory_units: {
         Args: {
           p_product_id: string;
@@ -985,6 +1266,14 @@ export type Database = {
         | "open"
         | "closed"
         | "failed";
+      giveaway_status:
+        | "scheduled"
+        | "active"
+        | "drawing"
+        | "completed"
+        | "cancelled"
+        | "failed";
+      giveaway_referral_status: "pending" | "valid" | "invalid";
       payout_status:
         | "requested"
         | "approved"

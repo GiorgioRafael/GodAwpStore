@@ -19,6 +19,10 @@ begin
     'inventory_batches',
     'inventory_units',
     'guilds',
+    'giveaways',
+    'giveaway_prizes',
+    'giveaway_entries',
+    'giveaway_referrals',
     'orders',
     'order_items',
     'ledger_entries',
@@ -69,6 +73,18 @@ begin
     'public.renew_discord_ticket_close_claim(uuid,text,uuid)',
     'public.release_discord_ticket_close(uuid,uuid)',
     'public.reconcile_missing_discord_ticket(uuid,text)'
+    ,'public.admin_create_giveaway(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,timestamp with time zone,integer,integer,integer,jsonb)'
+    ,'public.admin_cancel_giveaway(uuid)'
+    ,'public.record_giveaway_publication(uuid,text,text)'
+    ,'public.register_giveaway_participant(uuid,text,text,text)'
+    ,'public.register_giveaway_referral(uuid,uuid,text,text,text,timestamp with time zone,boolean)'
+    ,'public.set_giveaway_referral_status(uuid,giveaway_referral_status,text)'
+    ,'public.activate_due_giveaways()'
+    ,'public.claim_due_giveaway(uuid)'
+    ,'public.complete_giveaway_draw(uuid,uuid,uuid)'
+    ,'public.claim_giveaway_ticket(uuid)'
+    ,'public.complete_giveaway_ticket(uuid,uuid,text)'
+    ,'public.fail_giveaway_ticket(uuid,uuid,text)'
   ]
   loop
     if to_regprocedure(required_function) is null then
@@ -336,6 +352,35 @@ begin
     'EXECUTE'
   ) then
     raise exception 'Paid order summary RPC execute privileges are invalid';
+  end if;
+
+  if not has_function_privilege(
+    'authenticated',
+    'public.admin_create_giveaway(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,timestamp with time zone,integer,integer,integer,jsonb)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.admin_create_giveaway(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,timestamp with time zone,integer,integer,integer,jsonb)',
+    'EXECUTE'
+  ) or has_table_privilege('authenticated', 'public.giveaways', 'INSERT')
+    or has_table_privilege('authenticated', 'public.giveaways', 'UPDATE') then
+    raise exception 'Giveaway administrative privileges are invalid';
+  end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.register_giveaway_participant(uuid,text,text,text)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.register_giveaway_participant(uuid,text,text,text)',
+    'EXECUTE'
+  ) or not has_function_privilege(
+    'service_role',
+    'public.register_giveaway_participant(uuid,text,text,text)',
+    'EXECUTE'
+  ) then
+    raise exception 'Giveaway participant RPC execute privileges are invalid';
   end if;
 
   if has_function_privilege(

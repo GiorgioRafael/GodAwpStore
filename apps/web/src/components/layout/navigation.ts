@@ -3,6 +3,7 @@ import {
   ClipboardList,
   Coins,
   Gamepad2,
+  Gift,
   History,
   Landmark,
   LayoutDashboard,
@@ -50,6 +51,7 @@ export const navigationGroups: NavigationGroup[] = [
   {
     label: "Gestão",
     items: [
+      { label: "Sorteios", href: "/sorteios", icon: Gift },
       { label: "Whitelist", href: "/whitelist", icon: ShieldCheck },
       { label: "Servidores", href: "/servidores", icon: UsersRound },
       { label: "Customização do bot", href: "/customizacao-bot", icon: Bot },

@@ -800,3 +800,4 @@ select 'GodAwpStore transactional integration checks passed' as result;
 \ir order_cart_verification.sql
 \ir ticket_notification_verification.sql
 \ir ticket_close_verification.sql
+\ir giveaway_verification.sql

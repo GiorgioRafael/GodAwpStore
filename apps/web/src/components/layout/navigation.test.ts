@@ -12,6 +12,10 @@ describe("navegação da customização do bot", () => {
     expect(management?.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          label: "Sorteios",
+          href: "/sorteios",
+        }),
+        expect.objectContaining({
           label: "Customização do bot",
           href: "/customizacao-bot",
         }),
