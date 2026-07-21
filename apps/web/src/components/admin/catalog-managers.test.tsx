@@ -16,6 +16,10 @@ import type {
 const actionMocks = vi.hoisted(() => ({
   archiveRecordAction: vi.fn(async () => ({ ok: true, message: "Registro arquivado." })),
   saveGameAction: vi.fn(async () => ({ ok: true, message: "Jogo salvo." })),
+  saveProductOrderAction: vi.fn(async (_formData: FormData) => {
+    void _formData;
+    return { ok: true, message: "Ordem salva." };
+  }),
   saveProductAction: vi.fn(async () => ({ ok: true, message: "Produto salvo." })),
   saveSubstoreAction: vi.fn(async () => ({ ok: true, message: "Subloja salva." })),
   saveWhitelistAction: vi.fn(async () => ({ ok: true, message: "Whitelist salva." })),
@@ -87,6 +91,14 @@ const activeProduct: ProductRow = {
   created_at: now,
   updated_at: now,
   substores: { name: activeSubstore.name, games: { name: activeGame.name } },
+};
+
+const secondProduct: ProductRow = {
+  ...activeProduct,
+  id: "0d5a282b-e86e-488a-907a-d1ce9e7cdd14",
+  name: "Dragon's Breath",
+  slug: "dragons-breath",
+  sort_order: 2,
 };
 
 const whitelistEntry: WhitelistRow = {
@@ -196,6 +208,38 @@ describe("gestores do catálogo", () => {
       "max",
       "1000000000",
     );
+  });
+
+  it("reordena produtos pelo controle e só publica depois de salvar", async () => {
+    const user = userEvent.setup();
+    render(
+      <ProductsManager
+        products={[activeProduct, secondProduct]}
+        substores={[activeSubstore]}
+      />,
+    );
+
+    const saveButton = screen.getByRole("button", { name: "Salvar ordem" });
+    expect(saveButton).toBeDisabled();
+
+    const secondHandle = screen.getByRole("button", { name: `Mover ${secondProduct.name}` });
+    await user.click(secondHandle);
+    await user.keyboard("{ArrowUp}");
+
+    const handles = screen.getAllByRole("button", { name: /^Mover / });
+    expect(handles[0]).toHaveAccessibleName(`Mover ${secondProduct.name}`);
+    expect(saveButton).toBeEnabled();
+    expect(actionMocks.saveProductOrderAction).not.toHaveBeenCalled();
+
+    await user.click(saveButton);
+    await waitFor(() => expect(actionMocks.saveProductOrderAction).toHaveBeenCalledOnce());
+
+    const formData = actionMocks.saveProductOrderAction.mock.calls[0]?.[0] as FormData;
+    expect(JSON.parse(String(formData.get("productIds")))).toEqual([
+      secondProduct.id,
+      activeProduct.id,
+    ]);
+    expect(await screen.findByText("Ordem salva.")).toBeInTheDocument();
   });
 
   it("edita uma whitelist preservando Discord ID e exceção de comissão", async () => {

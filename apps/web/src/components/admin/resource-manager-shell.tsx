@@ -22,6 +22,7 @@ interface ResourceManagerShellProps {
   description: string;
   actionLabel: string;
   onCreate: () => void;
+  additionalActions?: ReactNode;
   createDisabled?: boolean;
   createDisabledReason?: string;
   search: string;
@@ -35,6 +36,7 @@ interface ResourceManagerShellProps {
   emptyIcon: LucideIcon;
   emptyTitle: string;
   emptyDescription: string;
+  contextualContent?: ReactNode;
   children: ReactNode;
 }
 
@@ -44,6 +46,7 @@ export function ResourceManagerShell({
   description,
   actionLabel,
   onCreate,
+  additionalActions,
   createDisabled = false,
   createDisabledReason,
   search,
@@ -57,6 +60,7 @@ export function ResourceManagerShell({
   emptyIcon,
   emptyTitle,
   emptyDescription,
+  contextualContent,
   children,
 }: ResourceManagerShellProps) {
   const hasQuery = Boolean(search.trim()) || filter !== "all";
@@ -69,14 +73,17 @@ export function ResourceManagerShell({
         title={title}
         description={description}
         actions={
-          <Button
-            onClick={onCreate}
-            disabled={createDisabled}
-            title={createDisabled ? createDisabledReason : undefined}
-          >
-            <Plus aria-hidden="true" className="size-4" />
-            {actionLabel}
-          </Button>
+          <>
+            {additionalActions}
+            <Button
+              onClick={onCreate}
+              disabled={createDisabled}
+              title={createDisabled ? createDisabledReason : undefined}
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              {actionLabel}
+            </Button>
+          </>
         }
       />
 
@@ -118,6 +125,8 @@ export function ResourceManagerShell({
           <span>{countLabel}</span>
         </div>
       </Card>
+
+      {contextualContent}
 
       <TableShell columns={columns} caption={`Tabela de ${title.toLowerCase()}`}>
         {visibleCount === 0 ? (

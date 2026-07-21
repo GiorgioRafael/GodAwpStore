@@ -1,9 +1,10 @@
 "use client";
 
-import { useActionState, useId, useMemo, useState } from "react";
-import { Archive, LoaderCircle, PackageOpen, Pencil } from "lucide-react";
+import type { DragEvent, KeyboardEvent } from "react";
+import { useActionState, useId, useMemo, useRef, useState, useTransition } from "react";
+import { Archive, LoaderCircle, Menu, PackageOpen, Pencil, Save } from "lucide-react";
 
-import { saveProductAction } from "@/app/actions/admin";
+import { saveProductAction, saveProductOrderAction } from "@/app/actions/admin";
 import { ActionFeedback, fieldError, initialAdminActionState } from "@/components/admin/action-feedback";
 import { AdminDialog } from "@/components/admin/admin-dialog";
 import { formatCentsForInput, formatMoney } from "@/components/admin/admin-format";
@@ -17,6 +18,7 @@ import {
 } from "@/components/admin/resource-manager-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/components/ui/cn";
 import { Field, Input, Select, Textarea } from "@/components/ui/form-field";
 import type { ProductRow, SubstoreRow } from "@/lib/data/admin-repository";
 
@@ -28,10 +30,12 @@ interface ProductsManagerProps {
 function ProductForm({
   product,
   substores,
+  nextSortOrder,
   onClose,
 }: {
   product: ProductRow | null;
   substores: SubstoreRow[];
+  nextSortOrder: number;
   onClose: () => void;
 }) {
   const [state, formAction, pending] = useActionState(saveProductAction, initialAdminActionState);
@@ -62,6 +66,7 @@ function ProductForm({
       <form id={formId} action={formAction} className="space-y-5">
         <input type="hidden" name="id" value={product?.id ?? ""} />
         <input type="hidden" name="updatedAt" value={product?.updated_at ?? ""} />
+        <input type="hidden" name="sortOrder" value={product?.sort_order ?? nextSortOrder} />
         <ActionFeedback state={state} />
 
         <Field label="Subloja" htmlFor={`${formId}-substore`} error={fieldError(state, "substoreId")}>
@@ -134,7 +139,7 @@ function ProductForm({
           hint="Prefira uma imagem quadrada. JPG, PNG ou WebP de até 5 MB."
         />
 
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <Field
             label="Preço mínimo"
             htmlFor={`${formId}-price`}
@@ -181,18 +186,6 @@ function ProductForm({
               required
             />
           </Field>
-          <Field label="Ordem" htmlFor={`${formId}-sort-order`} error={fieldError(state, "sortOrder")}>
-            <Input
-              id={`${formId}-sort-order`}
-              name="sortOrder"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={1}
-              defaultValue={product?.sort_order ?? 0}
-              required
-            />
-          </Field>
           <Field label="Estado" htmlFor={`${formId}-status`} error={fieldError(state, "status")}>
             <Select id={`${formId}-status`} name="status" defaultValue={product?.status ?? "active"}>
               {editableCatalogStatuses.map((status) => (
@@ -209,6 +202,12 @@ function ProductForm({
 export function ProductsManager({ products, substores }: ProductsManagerProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [orderedProducts, setOrderedProducts] = useState(products);
+  const [orderDirty, setOrderDirty] = useState(false);
+  const [orderState, setOrderState] = useState(initialAdminActionState);
+  const [orderPending, startOrderTransition] = useTransition();
+  const [draggingProductId, setDraggingProductId] = useState<string | null>(null);
+  const draggingProductIdRef = useRef<string | null>(null);
   const [editor, setEditor] = useState<
     { mode: "create" } | { mode: "edit"; product: ProductRow } | null
   >(null);
@@ -216,7 +215,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
-    return products.filter((product) => {
+    return orderedProducts.filter((product) => {
       const matchesFilter = filter === "all" || product.status === filter;
       const matchesSearch =
         !query ||
@@ -226,10 +225,69 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         product.substores?.games?.name.toLocaleLowerCase("pt-BR").includes(query);
       return matchesFilter && Boolean(matchesSearch);
     });
-  }, [filter, products, search]);
+  }, [filter, orderedProducts, search]);
 
   const editingProduct = editor?.mode === "edit" ? editor.product : null;
   const hasAvailableSubstore = substores.some((substore) => substore.status !== "archived");
+  const filtersActive = Boolean(search.trim()) || filter !== "all";
+  const canReorder = !filtersActive && orderedProducts.length > 1 && !orderPending;
+  const nextSortOrder = orderedProducts.reduce(
+    (highest, product) => Math.max(highest, product.sort_order),
+    -1,
+  ) + 1;
+
+  function moveProduct(draggedId: string, targetId: string) {
+    if (draggedId === targetId) return;
+
+    setOrderedProducts((currentProducts) => {
+      const sourceIndex = currentProducts.findIndex((product) => product.id === draggedId);
+      const targetIndex = currentProducts.findIndex((product) => product.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) return currentProducts;
+
+      const nextProducts = [...currentProducts];
+      const [movedProduct] = nextProducts.splice(sourceIndex, 1);
+      if (!movedProduct) return currentProducts;
+      nextProducts.splice(targetIndex, 0, movedProduct);
+      return nextProducts;
+    });
+    setOrderDirty(true);
+    setOrderState(initialAdminActionState);
+  }
+
+  function moveProductWithKeyboard(productId: string, direction: -1 | 1) {
+    const currentIndex = orderedProducts.findIndex((product) => product.id === productId);
+    const targetProduct = orderedProducts[currentIndex + direction];
+    if (!targetProduct) return;
+    moveProduct(productId, targetProduct.id);
+  }
+
+  function handleDragStart(event: DragEvent<HTMLButtonElement>, productId: string) {
+    draggingProductIdRef.current = productId;
+    setDraggingProductId(productId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", productId);
+  }
+
+  function finishDragging() {
+    draggingProductIdRef.current = null;
+    setDraggingProductId(null);
+  }
+
+  function handleOrderKeyDown(event: KeyboardEvent<HTMLButtonElement>, productId: string) {
+    if (!canReorder || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    event.preventDefault();
+    moveProductWithKeyboard(productId, event.key === "ArrowUp" ? -1 : 1);
+  }
+
+  function saveOrder() {
+    const formData = new FormData();
+    formData.set("productIds", JSON.stringify(orderedProducts.map((product) => product.id)));
+    startOrderTransition(async () => {
+      const result = await saveProductOrderAction(formData);
+      setOrderState(result);
+      if (result.ok) setOrderDirty(false);
+    });
+  }
 
   return (
     <>
@@ -239,6 +297,20 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         description="Gerencie produto, preço e estoque agregado. Ao salvar, a vitrine publicada no Discord é atualizada."
         actionLabel="Novo produto"
         onCreate={() => setEditor({ mode: "create" })}
+        additionalActions={
+          <Button
+            variant={orderDirty ? "primary" : "secondary"}
+            onClick={saveOrder}
+            disabled={!orderDirty || orderPending}
+          >
+            {orderPending ? (
+              <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <Save aria-hidden="true" className="size-4" />
+            )}
+            {orderPending ? "Salvando ordem..." : "Salvar ordem"}
+          </Button>
+        }
         createDisabled={!hasAvailableSubstore}
         createDisabledReason="Crie ou reative uma subloja antes de cadastrar um produto."
         search={search}
@@ -252,13 +324,47 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         emptyIcon={PackageOpen}
         emptyTitle="Nenhum produto cadastrado"
         emptyDescription="Cadastre jogos e sublojas antes de incluir o primeiro produto no catálogo."
+        contextualContent={
+          <div className="space-y-3">
+            <div
+              id="product-order-instructions"
+              className="flex flex-col gap-1 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span>Arraste pelo ícone de três linhas ou use as setas ↑ e ↓. A vitrine só muda ao salvar.</span>
+              {filtersActive ? (
+                <span className="text-xs text-gold">Limpe a busca e os filtros para reordenar.</span>
+              ) : null}
+            </div>
+            <ActionFeedback state={orderState} />
+          </div>
+        }
       >
         {filteredProducts.map((product) => {
           const available = product.stock_quantity;
           const isLowStock = product.status === "active" && available <= product.low_stock_threshold;
 
           return (
-            <tr key={product.id} className="border-b border-border/80 last:border-0">
+            <tr
+              key={product.id}
+              onDragEnter={(event: DragEvent<HTMLTableRowElement>) => {
+                if (!canReorder || !draggingProductIdRef.current) return;
+                event.preventDefault();
+                moveProduct(draggingProductIdRef.current, product.id);
+              }}
+              onDragOver={(event: DragEvent<HTMLTableRowElement>) => {
+                if (!canReorder) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(event: DragEvent<HTMLTableRowElement>) => {
+                event.preventDefault();
+                finishDragging();
+              }}
+              className={cn(
+                "border-b border-border/80 transition-colors last:border-0",
+                draggingProductId === product.id && "bg-gold/[0.04] opacity-60",
+              )}
+            >
               <td className="px-5 py-4">
                 <div className="flex items-center gap-3">
                   <MediaThumbnail src={product.image_url} alt="" />
@@ -297,6 +403,21 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
                   >
                     <Archive aria-hidden="true" className="size-4" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 cursor-grab text-muted active:cursor-grabbing"
+                    aria-label={`Mover ${product.name}`}
+                    aria-describedby="product-order-instructions"
+                    title={filtersActive ? "Limpe a busca e os filtros para reordenar" : "Arrastar para reordenar"}
+                    draggable={canReorder}
+                    disabled={!canReorder}
+                    onDragStart={(event) => handleDragStart(event, product.id)}
+                    onDragEnd={finishDragging}
+                    onKeyDown={(event) => handleOrderKeyDown(event, product.id)}
+                  >
+                    <Menu aria-hidden="true" className="size-5" />
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -309,6 +430,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
           key={editingProduct?.id ?? "new-product"}
           product={editingProduct}
           substores={substores}
+          nextSortOrder={nextSortOrder}
           onClose={() => setEditor(null)}
         />
       ) : null}
