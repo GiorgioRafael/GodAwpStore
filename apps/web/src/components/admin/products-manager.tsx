@@ -46,7 +46,7 @@ function ProductForm({
       onClose={onClose}
       size="lg"
       title={product ? "Editar produto" : "Novo produto"}
-      description="Cadastre o item vendável, o preço e a quantidade disponível em um só lugar."
+      description="Cadastre o item, a foto exibida no Discord, o preço e a quantidade disponível."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={pending}>
@@ -127,10 +127,11 @@ function ProductForm({
 
         <MediaUploadField
           name="imageUrl"
-          label="Imagem do produto"
+          label="Foto exibida no Discord"
           folder="products"
           initialValue={product?.image_url}
           error={fieldError(state, "imageUrl")}
+          hint="Prefira uma imagem quadrada. JPG, PNG ou WebP de até 5 MB."
         />
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
