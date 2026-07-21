@@ -71,22 +71,21 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
 
   const giveawayIds = giveaways.map((giveaway) => giveaway.id);
   const guildIds = [...new Set(giveaways.map((giveaway) => giveaway.guild_id))];
-  const [prizeResult, entryResult, guildResult] = await Promise.all([
+  const [prizeResult, entryCountResult, guildResult] = await Promise.all([
     client
       .from("giveaway_prizes")
       .select("giveaway_id,product_id,product_name,quantity,position")
       .in("giveaway_id", giveawayIds)
       .order("position"),
-    client
-      .from("giveaway_entries")
-      .select("giveaway_id,valid_invite_count")
-      .in("giveaway_id", giveawayIds),
+    client.rpc("admin_giveaway_entry_counts", {
+      p_giveaway_ids: giveawayIds,
+    }),
     client
       .from("guilds")
       .select("id,name,discord_guild_id")
       .in("id", guildIds),
   ]);
-  if (prizeResult.error || entryResult.error || guildResult.error) {
+  if (prizeResult.error || entryCountResult.error || guildResult.error) {
     throw new Error("Não foi possível carregar os detalhes dos sorteios.");
   }
 
@@ -96,35 +95,30 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
     rows.push(prize);
     prizes.set(prize.giveaway_id, rows);
   }
-  const entries = new Map<string, number[]>();
-  for (const entry of entryResult.data ?? []) {
-    const counts = entries.get(entry.giveaway_id) ?? [];
-    counts.push(entry.valid_invite_count);
-    entries.set(entry.giveaway_id, counts);
-  }
+  const entryCounts = new Map(
+    (entryCountResult.data ?? []).map((entry) => [entry.giveaway_id, entry]),
+  );
   const guilds = new Map(
     (guildResult.data ?? []).map((guild) => [guild.id, guild]),
   );
 
   return giveaways.map((giveaway) => {
     const guild = guilds.get(giveaway.guild_id);
-    const inviteCounts = entries.get(giveaway.id) ?? [];
+    const counts = entryCounts.get(giveaway.id);
     return {
       ...giveaway,
       guildName: guild?.name ?? "Servidor removido",
       discordGuildId: guild?.discord_guild_id ?? "",
       prizes: prizes.get(giveaway.id) ?? [],
-      participantCount: inviteCounts.length,
-      eligibleParticipantCount: inviteCounts.filter(
-        (count) => count >= giveaway.required_valid_invites,
-      ).length,
+      participantCount: Number(counts?.participant_count ?? 0),
+      eligibleParticipantCount: Number(counts?.eligible_participant_count ?? 0),
     };
   });
 }
 
 export async function getPublicGiveaway(
   slug: string,
-  referralToken?: string | null,
+  entryAccessToken?: string | null,
 ): Promise<PublicGiveawayView | null> {
   const client = requireAdminClient();
   const { data: giveaway, error } = await client
@@ -137,12 +131,12 @@ export async function getPublicGiveaway(
   if (error) throw new Error("Não foi possível carregar o sorteio.");
   if (!giveaway) return null;
 
-  const entryQuery = referralToken
+  const entryQuery = entryAccessToken
     ? client
         .from("giveaway_entries")
         .select("display_name,referral_token,valid_invite_count")
         .eq("giveaway_id", giveaway.id)
-        .eq("referral_token", referralToken)
+        .eq("access_token", entryAccessToken)
         .maybeSingle()
     : Promise.resolve({ data: null, error: null });
   const [prizeResult, guildResult, entryResult] = await Promise.all([

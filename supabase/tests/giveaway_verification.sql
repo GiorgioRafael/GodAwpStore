@@ -152,10 +152,31 @@ select * from public.admin_cancel_giveaway(
   (select id from public.giveaways where public_slug = 'giveawaytest0002')
 );
 
+select * from public.admin_create_giveaway(
+  'giveawaytest0003',
+  '75000000-0000-4000-8000-000000000001',
+  '750000000000000003',
+  'sorteios',
+  null::text,
+  null::text,
+  'Sorteio agendado recuperável',
+  '',
+  '',
+  now() + interval '1 hour',
+  now() + interval '2 hours',
+  0,
+  0,
+  0,
+  jsonb_build_array(jsonb_build_object(
+    'product_id', '74000000-0000-4000-8000-000000000001',
+    'quantity', 1
+  ))
+);
+
 do $$
 begin
-  if (select stock_quantity from public.products where id = '74000000-0000-4000-8000-000000000001') <> 3 then
-    raise exception 'Giveaway cancellation did not restore stock exactly once';
+  if (select stock_quantity from public.products where id = '74000000-0000-4000-8000-000000000001') <> 2 then
+    raise exception 'Cancellation or scheduled reservation changed stock incorrectly';
   end if;
 end
 $$;
@@ -180,15 +201,100 @@ select * from public.register_giveaway_referral(
   true
 );
 
+select * from public.register_giveaway_referral(
+  (select id from public.giveaways where public_slug = 'giveawaytest0001'),
+  (select referral_token from public.giveaway_entries where discord_user_id = '760000000000000001'),
+  '760000000000000003',
+  'Second Invitee',
+  null,
+  now() - interval '30 days',
+  true
+);
+
+select public.set_giveaway_referral_status(
+  (select id from public.giveaway_referrals where invitee_discord_user_id = '760000000000000002'),
+  'invalid',
+  'verification test'
+);
+select public.set_giveaway_referral_status(
+  (select id from public.giveaway_referrals where invitee_discord_user_id = '760000000000000002'),
+  'valid',
+  null
+);
+
+do $$
+begin
+  if (
+    select access_token = referral_token
+    from public.giveaway_entries
+    where discord_user_id = '760000000000000001'
+  ) is not false then
+    raise exception 'Participant access token was not separated from the public referral token';
+  end if;
+  if (
+    select valid_invite_count
+    from public.giveaway_entries
+    where discord_user_id = '760000000000000001'
+  ) <> 2 then
+    raise exception 'Referral counter was not recomputed after status transitions';
+  end if;
+end
+$$;
+
 update public.giveaways
 set ends_at = now() - interval '1 second'
 where public_slug = 'giveawaytest0001';
 
-select * from public.claim_due_giveaway('77000000-0000-4000-8000-000000000001');
-select * from public.complete_giveaway_draw(
+select * from public.claim_due_giveaway_v2('77000000-0000-4000-8000-000000000001');
+select public.mark_giveaway_entry_membership(
+  (select id from public.giveaways where public_slug = 'giveawaytest0001'),
+  '77000000-0000-4000-8000-000000000001',
+  (select id from public.giveaway_entries where discord_user_id = '760000000000000001'),
+  true,
+  null
+);
+select public.mark_giveaway_referral_draw_status(
+  (select id from public.giveaways where public_slug = 'giveawaytest0001'),
+  '77000000-0000-4000-8000-000000000001',
+  (select id from public.giveaway_referrals where invitee_discord_user_id = '760000000000000002'),
+  true,
+  null
+);
+select public.mark_giveaway_referral_draw_status(
+  (select id from public.giveaways where public_slug = 'giveawaytest0001'),
+  '77000000-0000-4000-8000-000000000001',
+  (select id from public.giveaway_referrals where invitee_discord_user_id = '760000000000000003'),
+  true,
+  null
+);
+do $$
+begin
+  if (
+    select discord_user_id
+    from public.pick_giveaway_winner(
+      (select id from public.giveaways where public_slug = 'giveawaytest0001'),
+      '77000000-0000-4000-8000-000000000001'
+    )
+  ) <> '760000000000000001' then
+    raise exception 'Full-set winner selection did not return the eligible participant';
+  end if;
+end
+$$;
+select * from public.complete_giveaway_draw_v2(
   (select id from public.giveaways where public_slug = 'giveawaytest0001'),
   '77000000-0000-4000-8000-000000000001',
   (select id from public.giveaway_entries where discord_user_id = '760000000000000001')
+);
+
+update public.giveaways
+set starts_at = now() - interval '2 hours', ends_at = now() - interval '1 hour'
+where public_slug = 'giveawaytest0003';
+
+select * from public.claim_due_giveaway_v2('77000000-0000-4000-8000-000000000004');
+select * from public.complete_giveaway_draw_v2(
+  (select id from public.giveaways where public_slug = 'giveawaytest0003'),
+  '77000000-0000-4000-8000-000000000004',
+  null
 );
 
 select * from public.claim_giveaway_ticket('77000000-0000-4000-8000-000000000002');
@@ -214,8 +320,22 @@ begin
     select valid_invite_count
     from public.giveaway_entries
     where discord_user_id = '760000000000000001'
-  ) <> 1 then
+  ) <> 2 then
     raise exception 'Valid referral count was not maintained';
+  end if;
+  if (
+    select status = 'failed' and stock_released_at is not null
+    from public.giveaways
+    where public_slug = 'giveawaytest0003'
+  ) is not true then
+    raise exception 'Expired scheduled giveaway was not finalized and released';
+  end if;
+  if (
+    select stock_quantity
+    from public.products
+    where id = '74000000-0000-4000-8000-000000000001'
+  ) <> 3 then
+    raise exception 'Expired scheduled giveaway did not restore stock exactly once';
   end if;
 end
 $$;

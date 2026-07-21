@@ -238,8 +238,12 @@ type GiveawayEntryRow = {
   display_name: string;
   avatar_url: string | null;
   referral_token: string;
+  access_token: string;
   valid_invite_count: number;
   joined_at: string;
+  membership_checked_at: string | null;
+  membership_is_valid: boolean;
+  membership_invalid_reason: string | null;
   updated_at: string;
 };
 
@@ -252,6 +256,10 @@ type GiveawayReferralRow = {
   invitee_avatar_url: string | null;
   invitee_account_created_at: string;
   joined_at: string;
+  join_completed_at: string | null;
+  draw_checked_at: string | null;
+  draw_is_valid: boolean;
+  draw_invalid_reason: string | null;
   status: Database["public"]["Enums"]["giveaway_referral_status"];
   validated_at: string | null;
   invalid_reason: string | null;
@@ -909,7 +917,39 @@ export type Database = {
         };
         Returns: boolean;
       };
+      prepare_giveaway_referral: {
+        Args: {
+          p_giveaway_id: string;
+          p_referral_token: string;
+          p_invitee_discord_user_id: string;
+          p_invitee_display_name: string;
+          p_invitee_avatar_url: string | null;
+          p_invitee_account_created_at: string;
+        };
+        Returns: {
+          referral_id: string;
+          referral_status: Database["public"]["Enums"]["giveaway_referral_status"];
+          was_created: boolean;
+          join_completed_at: string | null;
+        }[];
+      };
+      complete_giveaway_referral_join: {
+        Args: {
+          p_referral_id: string;
+          p_joined_at: string;
+          p_initially_valid: boolean;
+        };
+        Returns: {
+          referral_id: string;
+          referral_status: Database["public"]["Enums"]["giveaway_referral_status"];
+          was_completed: boolean;
+        }[];
+      };
       activate_due_giveaways: { Args: Record<never, never>; Returns: number };
+      activate_due_giveaways_v2: {
+        Args: Record<never, never>;
+        Returns: { giveaway_id: string }[];
+      };
       claim_due_giveaway: {
         Args: { p_claim_token: string };
         Returns: {
@@ -918,7 +958,53 @@ export type Database = {
           required_valid_invites: number;
         }[];
       };
+      claim_due_giveaway_v2: {
+        Args: { p_claim_token: string };
+        Returns: {
+          giveaway_id: string;
+          discord_guild_id: string;
+          required_valid_invites: number;
+          minimum_stay_minutes: number;
+          ends_at: string;
+        }[];
+      };
+      mark_giveaway_entry_membership: {
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_entry_id: string;
+          p_is_valid: boolean;
+          p_invalid_reason: string | null;
+        };
+        Returns: boolean;
+      };
+      mark_giveaway_referral_draw_status: {
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_referral_id: string;
+          p_is_valid: boolean;
+          p_invalid_reason: string | null;
+        };
+        Returns: boolean;
+      };
+      pick_giveaway_winner: {
+        Args: { p_giveaway_id: string; p_claim_token: string };
+        Returns: { entry_id: string; discord_user_id: string }[];
+      };
       complete_giveaway_draw: {
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_winner_entry_id: string | null;
+        };
+        Returns: {
+          completed_giveaway_id: string;
+          resulting_status: Database["public"]["Enums"]["giveaway_status"];
+          winner_discord_user_id: string | null;
+        }[];
+      };
+      complete_giveaway_draw_v2: {
         Args: {
           p_giveaway_id: string;
           p_claim_token: string;
@@ -949,6 +1035,14 @@ export type Database = {
       fail_giveaway_ticket: {
         Args: { p_giveaway_id: string; p_claim_token: string; p_error: string | null };
         Returns: boolean;
+      };
+      admin_giveaway_entry_counts: {
+        Args: { p_giveaway_ids: string[] };
+        Returns: {
+          giveaway_id: string;
+          participant_count: number;
+          eligible_participant_count: number;
+        }[];
       };
       admin_import_inventory_units: {
         Args: {

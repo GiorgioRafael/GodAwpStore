@@ -192,6 +192,7 @@ function giveawayError(code?: string) {
     ja_era_membro: "Esse convite não pode ser validado porque você já fazia parte do servidor.",
     conta_recente: "Sua conta Discord ainda não tem a idade mínima exigida.",
     ja_atribuido: "Sua entrada já foi atribuída a outro convite deste sorteio.",
+    convite_invalido: "Este convite já foi utilizado ou deixou de ser válido para esta conta.",
     indisponivel: "Não foi possível concluir agora. Tente novamente em alguns instantes.",
   };
   return code ? messages[code] ?? messages.indisponivel : null;
