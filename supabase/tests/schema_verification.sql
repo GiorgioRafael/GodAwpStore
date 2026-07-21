@@ -74,6 +74,7 @@ begin
     'public.release_discord_ticket_close(uuid,uuid)',
     'public.reconcile_missing_discord_ticket(uuid,text)'
     ,'public.admin_create_giveaway(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,timestamp with time zone,integer,integer,integer,jsonb)'
+    ,'public.admin_create_giveaway_v2(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,integer,integer,integer,jsonb)'
     ,'public.admin_cancel_giveaway(uuid)'
     ,'public.record_giveaway_publication(uuid,text,text)'
     ,'public.register_giveaway_participant(uuid,text,text,text)'
@@ -365,6 +366,18 @@ begin
   ) or has_table_privilege('authenticated', 'public.giveaways', 'INSERT')
     or has_table_privilege('authenticated', 'public.giveaways', 'UPDATE') then
     raise exception 'Giveaway administrative privileges are invalid';
+  end if;
+
+  if not has_function_privilege(
+    'authenticated',
+    'public.admin_create_giveaway_v2(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,integer,integer,integer,jsonb)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'anon',
+    'public.admin_create_giveaway_v2(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,integer,integer,integer,jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception 'Immediate giveaway creation RPC execute privileges are invalid';
   end if;
 
   if has_function_privilege(

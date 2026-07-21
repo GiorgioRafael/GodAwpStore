@@ -19,7 +19,10 @@ const UUID_PATTERN =
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const slug = requestUrl.searchParams.get("slug")?.trim().toLowerCase() ?? "";
-  const referralToken = requestUrl.searchParams.get("ref")?.trim().toLowerCase() || null;
+  const intent = requestUrl.searchParams.get("modo") === "visualizar" ? "view" : "participate";
+  const referralToken = intent === "participate"
+    ? requestUrl.searchParams.get("ref")?.trim().toLowerCase() || null
+    : null;
   if (!SLUG_PATTERN.test(slug) || (referralToken && !UUID_PATTERN.test(referralToken))) {
     return redirectToGiveaway(requestUrl.origin, slug, "link_invalido");
   }
@@ -28,17 +31,17 @@ export async function GET(request: Request) {
     const giveaway = await getGiveawayOAuthContext(slug, referralToken);
     if (!giveaway) return redirectToGiveaway(requestUrl.origin, slug, "link_invalido");
     const now = Date.now();
-    if (
+    if (intent === "participate" && (
       (giveaway.status !== "scheduled" && giveaway.status !== "active") ||
       Date.parse(giveaway.startsAt) > now ||
       Date.parse(giveaway.endsAt) <= now
-    ) {
+    )) {
       return redirectToGiveaway(requestUrl.origin, slug, "fora_do_periodo");
     }
 
     const secret = getGiveawayOAuthStateSecret();
     const state = createGiveawayOAuthState(
-      { giveawayId: giveaway.id, slug: giveaway.slug, referralToken },
+      { giveawayId: giveaway.id, slug: giveaway.slug, referralToken, intent },
       secret,
     );
     const supabase = await createServerSupabaseClient();
@@ -52,7 +55,7 @@ export async function GET(request: Request) {
       provider: "discord",
       options: {
         redirectTo: callback.toString(),
-        scopes: "identify guilds.join",
+        scopes: intent === "view" ? "identify" : "identify guilds.join",
       },
     });
     if (error || !data.url) throw new Error(error?.message || "OAuth Discord indisponível.");

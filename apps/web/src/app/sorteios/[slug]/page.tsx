@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import {
   CalendarClock,
@@ -16,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { getSiteUrl } from "@/lib/env";
+import { giveawayEntryCookieName } from "@/lib/giveaways/oauth-state";
 import { getPublicGiveaway, getServerTimestamp } from "@/lib/giveaways/repository";
 
 export const metadata: Metadata = {
@@ -36,9 +38,15 @@ export default async function GiveawayPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ slug }, query] = await Promise.all([params, searchParams]);
+  const [{ slug }, query, cookieStore] = await Promise.all([
+    params,
+    searchParams,
+    cookies(),
+  ]);
   if (!SLUG_PATTERN.test(slug)) notFound();
-  const entryToken = single(query.entrada);
+  const queryEntryToken = single(query.entrada);
+  const cookieEntryToken = cookieStore.get(giveawayEntryCookieName(slug))?.value;
+  const entryToken = queryEntryToken ?? cookieEntryToken;
   const referralToken = single(query.ref);
   const giveaway = await getPublicGiveaway(
     slug,
@@ -64,6 +72,17 @@ export default async function GiveawayPage({
   })}`;
   const errorMessage = giveawayError(single(query.erro));
   const inviteResult = single(query.convite);
+  const participationResult = single(query.participacao);
+  const feedback = errorMessage
+    ? { tone: "danger" as const, message: errorMessage }
+    : inviteResult
+      ? {
+          tone: "success" as const,
+          message: inviteResult === "valido"
+            ? "Convite validado! Sua entrada no servidor já contou para quem indicou você."
+            : "Entrada confirmada. O convite será validado automaticamente após você concluir a verificação e permanecer no servidor pelo tempo exigido.",
+        }
+      : participationFeedback(participationResult);
   const referralUrl = giveaway.entry
     ? `${getSiteUrl()}/sorteios/${slug}?ref=${giveaway.entry.referralToken}`
     : null;
@@ -77,11 +96,9 @@ export default async function GiveawayPage({
       <div className="relative mx-auto max-w-3xl space-y-6">
         <div className="flex justify-center"><Brand /></div>
 
-        {(errorMessage || inviteResult) ? (
-          <div className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${errorMessage ? "border-danger/30 bg-danger/10 text-[#ffc0bd]" : "border-success/30 bg-success/10 text-[#a7ebc0]"}`}>
-            {errorMessage ?? (inviteResult === "valido"
-              ? "Convite validado! Sua entrada no servidor já contou para quem indicou você."
-              : "Entrada confirmada. O convite será validado automaticamente após você concluir a verificação e permanecer no servidor pelo tempo exigido.")}
+        {feedback ? (
+          <div className={`rounded-2xl border px-4 py-3 text-sm leading-6 ${feedback.tone === "danger" ? "border-danger/30 bg-danger/10 text-[#ffc0bd]" : feedback.tone === "success" ? "border-success/30 bg-success/10 text-[#a7ebc0]" : "border-gold/30 bg-gold/10 text-gold-bright"}`}>
+            {feedback.message}
           </div>
         ) : null}
 
@@ -148,8 +165,18 @@ export default async function GiveawayPage({
                 {referralUrl && isOpen ? <div className="mt-4"><ReferralLink url={referralUrl} /></div> : null}
               </section>
             ) : isOpen ? (
-              <div className="text-center">
-                <LinkButton href={oauthUrl} size="lg" className="w-full sm:w-auto">
+              <div className="rounded-2xl border border-border bg-surface-muted p-5 text-center">
+                <h2 className="font-semibold">
+                  {participationResult === "nao_cadastrado"
+                    ? "Você ainda não está participando"
+                    : "Status da participação"}
+                </h2>
+                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted">
+                  {participationResult === "nao_cadastrado"
+                    ? "Seu Discord foi identificado, mas ainda não existe uma inscrição neste sorteio."
+                    : "Identifique seu Discord para consultar sua inscrição ou entrar no sorteio."}
+                </p>
+                <LinkButton href={oauthUrl} size="lg" className="mt-4 w-full sm:w-auto">
                   <UserPlus aria-hidden="true" className="size-5" />
                   {validReferralToken ? "Entrar e validar convite" : "Participar com Discord"}
                 </LinkButton>
@@ -196,6 +223,19 @@ function giveawayError(code?: string) {
     indisponivel: "Não foi possível concluir agora. Tente novamente em alguns instantes.",
   };
   return code ? messages[code] ?? messages.indisponivel : null;
+}
+
+function participationFeedback(result?: string) {
+  if (result === "cadastrado") {
+    return { tone: "success" as const, message: "Participação cadastrada com sucesso!" };
+  }
+  if (result === "ja_cadastrado") {
+    return { tone: "success" as const, message: "Você já está cadastrado neste sorteio." };
+  }
+  if (result === "nao_cadastrado") {
+    return { tone: "neutral" as const, message: "Você ainda não está cadastrado neste sorteio." };
+  }
+  return null;
 }
 
 function formatDate(value: string) {

@@ -76,7 +76,7 @@ select set_config(
 );
 set local role authenticated;
 
-select * from public.admin_create_giveaway(
+select * from public.admin_create_giveaway_v2(
   'giveawaytest0001',
   '75000000-0000-4000-8000-000000000001',
   '750000000000000003',
@@ -86,7 +86,6 @@ select * from public.admin_create_giveaway(
   'Pacote de integração',
   'Descrição',
   'Regras',
-  now() - interval '1 minute',
   now() + interval '1 hour',
   1,
   7,
@@ -101,6 +100,15 @@ do $$
 begin
   if (select stock_quantity from public.products where id = '74000000-0000-4000-8000-000000000001') <> 3 then
     raise exception 'Giveaway did not reserve aggregate stock';
+  end if;
+  if (
+    select status = 'active'
+      and starts_at >= current_timestamp
+      and starts_at <= statement_timestamp()
+    from public.giveaways
+    where public_slug = 'giveawaytest0001'
+  ) is not true then
+    raise exception 'Giveaway did not start at database creation time';
   end if;
   if (
     select count(*)
@@ -190,6 +198,31 @@ select * from public.register_giveaway_participant(
   'Participant',
   null
 );
+
+do $$
+declare
+  v_was_created boolean;
+begin
+  select was_created into strict v_was_created
+  from public.register_giveaway_participant(
+    (select id from public.giveaways where public_slug = 'giveawaytest0001'),
+    '760000000000000001',
+    'Participant Updated',
+    null
+  );
+  if v_was_created then
+    raise exception 'Repeated giveaway participation was not idempotent';
+  end if;
+  if (
+    select count(*)
+    from public.giveaway_entries
+    where giveaway_id = (select id from public.giveaways where public_slug = 'giveawaytest0001')
+      and discord_user_id = '760000000000000001'
+  ) <> 1 then
+    raise exception 'Repeated giveaway participation created a duplicate entry';
+  end if;
+end
+$$;
 
 select * from public.register_giveaway_referral(
   (select id from public.giveaways where public_slug = 'giveawaytest0001'),

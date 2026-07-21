@@ -75,13 +75,11 @@ export function GiveawayManager({
   guilds,
   products,
   giveaways,
-  defaultStartsAt,
   defaultEndsAt,
 }: {
   guilds: GiveawayGuildOption[];
   products: GiveawayProductOption[];
   giveaways: GiveawayListItem[];
-  defaultStartsAt: string;
   defaultEndsAt: string;
 }) {
   const [state, formAction, pending] = useActionState(
@@ -90,7 +88,11 @@ export function GiveawayManager({
   );
   const formId = useId();
   const [guildId, setGuildId] = useState(guilds[0]?.id ?? "");
-  const [prizes, setPrizes] = useState([{ key: crypto.randomUUID(), productId: "", quantity: "1" }]);
+  const [prizes, setPrizes] = useState([{
+    key: `${formId}-prize-0`,
+    productId: "",
+    quantity: "1",
+  }]);
   const guild = guilds.find((item) => item.id === guildId) ?? guilds[0];
   const selectedProductIds = useMemo(
     () => new Set(prizes.map((prize) => prize.productId).filter(Boolean)),
@@ -140,14 +142,9 @@ export function GiveawayManager({
               <Field label="Título" htmlFor={`${formId}-title`} error={fieldError(state, "title")}>
                 <Input id={`${formId}-title`} name="title" placeholder="Ex.: Pacote Grow a Garden" maxLength={120} required />
               </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Início" htmlFor={`${formId}-starts`} hint="Horário de Brasília" error={fieldError(state, "startsAt")}>
-                  <Input id={`${formId}-starts`} name="startsAt" type="datetime-local" defaultValue={defaultStartsAt} required />
-                </Field>
-                <Field label="Fim" htmlFor={`${formId}-ends`} hint="Horário de Brasília" error={fieldError(state, "endsAt")}>
-                  <Input id={`${formId}-ends`} name="endsAt" type="datetime-local" defaultValue={defaultEndsAt} required />
-                </Field>
-              </div>
+              <Field label="Encerramento" htmlFor={`${formId}-ends`} hint="Começa ao publicar · horário de Brasília" error={fieldError(state, "endsAt")}>
+                <Input id={`${formId}-ends`} name="endsAt" type="datetime-local" defaultValue={defaultEndsAt} required />
+              </Field>
               <Field label="Descrição" htmlFor={`${formId}-description`}>
                 <Textarea id={`${formId}-description`} name="description" placeholder="Explique o sorteio e destaque o prêmio." maxLength={2000} />
               </Field>
@@ -200,7 +197,7 @@ export function GiveawayManager({
             </div>
           </CardContent>
           <CardFooter className="flex items-center justify-between gap-3">
-            <p className="text-xs leading-5 text-muted">A publicação já abre ou agenda o sorteio e reserva o pacote.</p>
+            <p className="text-xs leading-5 text-muted">O sorteio começa assim que for criado e o pacote é reservado na mesma operação.</p>
             <Button type="submit" disabled={pending || !guild || products.length === 0}>
               {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <Send aria-hidden="true" className="size-4" />}
               {pending ? "Criando..." : "Criar e publicar"}

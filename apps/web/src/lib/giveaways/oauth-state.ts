@@ -6,6 +6,9 @@ const UUID_PATTERN =
 const SLUG_PATTERN = /^[a-z0-9]{12,32}$/;
 
 export const GIVEAWAY_OAUTH_COOKIE = "gw_giveaway_oauth_state";
+export const GIVEAWAY_ENTRY_COOKIE_PREFIX = "gw_giveaway_entry_";
+
+export type GiveawayOAuthIntent = "participate" | "view";
 
 export function getGiveawayOAuthStateSecret() {
   const secret =
@@ -18,30 +21,37 @@ export function getGiveawayOAuthStateSecret() {
 }
 
 export type GiveawayOAuthState = {
-  version: 1;
+  version: 1 | 2;
   nonce: string;
   giveawayId: string;
   slug: string;
   referralToken: string | null;
+  intent: GiveawayOAuthIntent;
   expiresAt: number;
 };
 
 export function createGiveawayOAuthState(
-  input: { giveawayId: string; slug: string; referralToken?: string | null },
+  input: {
+    giveawayId: string;
+    slug: string;
+    referralToken?: string | null;
+    intent?: GiveawayOAuthIntent;
+  },
   secret: string,
   now = Date.now(),
 ) {
   assertSecret(secret);
   const state: GiveawayOAuthState = {
-    version: 1,
+    version: 2,
     nonce: randomBytes(18).toString("base64url"),
     giveawayId: input.giveawayId,
     slug: input.slug,
     referralToken: input.referralToken ?? null,
+    intent: input.intent ?? "participate",
     expiresAt: Math.floor(now / 1_000) + STATE_TTL_SECONDS,
   };
-  assertState(state, now);
-  const payload = Buffer.from(JSON.stringify(state)).toString("base64url");
+  const validatedState = parseState(state, now);
+  const payload = Buffer.from(JSON.stringify(validatedState)).toString("base64url");
   return `${payload}.${signature(payload, secret)}`;
 }
 
@@ -65,8 +75,12 @@ export function verifyGiveawayOAuthState(
   } catch {
     throw new Error("OAuth state inválido.");
   }
-  assertState(parsed, now);
-  return parsed;
+  return parseState(parsed, now);
+}
+
+export function giveawayEntryCookieName(slug: string) {
+  if (!SLUG_PATTERN.test(slug)) throw new Error("Slug de sorteio inválido.");
+  return `${GIVEAWAY_ENTRY_COOKIE_PREFIX}${slug}`;
 }
 
 function signature(payload: string, secret: string) {
@@ -77,12 +91,12 @@ function assertSecret(secret: string) {
   if (secret.trim().length < 16) throw new Error("Segredo de assinatura OAuth inválido.");
 }
 
-function assertState(value: unknown, now: number): asserts value is GiveawayOAuthState {
+function parseState(value: unknown, now: number): GiveawayOAuthState {
   if (
     typeof value !== "object" ||
     value === null ||
     !("version" in value) ||
-    value.version !== 1 ||
+    (value.version !== 1 && value.version !== 2) ||
     !("nonce" in value) ||
     typeof value.nonce !== "string" ||
     !/^[A-Za-z0-9_-]{20,40}$/.test(value.nonce) ||
@@ -103,4 +117,21 @@ function assertState(value: unknown, now: number): asserts value is GiveawayOAut
   ) {
     throw new Error("OAuth state inválido.");
   }
+
+  const intent = value.version === 1
+    ? "participate"
+    : "intent" in value && (value.intent === "participate" || value.intent === "view")
+      ? value.intent
+      : null;
+  if (!intent) throw new Error("OAuth state inválido.");
+
+  return {
+    version: value.version,
+    nonce: value.nonce,
+    giveawayId: value.giveawayId,
+    slug: value.slug,
+    referralToken: value.referralToken,
+    intent,
+    expiresAt: value.expiresAt,
+  };
 }

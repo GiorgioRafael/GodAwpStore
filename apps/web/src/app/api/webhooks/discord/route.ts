@@ -30,6 +30,10 @@ import {
   loadBotRuntimeSettings,
   type BotRuntimeSettings,
 } from "@/lib/bot/message-customization-server";
+import {
+  completeDiscordGiveawayParticipation,
+  parseNativeDiscordGiveawayParticipation,
+} from "@/lib/giveaways/discord-participation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -106,6 +110,18 @@ export async function POST(request: Request) {
           } catch (error) {
             const message = error instanceof Error ? error.message : "erro desconhecido";
             console.error(`[discord-game-nickname] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "giveaway_participation") {
+        after(async () => {
+          try {
+            await completeDiscordGiveawayParticipation(native.raw);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-giveaway:participation] ${message}`);
           }
         });
         return Response.json(native.interaction.response);
@@ -227,6 +243,16 @@ async function readNativeDiscordInteraction(request: Request) {
   const gameNickname = parseNativeDiscordGameNicknameInteraction(raw);
   if (gameNickname) {
     return { body, raw, scope: "game_nickname" as const, interaction: gameNickname };
+  }
+
+  const giveawayParticipation = parseNativeDiscordGiveawayParticipation(raw);
+  if (giveawayParticipation) {
+    return {
+      body,
+      raw,
+      scope: "giveaway_participation" as const,
+      interaction: giveawayParticipation,
+    };
   }
 
   const cart = parseNativeDiscordCartInteraction(raw);

@@ -47,7 +47,6 @@ export default async function GiveawaysPage() {
       }),
   );
   const now = new Date();
-  const startsAt = new Date(now.getTime() + 5 * 60 * 1_000);
   const endsAt = new Date(now.getTime() + 24 * 60 * 60 * 1_000);
 
   return (
@@ -84,7 +83,6 @@ export default async function GiveawaysPage() {
           failureReason: giveaway.failure_reason,
           prizes: giveaway.prizes.map((prize) => ({ productId: prize.product_id, productName: prize.product_name, quantity: prize.quantity })),
         }))}
-        defaultStartsAt={toDateTimeLocal(startsAt)}
         defaultEndsAt={toDateTimeLocal(endsAt)}
       />
     </div>

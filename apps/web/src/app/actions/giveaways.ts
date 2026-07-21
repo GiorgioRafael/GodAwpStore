@@ -22,7 +22,6 @@ const giveawaySchema = z.object({
   title: z.string().trim().min(3, "Informe um título.").max(120),
   description: z.string().trim().max(2_000),
   rulesText: z.string().trim().max(2_000),
-  startsAt: z.string().datetime(),
   endsAt: z.string().datetime(),
   requiredValidInvites: z.number().int().min(0).max(100),
   minimumAccountAgeDays: z.number().int().min(0).max(3_650),
@@ -32,10 +31,11 @@ const giveawaySchema = z.object({
     quantity: z.number().int().min(1).max(10_000),
   })).min(1).max(20),
 }).superRefine((value, context) => {
-  if (Date.parse(value.endsAt) <= Math.max(Date.parse(value.startsAt), Date.now())) {
+  const now = Date.now();
+  if (Date.parse(value.endsAt) <= now) {
     context.addIssue({ code: "custom", path: ["endsAt"], message: "O encerramento deve estar no futuro." });
   }
-  if (Date.parse(value.endsAt) > Date.parse(value.startsAt) + 90 * 24 * 60 * 60 * 1_000) {
+  if (Date.parse(value.endsAt) > now + 90 * 24 * 60 * 60 * 1_000) {
     context.addIssue({ code: "custom", path: ["endsAt"], message: "A duração máxima é de 90 dias." });
   }
   if (new Set(value.prizes.map((prize) => prize.productId)).size !== value.prizes.length) {
@@ -56,7 +56,6 @@ export async function createGiveawayAction(
     title: text(formData, "title"),
     description: text(formData, "description"),
     rulesText: text(formData, "rulesText"),
-    startsAt: localDateTimeToIso(text(formData, "startsAt")),
     endsAt: localDateTimeToIso(text(formData, "endsAt")),
     requiredValidInvites: integer(formData, "requiredValidInvites"),
     minimumAccountAgeDays: integer(formData, "minimumAccountAgeDays"),
@@ -102,7 +101,7 @@ export async function createGiveawayAction(
     }
 
     const { data, error } = await sessionClient
-      .rpc("admin_create_giveaway", {
+      .rpc("admin_create_giveaway_v2", {
         p_public_slug: randomBytes(8).toString("hex"),
         p_guild_id: parsed.data.guildId,
         p_publication_channel_id: publicationChannel.id,
@@ -112,7 +111,6 @@ export async function createGiveawayAction(
         p_title: parsed.data.title,
         p_description: parsed.data.description,
         p_rules_text: parsed.data.rulesText,
-        p_starts_at: parsed.data.startsAt,
         p_ends_at: parsed.data.endsAt,
         p_required_valid_invites: parsed.data.requiredValidInvites,
         p_minimum_account_age_days: parsed.data.minimumAccountAgeDays,
@@ -135,7 +133,7 @@ export async function createGiveawayAction(
     return {
       ok: true,
       message: publication
-        ? "Sorteio criado, estoque reservado e anúncio publicado."
+        ? "Sorteio iniciado, estoque reservado e anúncio publicado."
         : "Sorteio criado e estoque reservado, mas o anúncio precisa ser republicado.",
     };
   } catch (error) {

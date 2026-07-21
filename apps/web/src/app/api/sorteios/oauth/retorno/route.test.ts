@@ -23,6 +23,7 @@ vi.mock("@/lib/giveaways/discord-oauth", () => ({
 }));
 vi.mock("@/lib/giveaways/oauth-state", () => ({
   GIVEAWAY_OAUTH_COOKIE: "gw_giveaway_oauth_state",
+  giveawayEntryCookieName: (slug: string) => `gw_giveaway_entry_${slug}`,
   getGiveawayOAuthStateSecret: () => "secret",
   verifyGiveawayOAuthState: mocks.verifyGiveawayOAuthState,
 }));
@@ -57,6 +58,7 @@ beforeEach(() => {
     giveawayId: giveaway.id,
     slug: giveaway.slug,
     referralToken: "33333333-3333-4333-8333-333333333333",
+    intent: "participate",
   });
   mocks.getGiveawayOAuthContext.mockResolvedValue(giveaway);
   mocks.exchangeCodeForSession.mockResolvedValue({
@@ -76,6 +78,7 @@ describe("giveaway OAuth callback", () => {
       giveawayId: giveaway.id,
       slug: giveaway.slug,
       referralToken: null,
+      intent: "participate",
     });
     mocks.getGiveawayOAuthContext.mockResolvedValue({ ...giveaway, referralEntryId: null });
     mocks.getDiscordGuildMembership.mockResolvedValue({
@@ -101,8 +104,83 @@ describe("giveaway OAuth callback", () => {
     const response = await GET(request());
     const location = response.headers.get("location") ?? "";
 
-    expect(location).toContain("entrada=77777777-7777-4777-8777-777777777777");
+    expect(location).toContain("participacao=cadastrado");
+    expect(location).not.toContain("entrada=");
     expect(location).not.toContain("66666666-6666-4666-8666-666666666666");
+    expect(response.headers.get("set-cookie")).toContain(
+      "gw_giveaway_entry_abc123def456=77777777-7777-4777-8777-777777777777",
+    );
+    expect(response.headers.get("set-cookie")).toContain("HttpOnly");
+  });
+
+  it("avisa quando o participante já estava cadastrado", async () => {
+    mocks.verifyGiveawayOAuthState.mockReturnValue({
+      giveawayId: giveaway.id,
+      slug: giveaway.slug,
+      referralToken: null,
+      intent: "participate",
+    });
+    mocks.getGiveawayOAuthContext.mockResolvedValue({ ...giveaway, referralEntryId: null });
+    mocks.getDiscordGuildMembership.mockResolvedValue({
+      exists: true,
+      pending: false,
+      joinedAt: "2025-01-01T00:00:00.000Z",
+    });
+    mocks.rpc.mockReturnValue(single({
+      entry_id: "55555555-5555-4555-8555-555555555555",
+      referral_token: "66666666-6666-4666-8666-666666666666",
+      valid_invite_count: 0,
+      was_created: false,
+    }));
+    mocks.from.mockReturnValue(entryAccessQuery({
+      access_token: "77777777-7777-4777-8777-777777777777",
+    }));
+
+    const response = await GET(request());
+
+    expect(response.headers.get("location")).toContain("participacao=ja_cadastrado");
+  });
+
+  it("consulta a participação sem cadastrar nem exigir que o sorteio esteja aberto", async () => {
+    mocks.verifyGiveawayOAuthState.mockReturnValue({
+      giveawayId: giveaway.id,
+      slug: giveaway.slug,
+      referralToken: null,
+      intent: "view",
+    });
+    mocks.getGiveawayOAuthContext.mockResolvedValue({
+      ...giveaway,
+      status: "completed",
+      endsAt: "2026-07-20T12:00:00.000Z",
+    });
+    mocks.from.mockReturnValue(existingEntryQuery({
+      access_token: "77777777-7777-4777-8777-777777777777",
+    }));
+
+    const response = await GET(request());
+
+    expect(response.headers.get("location")).toContain("participacao=ja_cadastrado");
+    expect(response.headers.get("set-cookie")).toContain(
+      "gw_giveaway_entry_abc123def456=77777777-7777-4777-8777-777777777777",
+    );
+    expect(mocks.getDiscordGuildMembership).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("informa quando o Discord identificado ainda não participa", async () => {
+    mocks.verifyGiveawayOAuthState.mockReturnValue({
+      giveawayId: giveaway.id,
+      slug: giveaway.slug,
+      referralToken: null,
+      intent: "view",
+    });
+    mocks.from.mockReturnValue(existingEntryQuery(null));
+
+    const response = await GET(request());
+
+    expect(response.headers.get("location")).toContain("participacao=nao_cadastrado");
+    expect(response.headers.get("set-cookie")).not.toContain("gw_giveaway_entry_abc123def456=");
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
   it("persiste o claim antes de adicionar o membro e conclui depois", async () => {
@@ -238,6 +316,17 @@ function entryAccessQuery(data: unknown) {
     select: vi.fn(),
     eq: vi.fn(),
     single: vi.fn().mockResolvedValue({ data, error: null }),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  return query;
+}
+
+function existingEntryQuery(data: unknown) {
+  const query = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
   };
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);

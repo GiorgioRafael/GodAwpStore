@@ -52,9 +52,28 @@ describe("giveaway Discord announcement", () => {
     expect(description).toContain("1 hora(s)");
     expect(payload.components[0]?.components[0]).toMatchObject({
       label: "Participar",
-      url: "https://gwstore.vercel.app/sorteios/abc123def456",
+      style: 3,
+      custom_id: "gwstore_giveaway_join:11111111-1111-4111-8111-111111111111",
+    });
+    expect(payload.components[0]?.components[1]).toMatchObject({
+      label: "Visualizar",
+      style: 5,
+      url: "https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",
     });
     expect(payload.allowed_mentions).toEqual({ parse: [], users: [] });
+  });
+
+  it("mantém os dois botões disponíveis enquanto a publicação ainda está agendada", () => {
+    const payload = giveawayAnnouncementPayload(
+      { ...input, status: "scheduled" },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.components[0]?.components).toHaveLength(2);
+    expect(payload.components[0]?.components.map((component) => component.label)).toEqual([
+      "Participar",
+      "Visualizar",
+    ]);
   });
 
   it("remove o botão ao concluir e menciona somente o ganhador", () => {

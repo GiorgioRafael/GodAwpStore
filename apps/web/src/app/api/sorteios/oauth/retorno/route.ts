@@ -12,6 +12,7 @@ import {
 } from "@/lib/giveaways/discord-membership";
 import {
   GIVEAWAY_OAUTH_COOKIE,
+  giveawayEntryCookieName,
   getGiveawayOAuthStateSecret,
   verifyGiveawayOAuthState,
 } from "@/lib/giveaways/oauth-state";
@@ -42,11 +43,15 @@ export async function GET(request: Request) {
     if (!giveaway || giveaway.id !== state.giveawayId) {
       throw new GiveawayOAuthError("link_invalido");
     }
+    const intent = state.intent ?? "participate";
     const now = Date.now();
     if (
-      (giveaway.status !== "scheduled" && giveaway.status !== "active") ||
-      Date.parse(giveaway.startsAt) > now ||
-      Date.parse(giveaway.endsAt) <= now
+      intent === "participate" &&
+      (
+        (giveaway.status !== "scheduled" && giveaway.status !== "active") ||
+        Date.parse(giveaway.startsAt) > now ||
+        Date.parse(giveaway.endsAt) <= now
+      )
     ) {
       throw new GiveawayOAuthError("fora_do_periodo");
     }
@@ -59,12 +64,29 @@ export async function GET(request: Request) {
       throw new GiveawayOAuthError("sessao_expirada");
     }
     const user = await fetchDiscordOAuthUser(accessToken);
+    const client = createAdminSupabaseClient();
+    if (!client) throw new Error("Supabase server-only não configurado.");
+
+    if (intent === "view") {
+      const { data: existingEntry, error: existingEntryError } = await client
+        .from("giveaway_entries")
+        .select("access_token")
+        .eq("giveaway_id", giveaway.id)
+        .eq("discord_user_id", user.id)
+        .maybeSingle();
+      if (existingEntryError) throw new Error(existingEntryError.message);
+      return successRedirect(
+        requestUrl.origin,
+        state.slug,
+        { participacao: existingEntry ? "ja_cadastrado" : "nao_cadastrado" },
+        existingEntry?.access_token ?? null,
+      );
+    }
+
     const existingMembership = await getDiscordGuildMembership(
       giveaway.discordGuildId,
       user.id,
     );
-    const client = createAdminSupabaseClient();
-    if (!client) throw new Error("Supabase server-only não configurado.");
 
     if (!state.referralToken) {
       if (!existingMembership.exists || existingMembership.pending) {
@@ -90,7 +112,8 @@ export async function GET(request: Request) {
       return successRedirect(
         requestUrl.origin,
         state.slug,
-        { entrada: privateEntry.access_token },
+        { participacao: data.was_created ? "cadastrado" : "ja_cadastrado" },
+        privateEntry.access_token,
       );
     }
 
@@ -189,6 +212,7 @@ function successRedirect(
   origin: string,
   slug: string,
   params: Record<string, string>,
+  entryAccessToken: string | null = null,
 ) {
   const url = new URL(slug ? `/sorteios/${slug}` : "/", origin);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
@@ -197,6 +221,15 @@ function successRedirect(
     expires: new Date(0),
     path: "/api/sorteios/oauth/retorno",
   });
+  if (entryAccessToken && slug) {
+    response.cookies.set(giveawayEntryCookieName(slug), entryAccessToken, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 90 * 24 * 60 * 60,
+      path: `/sorteios/${slug}`,
+    });
+  }
   return response;
 }
 

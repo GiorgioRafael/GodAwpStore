@@ -13,6 +13,7 @@ import {
   type DiscordPermissionOverwrite,
 } from "@/lib/bot/discord-ticket-controls";
 import { loadBotRuntimeSettings } from "@/lib/bot/message-customization-server";
+import { giveawayParticipationInteractionId } from "@/lib/giveaways/discord-participation";
 import type { Enums } from "@/lib/supabase/database.types";
 
 const UUID_PATTERN =
@@ -130,9 +131,15 @@ export function giveawayAnnouncementPayload(
             components: [
               {
                 type: 2,
+                style: 3,
+                label: "Participar",
+                custom_id: giveawayParticipationInteractionId(input.id),
+              },
+              {
+                type: 2,
                 style: 5,
-                label: input.status === "active" ? "Participar" : "Ver sorteio",
-                url: `${siteUrl}/sorteios/${input.publicSlug}`,
+                label: "Visualizar",
+                url: giveawayViewerUrl(siteUrl, input.publicSlug),
               },
             ],
           },
@@ -141,6 +148,13 @@ export function giveawayAnnouncementPayload(
   };
   assertDiscordEmbeds(payload.embeds);
   return payload;
+}
+
+function giveawayViewerUrl(siteUrl: string, publicSlug: string) {
+  const url = new URL("/api/sorteios/oauth/iniciar", siteUrl);
+  url.searchParams.set("slug", publicSlug);
+  url.searchParams.set("modo", "visualizar");
+  return url.toString();
 }
 
 export type GiveawayWinnerTicketInput = {

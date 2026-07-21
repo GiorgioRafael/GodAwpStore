@@ -1,7 +1,9 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
   createGiveawayOAuthState,
+  giveawayEntryCookieName,
   verifyGiveawayOAuthState,
 } from "./oauth-state";
 
@@ -21,10 +23,49 @@ describe("giveaway OAuth state", () => {
     );
 
     expect(verifyGiveawayOAuthState(token, secret, now)).toMatchObject({
-      version: 1,
+      version: 2,
       giveawayId: "11111111-1111-4111-8111-111111111111",
       slug: "abc123def456",
       referralToken: "22222222-2222-4222-8222-222222222222",
+      intent: "participate",
+    });
+  });
+
+  it("assina o modo de consulta sem transformá-lo em participação", () => {
+    const token = createGiveawayOAuthState(
+      {
+        giveawayId: "11111111-1111-4111-8111-111111111111",
+        slug: "abc123def456",
+        intent: "view",
+      },
+      secret,
+      now,
+    );
+
+    expect(verifyGiveawayOAuthState(token, secret, now)).toMatchObject({
+      version: 2,
+      intent: "view",
+      referralToken: null,
+    });
+    expect(giveawayEntryCookieName("abc123def456")).toBe(
+      "gw_giveaway_entry_abc123def456",
+    );
+  });
+
+  it("mantém estados da versão anterior como participação durante o deploy", () => {
+    const payload = Buffer.from(JSON.stringify({
+      version: 1,
+      nonce: "legacy_state_nonce_123456",
+      giveawayId: "11111111-1111-4111-8111-111111111111",
+      slug: "abc123def456",
+      referralToken: null,
+      expiresAt: Math.floor(now / 1_000) + 600,
+    })).toString("base64url");
+    const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+
+    expect(verifyGiveawayOAuthState(`${payload}.${signature}`, secret, now)).toMatchObject({
+      version: 1,
+      intent: "participate",
     });
   });
 
