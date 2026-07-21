@@ -201,6 +201,7 @@ function catalog(): BotCatalogGame[] {
               },
               priceCents: 10,
               availableStock: 318,
+              sortOrder: 0,
             },
             {
               id: "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
@@ -208,6 +209,7 @@ function catalog(): BotCatalogGame[] {
               description: null,
               priceCents: 100,
               availableStock: 10,
+              sortOrder: 1,
             },
             {
               id: "5f8199d0-67f7-45ec-b597-8d5149568707",
@@ -215,6 +217,7 @@ function catalog(): BotCatalogGame[] {
               description: null,
               priceCents: 200,
               availableStock: 10,
+              sortOrder: 2,
             },
           ],
         },

@@ -85,6 +85,7 @@ describe("Discord catalog cards", () => {
                 },
                 priceCents: 100,
                 availableStock: 2,
+                sortOrder: 0,
               },
             ],
           },
@@ -127,6 +128,56 @@ describe("Discord catalog cards", () => {
     );
   });
 
+  it("respeita a ordem global salva mesmo entre sublojas diferentes", () => {
+    const [card] = catalogCards([
+      {
+        id: "game",
+        name: "Grow a Garden 2",
+        substores: [
+          {
+            id: "seeds",
+            name: "Seeds",
+            title: "Seeds",
+            description: "",
+            colorHex: "#D4AF37",
+            imageUrl: null,
+            products: [
+              {
+                id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+                name: "Mega Seed",
+                description: null,
+                priceCents: 10,
+                availableStock: 12,
+                sortOrder: 2,
+              },
+            ],
+          },
+          {
+            id: "pets",
+            name: "Pets",
+            title: "Pets",
+            description: "",
+            colorHex: "#D4AF37",
+            imageUrl: null,
+            products: [
+              {
+                id: "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
+                name: "Fire Fly",
+                description: null,
+                priceCents: 50,
+                availableStock: 7,
+                sortOrder: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const serialized = JSON.stringify(toCardElement(card));
+    expect(serialized.indexOf("Fire Fly")).toBeLessThan(serialized.indexOf("Mega Seed"));
+  });
+
   it("mantém até 25 produtos em uma única mensagem", () => {
     const cards = catalogCards([
       {
@@ -147,6 +198,7 @@ describe("Discord catalog cards", () => {
               imageUrl: `https://example.com/products/${index}.png`,
               priceCents: 100,
               availableStock: 1,
+              sortOrder: index,
             })),
           },
         ],
@@ -174,6 +226,7 @@ describe("Discord catalog cards", () => {
       imageUrl: null,
       priceCents: 100,
       availableStock: 1,
+      sortOrder: index,
     }));
 
     expect(() =>
@@ -221,6 +274,7 @@ describe("Discord catalog cards", () => {
         description: "Semente especial",
         priceCents: 10,
         availableStock: 318,
+        sortOrder: 0,
       },
     });
 
@@ -459,6 +513,7 @@ describe("Discord catalog cards", () => {
                 description: null,
                 priceCents: 100,
                 availableStock: 2,
+                sortOrder: 0,
               },
             ],
           },

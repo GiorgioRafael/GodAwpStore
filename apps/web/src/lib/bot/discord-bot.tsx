@@ -496,6 +496,9 @@ function flattenCatalog(catalog: BotCatalogGame[]): CatalogSelection[] {
     game.substores.flatMap((substore) =>
       substore.products.map((product) => ({ game, substore, product })),
     ),
+  ).sort((left, right) =>
+    left.product.sortOrder - right.product.sortOrder ||
+    left.product.name.localeCompare(right.product.name, "pt-BR"),
   );
 }
 

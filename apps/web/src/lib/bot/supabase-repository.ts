@@ -78,6 +78,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
             : null,
         priceCents: safeInteger(product.minimum_price_cents),
         availableStock: stockByProduct.get(product.id) ?? 0,
+        sortOrder: safeInteger(product.sort_order),
       });
       productsBySubstore.set(product.substore_id, products);
     }

@@ -11,6 +11,7 @@ export type BotCatalogProduct = {
   discordEmoji?: DiscordProductEmoji | null;
   priceCents: number;
   availableStock: number;
+  sortOrder: number;
 };
 
 export type BotCatalogSubstore = {
