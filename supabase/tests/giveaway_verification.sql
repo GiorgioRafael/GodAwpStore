@@ -241,9 +241,11 @@ begin
 end
 $$;
 
+reset role;
 update public.giveaways
 set ends_at = now() - interval '1 second'
 where public_slug = 'giveawaytest0001';
+set local role service_role;
 
 select * from public.claim_due_giveaway_v2('77000000-0000-4000-8000-000000000001');
 select public.mark_giveaway_entry_membership(
@@ -286,9 +288,11 @@ select * from public.complete_giveaway_draw_v2(
   (select id from public.giveaway_entries where discord_user_id = '760000000000000001')
 );
 
+reset role;
 update public.giveaways
 set starts_at = now() - interval '2 hours', ends_at = now() - interval '1 hour'
 where public_slug = 'giveawaytest0003';
+set local role service_role;
 
 select * from public.claim_due_giveaway_v2('77000000-0000-4000-8000-000000000004');
 select * from public.complete_giveaway_draw_v2(
