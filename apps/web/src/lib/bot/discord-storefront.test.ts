@@ -83,6 +83,10 @@ describe("Discord storefront", () => {
     expect(JSON.stringify(payload.components)).toContain(
       "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9:Ghost Pepper",
     );
+    expect(JSON.stringify(payload.components)).toContain(
+      "https://example.com/products/ghost-pepper.png",
+    );
+    expect(JSON.stringify(payload.components)).toContain('"type":11');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.configuration).toMatchObject({
       channel_id: channelId,
@@ -187,6 +191,7 @@ function catalog(): BotCatalogGame[] {
               id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
               name: "Ghost Pepper",
               description: null,
+              imageUrl: "https://example.com/products/ghost-pepper.png",
               priceCents: 10,
               availableStock: 318,
             },

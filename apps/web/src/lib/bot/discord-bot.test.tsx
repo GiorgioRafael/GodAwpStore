@@ -1,5 +1,6 @@
 import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { cardToDiscordPayload, DiscordContentFormat } from "@chat-adapter/discord";
 import { toCardElement } from "chat";
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 
@@ -56,7 +57,7 @@ describe("Discord catalog cards", () => {
     });
   });
 
-  it("renderiza todos os produtos em uma lista suspensa sem dados secretos", () => {
+  it("renderiza produtos compactos com foto, preço e estoque sem repetir jogo ou subloja", () => {
     const [card] = catalogCards([
       {
         id: "game",
@@ -74,6 +75,7 @@ describe("Discord catalog cards", () => {
                 id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
                 name: "Moon Blossom",
                 description: null,
+                imageUrl: "https://example.com/products/moon-blossom.png",
                 priceCents: 100,
                 availableStock: 2,
               },
@@ -90,8 +92,11 @@ describe("Discord catalog cards", () => {
     });
     const serialized = JSON.stringify(normalized);
     expect(serialized).toContain("R$ 1,00");
-    expect(serialized).toContain("2 unidades");
-    expect(serialized).toContain("🌙🌸 Moon Blossom");
+    expect(serialized).toContain("Estoque: 2");
+    expect(serialized).toContain("Moon Blossom");
+    expect(serialized).toContain("https://example.com/products/moon-blossom.png");
+    expect(serialized).toContain('"type":"section"');
+    expect(serialized).not.toContain("Seeds");
     expect(serialized).toContain("🔒");
     expect(serialized).toContain("💠");
     expect(serialized).toContain('"id":"select_products"');
@@ -103,7 +108,7 @@ describe("Discord catalog cards", () => {
     expect(serialized).not.toMatch(/encrypted_payload|auth_tag|fingerprint/i);
   });
 
-  it("pagina o seletor quando o catálogo ultrapassa 25 produtos", () => {
+  it("pagina o catálogo visual respeitando o limite de componentes do Discord", () => {
     const cards = catalogCards([
       {
         id: "game",
@@ -120,6 +125,7 @@ describe("Discord catalog cards", () => {
               id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
               name: `Produto ${index}`,
               description: null,
+              imageUrl: `https://example.com/products/${index}.png`,
               priceCents: 100,
               availableStock: 1,
             })),
@@ -128,19 +134,26 @@ describe("Discord catalog cards", () => {
       },
     ]);
 
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(3);
     expect(toCardElement(cards[0])).toMatchObject({
-      title: "🛍️✨ GWSTORE • PRODUTOS 1/2 ✨🛍️",
+      title: "🛍️✨ GWSTORE • PRODUTOS 1/3 ✨🛍️",
     });
-    expect(toCardElement(cards[1])).toMatchObject({
-      title: "🛍️✨ GWSTORE • PRODUTOS 2/2 ✨🛍️",
+    expect(toCardElement(cards[2])).toMatchObject({
+      title: "🛍️✨ GWSTORE • PRODUTOS 3/3 ✨🛍️",
     });
     expect(JSON.stringify(toCardElement(cards[0]))).not.toContain(
       "00000000-0000-4000-8000-000000000025",
     );
-    expect(JSON.stringify(toCardElement(cards[1]))).toContain(
+    expect(JSON.stringify(toCardElement(cards[2]))).toContain(
       "00000000-0000-4000-8000-000000000025",
     );
+    for (const card of cards) {
+      const normalized = toCardElement(card);
+      if (!normalized) throw new Error("Cartão de catálogo inválido.");
+      expect(() => cardToDiscordPayload(normalized, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      })).not.toThrow();
+    }
   });
 
   it("mostra estado vazio sem criar botão", () => {

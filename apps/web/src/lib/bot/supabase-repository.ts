@@ -37,7 +37,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         .order("name"),
       this.client
         .from("products")
-        .select("id,substore_id,name,description,minimum_price_cents,sort_order")
+        .select("id,substore_id,name,description,image_url,minimum_price_cents,sort_order")
         .eq("status", "active")
         .is("archived_at", null)
         .order("sort_order")
@@ -61,6 +61,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         id: product.id,
         name: product.name,
         description: product.description,
+        imageUrl: product.image_url,
         priceCents: safeInteger(product.minimum_price_cents),
         availableStock: stockByProduct.get(product.id) ?? 0,
       });

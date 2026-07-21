@@ -6,6 +6,7 @@ export type BotCatalogProduct = {
   id: string;
   name: string;
   description: string | null;
+  imageUrl?: string | null;
   priceCents: number;
   availableStock: number;
 };

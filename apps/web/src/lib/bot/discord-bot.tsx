@@ -16,7 +16,9 @@ import {
   CardText,
   Chat,
   Divider,
+  Image,
   LinkButton,
+  Section,
   Select,
   SelectOption,
   toCardElement,
@@ -56,6 +58,7 @@ import type {
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_SELECT_OPTION_LIMIT = 25;
+const DISCORD_CATALOG_PAGE_SIZE = 9;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DISCORD_MESSAGE_COMPONENT = 3;
 const DISCORD_MODAL_SUBMIT = 5;
@@ -340,7 +343,7 @@ export function catalogCards(
     ];
   }
 
-  const pages = chunk(products, DISCORD_SELECT_OPTION_LIMIT);
+  const pages = chunk(products, Math.min(DISCORD_CATALOG_PAGE_SIZE, DISCORD_SELECT_OPTION_LIMIT));
   return pages.map((page, index) => (
     <Card
       key={`catalog-${index}`}
@@ -361,21 +364,28 @@ export function catalogCards(
       {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
       <Divider />
       {message.prompt ? <CardText>{message.prompt}</CardText> : null}
+      {page.map(({ product }) => {
+        const imageUrl = productImageUrl(product.imageUrl);
+        return (
+          <Section key={`catalog-product-${product.id}`}>
+            <CardText>{`**${escapeDiscordMarkdown(product.name)}**\nPreço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`}</CardText>
+            {imageUrl ? <Image url={imageUrl} alt={`Foto de ${product.name}`} /> : null}
+          </Section>
+        );
+      })}
       <Actions>
         <Select
           id="select_products"
           label={interpolateBotMessageLimited(message.selectLabel, {}, 100)}
           placeholder={interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)}
         >
-          {page.map(({ game, substore, product }) => (
+          {page.map(({ product }) => (
             <SelectOption
               key={product.id}
-              label={truncateSelectText(
-                `${productEmoji(product.name)} ${product.name} • ${formatBrl(product.priceCents)}`,
-              )}
+              label={truncateSelectText(product.name)}
               value={encodeDiscordCartSelection(product.id, product.name)}
               description={truncateSelectText(
-                `🎮 ${game.name} • 🏪 ${substore.name} • 📦 ${stockLabel(product.availableStock)}`,
+                `Preço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`,
               )}
             />
           ))}
@@ -820,6 +830,27 @@ function stockLabel(availableStock: number) {
   return availableStock === 1
     ? "1 unidade"
     : `${new Intl.NumberFormat("pt-BR").format(availableStock)} unidades`;
+}
+
+function formatStockCount(availableStock: number) {
+  return new Intl.NumberFormat("pt-BR").format(availableStock);
+}
+
+function productImageUrl(value: string | null | undefined) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!new Set(["http:", "https:"]).has(url.protocol) || url.username || url.password) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function escapeDiscordMarkdown(value: string) {
+  return value.replace(/([\\`*_{}\[\]()#+\-.!|>~])/g, "\\$1");
 }
 
 function productEmoji(productName: string) {
