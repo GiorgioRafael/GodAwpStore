@@ -732,6 +732,33 @@ begin
     ) then
     raise exception 'Active Discord product limit trigger is missing';
   end if;
+
+  if to_regprocedure('public.admin_reorder_products(uuid[])') is null then
+    raise exception 'Product reorder function is missing';
+  end if;
+
+  if has_function_privilege('anon', 'public.admin_reorder_products(uuid[])', 'EXECUTE')
+    or not has_function_privilege(
+      'authenticated',
+      'public.admin_reorder_products(uuid[])',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'service_role',
+      'public.admin_reorder_products(uuid[])',
+      'EXECUTE'
+    ) then
+    raise exception 'Product reorder function execute privileges are invalid';
+  end if;
+
+  if exists (
+    select 1
+    from pg_proc
+    where oid = 'public.admin_reorder_products(uuid[])'::regprocedure
+      and prosecdef
+  ) then
+    raise exception 'Product reorder function must remain security invoker';
+  end if;
 end
 $$;
 

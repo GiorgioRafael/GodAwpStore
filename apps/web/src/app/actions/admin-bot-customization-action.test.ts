@@ -53,6 +53,7 @@ vi.mock("@/lib/bot/message-customization-server", () => ({
 
 import {
   saveBotMessageCustomizationAction,
+  saveProductOrderAction,
   type AdminActionState,
 } from "./admin";
 
@@ -216,6 +217,71 @@ describe("action de personalização do bot", () => {
       message:
         "Personalização salva. 1 ticket(s) aberto(s) não puderam receber os novos controles agora.",
     });
+  });
+});
+
+describe("action de ordenação dos produtos", () => {
+  const productIds = [
+    "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae",
+    "0d5a282b-e86e-488a-907a-d1ce9e7cdd14",
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireAdmin.mockResolvedValue({
+      authUserId: "10000000-0000-4000-8000-000000000001",
+    });
+    mocks.synchronizePublishedDiscordStorefronts.mockResolvedValue({
+      published: 1,
+      failed: 0,
+      productEmojiFailures: 0,
+    });
+  });
+
+  it("rejeita JSON inválido antes de autenticar", async () => {
+    const formData = new FormData();
+    formData.set("productIds", "não-é-json");
+
+    const result = await saveProductOrderAction(formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/ordem recebida é inválida/i);
+    expect(mocks.requireAdmin).not.toHaveBeenCalled();
+  });
+
+  it("salva a sequência completa e republica a vitrine", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: productIds.length, error: null });
+    mocks.createServerSupabaseClient.mockResolvedValue({ rpc });
+    const formData = new FormData();
+    formData.set("productIds", JSON.stringify(productIds));
+
+    const result = await saveProductOrderAction(formData);
+
+    expect(rpc).toHaveBeenCalledWith("admin_reorder_products", {
+      p_product_ids: productIds,
+    });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/catalogo/produtos");
+    expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      ok: true,
+      message: "Ordem dos produtos salva. Vitrine do Discord sincronizada.",
+    });
+  });
+
+  it("pede recarga quando a lista mudou durante a edição", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { code: "40001", message: "products_order_stale" },
+    });
+    mocks.createServerSupabaseClient.mockResolvedValue({ rpc });
+    const formData = new FormData();
+    formData.set("productIds", JSON.stringify(productIds));
+
+    const result = await saveProductOrderAction(formData);
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/lista de produtos mudou/i);
+    expect(mocks.synchronizePublishedDiscordStorefronts).not.toHaveBeenCalled();
   });
 });
 

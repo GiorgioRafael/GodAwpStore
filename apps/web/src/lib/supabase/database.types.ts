@@ -849,6 +849,10 @@ export type Database = {
       };
     };
     Functions: {
+      admin_reorder_products: {
+        Args: { p_product_ids: string[] };
+        Returns: number;
+      };
       admin_create_giveaway: {
         Args: {
           p_public_slug: string;

@@ -47,6 +47,13 @@ const inventoryStatusChangeSchema = z.object({
   status: z.enum(["available", "quarantined", "revoked"]),
   reason: z.string().trim().max(1_000).nullable(),
 });
+const productOrderSchema = z
+  .array(uuidSchema)
+  .min(1, "A lista de produtos está vazia.")
+  .max(500, "A lista de produtos é grande demais.")
+  .refine((productIds) => new Set(productIds).size === productIds.length, {
+    message: "A lista de produtos contém itens repetidos.",
+  });
 const discordStorefrontSchema = z.object({
   guildId: uuidSchema,
   channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
@@ -112,6 +119,38 @@ async function actionContext() {
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("Supabase não configurado.");
   return { identity, supabase };
+}
+
+async function synchronizeCatalogStorefront(savedMessage: string): Promise<AdminActionState> {
+  try {
+    const storefronts = await synchronizePublishedDiscordStorefronts();
+    if (storefronts.failed > 0) {
+      return {
+        ok: true,
+        message: `${savedMessage} ${storefronts.failed} vitrine(s) do Discord não puderam ser atualizadas.`,
+      };
+    }
+    if (storefronts.productEmojiFailures > 0) {
+      return {
+        ok: true,
+        message: `${savedMessage} A vitrine foi atualizada, mas ${storefronts.productEmojiFailures} ícone(s) de produto não puderam ser sincronizados.`,
+      };
+    }
+    if (storefronts.published > 0) {
+      return {
+        ok: true,
+        message: `${savedMessage} Vitrine do Discord sincronizada.`,
+      };
+    }
+  } catch (syncError) {
+    const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
+    console.error(`[admin:product-storefront-sync] ${message}`);
+    return {
+      ok: true,
+      message: `${savedMessage} A vitrine do Discord não pôde ser atualizada agora.`,
+    };
+  }
+  return { ok: true, message: savedMessage };
 }
 
 export async function saveGameAction(
@@ -337,35 +376,48 @@ export async function saveProductAction(
   revalidatePath("/estoque");
   revalidatePath("/dashboard");
   const savedMessage = id ? "Produto e estoque atualizados." : "Produto e estoque criados.";
+  return synchronizeCatalogStorefront(savedMessage);
+}
+
+export async function saveProductOrderAction(formData: FormData): Promise<AdminActionState> {
+  let rawProductIds: unknown;
   try {
-    const storefronts = await synchronizePublishedDiscordStorefronts();
-    if (storefronts.failed > 0) {
-      return {
-        ok: true,
-        message: `${savedMessage} ${storefronts.failed} vitrine(s) do Discord não puderam ser atualizadas.`,
-      };
-    }
-    if (storefronts.productEmojiFailures > 0) {
-      return {
-        ok: true,
-        message: `${savedMessage} A vitrine foi atualizada, mas ${storefronts.productEmojiFailures} ícone(s) de produto não puderam ser sincronizados.`,
-      };
-    }
-    if (storefronts.published > 0) {
-      return {
-        ok: true,
-        message: `${savedMessage} Vitrine do Discord sincronizada.`,
-      };
-    }
-  } catch (syncError) {
-    const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
-    console.error(`[admin:product-storefront-sync] ${message}`);
+    rawProductIds = JSON.parse(text(formData, "productIds"));
+  } catch {
+    return { ok: false, message: "A ordem recebida é inválida. Recarregue a página." };
+  }
+
+  const parsed = productOrderSchema.safeParse(rawProductIds);
+  if (!parsed.success) {
     return {
-      ok: true,
-      message: `${savedMessage} A vitrine do Discord não pôde ser atualizada agora.`,
+      ok: false,
+      message: parsed.error.issues[0]?.message ?? "A ordem recebida é inválida.",
     };
   }
-  return { ok: true, message: savedMessage };
+
+  const { supabase } = await actionContext();
+  const { data, error } = await supabase.rpc("admin_reorder_products", {
+    p_product_ids: parsed.data,
+  });
+
+  if (error) {
+    if (error.code === "40001" || error.message.includes("products_order_stale")) {
+      return {
+        ok: false,
+        message: "A lista de produtos mudou enquanto você organizava. Recarregue a página e tente novamente.",
+      };
+    }
+    if (error.code === "22023" || error.message.includes("products_order_invalid")) {
+      return { ok: false, message: "A ordem recebida é inválida. Recarregue a página." };
+    }
+    return databaseFailure(error.code);
+  }
+  if (data !== parsed.data.length) {
+    return { ok: false, message: "Nem todos os produtos foram reordenados. Recarregue a página." };
+  }
+
+  revalidatePath("/catalogo/produtos");
+  return synchronizeCatalogStorefront("Ordem dos produtos salva.");
 }
 
 export async function saveWhitelistAction(
