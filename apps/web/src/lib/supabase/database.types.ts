@@ -129,6 +129,8 @@ type ProductRow = {
   minimum_price_cents: number;
   stock_quantity: number;
   image_url: string | null;
+  discord_application_emoji_id: string | null;
+  discord_application_emoji_source_sha256: string | null;
   status: Database["public"]["Enums"]["catalog_status"];
   sort_order: number;
   low_stock_threshold: number;

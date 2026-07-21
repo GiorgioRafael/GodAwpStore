@@ -9,10 +9,12 @@ import {
 } from "./discord-storefront";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
 import { loadBotMessageCustomization } from "./message-customization-server";
+import { synchronizeDiscordProductEmojis } from "./discord-product-emojis";
 
 export type DiscordStorefrontSyncResult = {
   published: number;
   failed: number;
+  productEmojiFailures: number;
 };
 
 /**
@@ -35,7 +37,18 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
     const storefront = readStorefrontConfiguration(guild.configuration);
     return storefront ? [{ guild, storefront }] : [];
   });
-  if (publishedGuilds.length === 0) return { published: 0, failed: 0 };
+  if (publishedGuilds.length === 0) {
+    return { published: 0, failed: 0, productEmojiFailures: 0 };
+  }
+
+  let productEmojiFailures = 0;
+  try {
+    productEmojiFailures = (await synchronizeDiscordProductEmojis(client)).failed;
+  } catch (emojiError) {
+    const message = emojiError instanceof Error ? emojiError.message : "erro desconhecido";
+    console.error(`[discord-product-emojis:sync] ${message}`);
+    productEmojiFailures = 1;
+  }
 
   const [catalog, customization] = await Promise.all([
     new BotCommerceService(new SupabaseBotCommerceRepository(client)).listCatalog(),
@@ -72,5 +85,5 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
   );
 
   const published = results.filter(Boolean).length;
-  return { published, failed: results.length - published };
+  return { published, failed: results.length - published, productEmojiFailures };
 }

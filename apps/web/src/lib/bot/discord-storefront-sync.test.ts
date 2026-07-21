@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   readStorefrontConfiguration: vi.fn(),
   withStorefrontConfiguration: vi.fn(),
   loadBotMessageCustomization: vi.fn(),
+  synchronizeDiscordProductEmojis: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -29,6 +30,9 @@ vi.mock("./discord-storefront", () => ({
 vi.mock("./message-customization-server", () => ({
   loadBotMessageCustomization: mocks.loadBotMessageCustomization,
 }));
+vi.mock("./discord-product-emojis", () => ({
+  synchronizeDiscordProductEmojis: mocks.synchronizeDiscordProductEmojis,
+}));
 
 import { synchronizePublishedDiscordStorefronts } from "./discord-storefront-sync";
 
@@ -48,6 +52,7 @@ describe("sincronização automática da vitrine Discord", () => {
     mocks.withStorefrontConfiguration.mockReturnValue({ storefront });
     mocks.loadBotMessageCustomization.mockResolvedValue(customization);
     mocks.publishDiscordStorefront.mockResolvedValue({ configuration: storefront });
+    mocks.synchronizeDiscordProductEmojis.mockResolvedValue({ failed: 0 });
   });
 
   it("edita a vitrine já publicada e persiste os IDs rastreados", async () => {
@@ -57,6 +62,7 @@ describe("sincronização automática da vitrine Discord", () => {
     await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
       published: 1,
       failed: 0,
+      productEmojiFailures: 0,
     });
     expect(mocks.publishDiscordStorefront).toHaveBeenCalledWith({
       channel: { id: storefront.channel_id, name: storefront.channel_name },
@@ -75,6 +81,7 @@ describe("sincronização automática da vitrine Discord", () => {
     await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
       published: 0,
       failed: 1,
+      productEmojiFailures: 0,
     });
     expect(client.update).not.toHaveBeenCalled();
   });

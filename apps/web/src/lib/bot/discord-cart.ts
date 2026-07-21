@@ -38,6 +38,11 @@ type DiscordCartOption = {
   label: string;
   value: string;
   description?: string;
+  emoji?: {
+    id?: string;
+    name: string;
+    animated?: boolean;
+  };
 };
 
 export type NativeDiscordCartInteraction =
@@ -389,16 +394,31 @@ function readCartOptions(
       }
       const selection = decodeDiscordCartSelection(value.value);
       if (!selection || selectedIds.has(selection.productId)) continue;
+      const emoji = readDiscordOptionEmoji(value.emoji);
       options.push({
         label: truncate(value.label, 100),
         value: value.value,
         ...(typeof value.description === "string"
           ? { description: truncate(value.description, 100) }
           : {}),
+        ...(emoji ? { emoji } : {}),
       });
     }
   });
   return options.slice(0, 25);
+}
+
+function readDiscordOptionEmoji(value: unknown): DiscordCartOption["emoji"] | null {
+  if (!isObject(value) || typeof value.name !== "string") return null;
+  const id = typeof value.id === "string" && /^[0-9]{15,22}$/.test(value.id)
+    ? value.id
+    : undefined;
+  if (!id && value.name.length > 16) return null;
+  return {
+    ...(id ? { id } : {}),
+    name: truncate(value.name, 32),
+    ...(typeof value.animated === "boolean" ? { animated: value.animated } : {}),
+  };
 }
 
 function readCartModalItems(raw: unknown) {

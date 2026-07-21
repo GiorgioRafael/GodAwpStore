@@ -37,6 +37,10 @@ import { BotCommerceService } from "./commerce-service";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { encodeDiscordCartSelection } from "./discord-cart-selection";
 import {
+  DISCORD_STOREFRONT_PRODUCT_LIMIT,
+  type DiscordProductEmoji,
+} from "./discord-product-emoji-shared";
+import {
   botMessageLines,
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
   interpolateBotMessage,
@@ -55,7 +59,6 @@ import type {
 } from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
-const DISCORD_SELECT_OPTION_LIMIT = 25;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DISCORD_MESSAGE_COMPONENT = 3;
 const DISCORD_MODAL_SUBMIT = 5;
@@ -160,8 +163,9 @@ class GWStoreDiscordAdapter extends DiscordAdapter {
     message: AdapterPostableMessage,
     options?: { clearContentForCard?: boolean },
   ) {
+    const productOptionEmojis = collectDiscordProductOptionEmojis(message);
     const result = super.buildMessagePayload(message, options);
-    configureDiscordProductEntrySelect(result.payload);
+    configureDiscordProductEntrySelect(result.payload, productOptionEmojis);
     return result;
   }
 }
@@ -340,9 +344,9 @@ export function catalogCards(
     ];
   }
 
-  if (products.length > DISCORD_SELECT_OPTION_LIMIT) {
+  if (products.length > DISCORD_STOREFRONT_PRODUCT_LIMIT) {
     throw new Error(
-      `A vitrine do Discord aceita no máximo ${DISCORD_SELECT_OPTION_LIMIT} produtos ativos.`,
+      `A vitrine do Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos.`,
     );
   }
 
@@ -369,6 +373,7 @@ export function catalogCards(
           {products.map(({ product }) => (
             <SelectOption
               key={product.id}
+              {...discordSelectOptionMetadata(product.discordEmoji)}
               label={truncateSelectText(product.name)}
               value={encodeDiscordCartSelection(product.id, product.name)}
               description={truncateSelectText(
@@ -752,7 +757,10 @@ export function cartPurchaseResultCard(
   return errorCard(errorMessage, customization);
 }
 
-export function configureDiscordProductEntrySelect<T>(payload: T): T {
+export function configureDiscordProductEntrySelect<T>(
+  payload: T,
+  productOptionEmojis: ReadonlyMap<string, DiscordProductEmoji> = new Map(),
+): T {
   visitDiscordComponents(payload, (component) => {
     if (
       component.type !== 3 ||
@@ -765,8 +773,54 @@ export function configureDiscordProductEntrySelect<T>(payload: T): T {
 
     component.min_values = 1;
     component.max_values = 1;
+    for (const option of component.options) {
+      if (!isObject(option) || typeof option.value !== "string") continue;
+      const emoji = productOptionEmojis.get(option.value);
+      if (emoji) option.emoji = emoji;
+    }
   });
   return payload;
+}
+
+export function collectDiscordProductOptionEmojis(value: unknown) {
+  const emojis = new Map<string, DiscordProductEmoji>();
+  visitRawChatElements(value, (element) => {
+    if (!isObject(element.props)) return;
+    const optionValue = element.props.value;
+    const emoji = element.props.discordEmoji;
+    if (typeof optionValue === "string" && isDiscordProductEmoji(emoji)) {
+      emojis.set(optionValue, emoji);
+    }
+  });
+  return emojis;
+}
+
+function discordSelectOptionMetadata(emoji: DiscordProductEmoji | null | undefined) {
+  return emoji ? { discordEmoji: emoji } : {};
+}
+
+function isDiscordProductEmoji(value: unknown): value is DiscordProductEmoji {
+  return (
+    isObject(value) &&
+    typeof value.id === "string" &&
+    /^[0-9]{15,22}$/.test(value.id) &&
+    typeof value.name === "string" &&
+    /^[A-Za-z0-9_]{2,32}$/.test(value.name) &&
+    value.animated === false
+  );
+}
+
+function visitRawChatElements(
+  value: unknown,
+  visit: (element: Record<string, unknown>) => void,
+) {
+  if (Array.isArray(value)) {
+    for (const item of value) visitRawChatElements(item, visit);
+    return;
+  }
+  if (!isObject(value)) return;
+  visit(value);
+  visitRawChatElements(value.children, visit);
 }
 
 function errorCard(

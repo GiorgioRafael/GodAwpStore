@@ -49,6 +49,11 @@ describe("carrinho nativo do Discord", () => {
                   label: productNames[index],
                   value,
                   description: `Produto ${index + 1}`,
+                  emoji: {
+                    id: `42345678901234567${index}`,
+                    name: `gw_product_${index}`,
+                    animated: false,
+                  },
                 })),
               },
             ],
@@ -61,8 +66,18 @@ describe("carrinho nativo do Discord", () => {
       responseType: 4,
       selections: [selections[0]],
       options: [
-        { label: productNames[1], value: selectionValues[1], description: "Produto 2" },
-        { label: productNames[2], value: selectionValues[2], description: "Produto 3" },
+        {
+          label: productNames[1],
+          value: selectionValues[1],
+          description: "Produto 2",
+          emoji: { id: "423456789012345671", name: "gw_product_1", animated: false },
+        },
+        {
+          label: productNames[2],
+          value: selectionValues[2],
+          description: "Produto 3",
+          emoji: { id: "423456789012345672", name: "gw_product_2", animated: false },
+        },
       ],
     });
     if (!initial || initial.kind !== "review") throw new Error("Revisão inicial não criada.");
@@ -86,6 +101,10 @@ describe("carrinho nativo do Discord", () => {
                 custom_id: "gwc:add",
                 max_values: 1,
                 placeholder: "➕ Adicionar outro produto (1/3)",
+                options: [
+                  { emoji: { id: "423456789012345671", name: "gw_product_1" } },
+                  { emoji: { id: "423456789012345672", name: "gw_product_2" } },
+                ],
               },
             ],
           },

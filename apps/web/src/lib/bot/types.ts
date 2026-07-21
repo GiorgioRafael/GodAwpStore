@@ -1,4 +1,5 @@
 import type { BoosterDiscountConfiguration } from "./booster-discount";
+import type { DiscordProductEmoji } from "./discord-product-emoji-shared";
 
 export const MAXIMUM_CART_ITEMS = 3;
 
@@ -7,6 +8,7 @@ export type BotCatalogProduct = {
   name: string;
   description: string | null;
   imageUrl?: string | null;
+  discordEmoji?: DiscordProductEmoji | null;
   priceCents: number;
   availableStock: number;
 };

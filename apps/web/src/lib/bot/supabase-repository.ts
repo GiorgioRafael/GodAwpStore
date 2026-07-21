@@ -13,6 +13,10 @@ import type {
   RegisteredGuild,
 } from "./types";
 import { readBoosterDiscountConfiguration } from "./booster-discount";
+import {
+  discordProductImageSourceSha256,
+  readDiscordProductEmoji,
+} from "./discord-product-emoji-shared";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
 
@@ -37,7 +41,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         .order("name"),
       this.client
         .from("products")
-        .select("id,substore_id,name,description,image_url,minimum_price_cents,sort_order")
+        .select("id,substore_id,name,description,image_url,discord_application_emoji_id,discord_application_emoji_source_sha256,minimum_price_cents,sort_order")
         .eq("status", "active")
         .is("archived_at", null)
         .order("sort_order")
@@ -62,6 +66,16 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         name: product.name,
         description: product.description,
         imageUrl: product.image_url,
+        discordEmoji:
+          product.image_url &&
+          discordProductImageSourceSha256(product.image_url) ===
+            product.discord_application_emoji_source_sha256
+            ? readDiscordProductEmoji(
+                product.id,
+                product.discord_application_emoji_id,
+                product.discord_application_emoji_source_sha256,
+              )
+            : null,
         priceCents: safeInteger(product.minimum_price_cents),
         availableStock: stockByProduct.get(product.id) ?? 0,
       });

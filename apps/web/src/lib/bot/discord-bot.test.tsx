@@ -7,6 +7,7 @@ import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 vi.mock("server-only", () => ({}));
 
 let catalogCards: typeof import("./discord-bot").catalogCards;
+let collectDiscordProductOptionEmojis: typeof import("./discord-bot").collectDiscordProductOptionEmojis;
 let configureDiscordProductEntrySelect: typeof import("./discord-bot").configureDiscordProductEntrySelect;
 let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
@@ -19,6 +20,7 @@ let updateDiscordEphemeralResponse: typeof import("./discord-bot").updateDiscord
 beforeAll(async () => {
   ({
     catalogCards,
+    collectDiscordProductOptionEmojis,
     configureDiscordProductEntrySelect,
     createNativeDiscordQuantityResponse,
     getDiscordBot,
@@ -76,6 +78,11 @@ describe("Discord catalog cards", () => {
                 name: "Moon Blossom",
                 description: null,
                 imageUrl: "https://example.com/products/moon-blossom.png",
+                discordEmoji: {
+                  id: "423456789012345678",
+                  name: "gw_9a845b407c4e_a1b2c3d4",
+                  animated: false,
+                },
                 priceCents: 100,
                 availableStock: 2,
               },
@@ -107,6 +114,17 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain('"type":"select"');
     expect(serialized).not.toContain('"id":"buy"');
     expect(serialized).not.toMatch(/encrypted_payload|auth_tag|fingerprint/i);
+
+    if (!normalized) throw new Error("Cartão de catálogo inválido.");
+    const payload = configureDiscordProductEntrySelect(
+      cardToDiscordPayload(normalized, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      }),
+      collectDiscordProductOptionEmojis(card),
+    );
+    expect(JSON.stringify(payload)).toContain(
+      '"emoji":{"id":"423456789012345678","name":"gw_9a845b407c4e_a1b2c3d4","animated":false}',
+    );
   });
 
   it("mantém até 25 produtos em uma única mensagem", () => {

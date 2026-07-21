@@ -7,7 +7,11 @@ import {
 import { toCardElement } from "chat";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
-import { catalogCards, configureDiscordProductEntrySelect } from "./discord-bot";
+import {
+  catalogCards,
+  collectDiscordProductOptionEmojis,
+  configureDiscordProductEntrySelect,
+} from "./discord-bot";
 import type { BotMessageCustomization } from "./message-customization";
 import type { BotCatalogGame } from "./types";
 
@@ -171,6 +175,7 @@ export async function publishDiscordStorefront({
   if (!channelName) throw new Error("Nome do canal Discord inválido.");
 
   const payloads = catalogCards(catalog, customization).map((card) => {
+    const productOptionEmojis = collectDiscordProductOptionEmojis(card);
     const normalized = toCardElement(card);
     if (!normalized) throw new Error("Não foi possível montar a vitrine do Discord.");
     return {
@@ -178,6 +183,7 @@ export async function publishDiscordStorefront({
         cardToDiscordPayload(normalized, {
           contentFormat: DiscordContentFormat.ComponentsV2,
         }),
+        productOptionEmojis,
       ),
       allowed_mentions: { parse: [] },
     };

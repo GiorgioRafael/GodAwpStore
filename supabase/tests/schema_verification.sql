@@ -693,6 +693,45 @@ begin
   ) then
     raise exception 'catalog-media bucket is missing or invalid';
   end if;
+
+  if (
+    select count(*)
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'products'
+      and column_name in (
+        'discord_application_emoji_id',
+        'discord_application_emoji_source_sha256'
+      )
+      and data_type = 'text'
+      and is_nullable = 'YES'
+  ) <> 2 then
+    raise exception 'Discord product emoji metadata columns are missing or invalid';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.products'::regclass
+      and conname in (
+        'products_discord_application_emoji_id_format',
+        'products_discord_application_emoji_source_sha256_format',
+        'products_discord_application_emoji_pair'
+      )
+  ) <> 3 then
+    raise exception 'Discord product emoji constraints are missing';
+  end if;
+
+  if to_regprocedure('public.enforce_active_product_limit()') is null
+    or not exists (
+      select 1
+      from pg_trigger
+      where tgrelid = 'public.products'::regclass
+        and tgname = 'products_enforce_active_limit'
+        and not tgisinternal
+    ) then
+    raise exception 'Active Discord product limit trigger is missing';
+  end if;
 end
 $$;
 

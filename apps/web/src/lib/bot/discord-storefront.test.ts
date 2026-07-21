@@ -86,6 +86,9 @@ describe("Discord storefront", () => {
     expect(JSON.stringify(payload.components)).not.toContain(
       "https://example.com/products/ghost-pepper.png",
     );
+    expect(JSON.stringify(payload.components)).toContain(
+      '"emoji":{"id":"423456789012345678","name":"gw_9a845b407c4e_a1b2c3d4","animated":false}',
+    );
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.configuration).toMatchObject({
       channel_id: channelId,
@@ -191,6 +194,11 @@ function catalog(): BotCatalogGame[] {
               name: "Ghost Pepper",
               description: null,
               imageUrl: "https://example.com/products/ghost-pepper.png",
+              discordEmoji: {
+                id: "423456789012345678",
+                name: "gw_9a845b407c4e_a1b2c3d4",
+                animated: false,
+              },
               priceCents: 10,
               availableStock: 318,
             },

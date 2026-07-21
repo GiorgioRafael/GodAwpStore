@@ -23,6 +23,8 @@ import {
   withStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
+import { synchronizeDiscordProductEmojis } from "@/lib/bot/discord-product-emojis";
+import { DISCORD_STOREFRONT_PRODUCT_LIMIT } from "@/lib/bot/discord-product-emoji-shared";
 import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
 import { botMessageCustomizationSchema } from "@/lib/bot/message-customization-validation";
@@ -266,6 +268,26 @@ export async function saveProductAction(
   }
 
   const { identity, supabase } = await actionContext();
+  const id = parsedId?.success ? parsedId.data : null;
+  if (parsed.data.status === "active") {
+    let activeProductsQuery = supabase
+      .from("products")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "active")
+      .is("archived_at", null);
+    if (id) activeProductsQuery = activeProductsQuery.neq("id", id);
+    const { count, error: countError } = await activeProductsQuery;
+    if (countError) return databaseFailure(countError.code);
+    if ((count ?? 0) >= DISCORD_STOREFRONT_PRODUCT_LIMIT) {
+      return {
+        ok: false,
+        message: `A vitrine aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos.`,
+        fieldErrors: {
+          status: ["Desative ou arquive outro produto antes de ativar este."],
+        },
+      };
+    }
+  }
   const record = {
     substore_id: parsed.data.substoreId,
     name: parsed.data.name,
@@ -279,7 +301,6 @@ export async function saveProductAction(
     low_stock_threshold: parsed.data.lowStockThreshold,
     archived_at: parsed.data.status === "archived" ? new Date().toISOString() : null,
   };
-  const id = parsedId?.success ? parsedId.data : null;
   const operation = id
     ? supabase
         .from("products")
@@ -294,7 +315,18 @@ export async function saveProductAction(
         .select("id")
         .single();
   const { data, error } = await operation;
-  if (error) return databaseFailure(error.code);
+  if (error) {
+    if (error.code === "23514" && error.message.includes("products_active_limit")) {
+      return {
+        ok: false,
+        message: `A vitrine aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos.`,
+        fieldErrors: {
+          status: ["Desative ou arquive outro produto antes de ativar este."],
+        },
+      };
+    }
+    return databaseFailure(error.code);
+  }
   if (!data) {
     return {
       ok: false,
@@ -311,6 +343,12 @@ export async function saveProductAction(
       return {
         ok: true,
         message: `${savedMessage} ${storefronts.failed} vitrine(s) do Discord não puderam ser atualizadas.`,
+      };
+    }
+    if (storefronts.productEmojiFailures > 0) {
+      return {
+        ok: true,
+        message: `${savedMessage} A vitrine foi atualizada, mas ${storefronts.productEmojiFailures} ícone(s) de produto não puderam ser sincronizados.`,
       };
     }
     if (storefronts.published > 0) {
@@ -543,6 +581,14 @@ export async function saveBotMessageCustomizationAction(
       `${storefrontSync.value.failed} vitrine(s) não puderam ser atualizadas agora.`,
     );
   }
+  if (
+    storefrontSync.status === "fulfilled" &&
+    storefrontSync.value.productEmojiFailures > 0
+  ) {
+    warnings.push(
+      `${storefrontSync.value.productEmojiFailures} ícone(s) de produto não puderam ser sincronizados agora.`,
+    );
+  }
 
   if (ticketControlsSync.status === "rejected") {
     const message =
@@ -625,6 +671,7 @@ export async function publishDiscordStorefrontAction(
       };
     }
 
+    const emojiSync = await synchronizeDiscordProductEmojis(supabase);
     const [catalog, customization] = await Promise.all([
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
       loadBotMessageCustomization(supabase),
@@ -660,7 +707,11 @@ export async function publishDiscordStorefrontAction(
     revalidatePath("/configuracoes");
     return {
       ok: true,
-      message: `Vitrine e desconto de boosters atualizados em #${published.configuration.channel_name}.`,
+      message: `Vitrine e desconto de boosters atualizados em #${published.configuration.channel_name}.${
+        emojiSync.failed > 0
+          ? ` ${emojiSync.failed} ícone(s) de produto não puderam ser sincronizados.`
+          : ""
+      }`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createServerSupabaseClient: vi.fn(),
   createAdminSupabaseClient: vi.fn(),
   synchronizePublishedDiscordStorefronts: vi.fn(),
+  synchronizeDiscordProductEmojis: vi.fn(),
   synchronizeAllOpenDiscordTicketControls: vi.fn(),
   revalidatePath: vi.fn(),
 }));
@@ -24,6 +25,9 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/bot/discord-storefront-sync", () => ({
   synchronizePublishedDiscordStorefronts: mocks.synchronizePublishedDiscordStorefronts,
+}));
+vi.mock("@/lib/bot/discord-product-emojis", () => ({
+  synchronizeDiscordProductEmojis: mocks.synchronizeDiscordProductEmojis,
 }));
 vi.mock("@/lib/bot/discord-ticket-controls-sync", () => ({
   synchronizeAllOpenDiscordTicketControls: mocks.synchronizeAllOpenDiscordTicketControls,
@@ -64,7 +68,9 @@ describe("action de personalização do bot", () => {
     mocks.synchronizePublishedDiscordStorefronts.mockResolvedValue({
       published: 1,
       failed: 0,
+      productEmojiFailures: 0,
     });
+    mocks.synchronizeDiscordProductEmojis.mockResolvedValue({ failed: 0 });
     mocks.synchronizeAllOpenDiscordTicketControls.mockResolvedValue({
       processed: 2,
       synchronized: 2,
