@@ -308,6 +308,7 @@ select public.complete_giveaway_ticket(
   '770000000000000003'
 );
 
+reset role;
 do $$
 begin
   if (
@@ -344,7 +345,6 @@ begin
 end
 $$;
 
-reset role;
 rollback;
 
 select 'GodAwpStore giveaway verification passed' as result;
