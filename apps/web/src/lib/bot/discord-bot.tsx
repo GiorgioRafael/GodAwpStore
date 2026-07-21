@@ -16,9 +16,7 @@ import {
   CardText,
   Chat,
   Divider,
-  Image,
   LinkButton,
-  Section,
   Select,
   SelectOption,
   toCardElement,
@@ -58,7 +56,6 @@ import type {
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_SELECT_OPTION_LIMIT = 25;
-const DISCORD_CATALOG_PAGE_SIZE = 9;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DISCORD_MESSAGE_COMPONENT = 3;
 const DISCORD_MODAL_SUBMIT = 5;
@@ -343,20 +340,19 @@ export function catalogCards(
     ];
   }
 
-  const pages = chunk(products, Math.min(DISCORD_CATALOG_PAGE_SIZE, DISCORD_SELECT_OPTION_LIMIT));
-  return pages.map((page, index) => (
+  if (products.length > DISCORD_SELECT_OPTION_LIMIT) {
+    throw new Error(
+      `A vitrine do Discord aceita no máximo ${DISCORD_SELECT_OPTION_LIMIT} produtos ativos.`,
+    );
+  }
+
+  const storefrontImageUrl = discordImageUrl(catalog[0]?.substores[0]?.imageUrl);
+  return [
     <Card
-      key={`catalog-${index}`}
-      title={
-        pages.length > 1
-          ? interpolateBotMessageLimited(
-              message.paginatedTitle,
-              { page: index + 1, pages: pages.length },
-              256,
-            )
-          : interpolateBotMessageLimited(message.title, {}, 256)
-      }
+      key="catalog"
+      title={interpolateBotMessageLimited(message.title, {}, 256)}
       subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+      imageUrl={storefrontImageUrl ?? undefined}
     >
       {message.welcome ? <CardText>{message.welcome}</CardText> : null}
       {message.catalogText ? <CardText>{message.catalogText}</CardText> : null}
@@ -364,22 +360,13 @@ export function catalogCards(
       {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
       <Divider />
       {message.prompt ? <CardText>{message.prompt}</CardText> : null}
-      {page.map(({ product }) => {
-        const imageUrl = productImageUrl(product.imageUrl);
-        return (
-          <Section key={`catalog-product-${product.id}`}>
-            <CardText>{`**${escapeDiscordMarkdown(product.name)}**\nPreço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`}</CardText>
-            {imageUrl ? <Image url={imageUrl} alt={`Foto de ${product.name}`} /> : null}
-          </Section>
-        );
-      })}
       <Actions>
         <Select
           id="select_products"
           label={interpolateBotMessageLimited(message.selectLabel, {}, 100)}
           placeholder={interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)}
         >
-          {page.map(({ product }) => (
+          {products.map(({ product }) => (
             <SelectOption
               key={product.id}
               label={truncateSelectText(product.name)}
@@ -392,7 +379,7 @@ export function catalogCards(
         </Select>
       </Actions>
     </Card>
-  ));
+  ];
 }
 
 function helpCard(
@@ -510,12 +497,6 @@ function flattenCatalog(catalog: BotCatalogGame[]): CatalogSelection[] {
 function findCatalogProduct(catalog: BotCatalogGame[], productId: string | undefined) {
   if (!productId) return null;
   return flattenCatalog(catalog).find(({ product }) => product.id === productId) ?? null;
-}
-
-function chunk<T>(items: T[], size: number) {
-  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) =>
-    items.slice(index * size, (index + 1) * size),
-  );
 }
 
 export async function postDiscordEphemeral(
@@ -836,7 +817,7 @@ function formatStockCount(availableStock: number) {
   return new Intl.NumberFormat("pt-BR").format(availableStock);
 }
 
-function productImageUrl(value: string | null | undefined) {
+function discordImageUrl(value: string | null | undefined) {
   if (!value) return null;
   try {
     const url = new URL(value);
@@ -847,10 +828,6 @@ function productImageUrl(value: string | null | undefined) {
   } catch {
     return null;
   }
-}
-
-function escapeDiscordMarkdown(value: string) {
-  return value.replace(/([\\`*_{}\[\]()#+\-.!|>~])/g, "\\$1");
 }
 
 function productEmoji(productName: string) {

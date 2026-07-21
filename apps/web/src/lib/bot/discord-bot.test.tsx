@@ -57,7 +57,7 @@ describe("Discord catalog cards", () => {
     });
   });
 
-  it("renderiza produtos compactos com foto, preço e estoque sem repetir jogo ou subloja", () => {
+  it("renderiza somente o informe da loja e mantém os produtos no seletor", () => {
     const [card] = catalogCards([
       {
         id: "game",
@@ -69,7 +69,7 @@ describe("Discord catalog cards", () => {
             title: "Seeds",
             description: "Sementes",
             colorHex: "#D4AF37",
-            imageUrl: null,
+            imageUrl: "https://example.com/storefront.png",
             products: [
               {
                 id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
@@ -94,8 +94,9 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain("R$ 1,00");
     expect(serialized).toContain("Estoque: 2");
     expect(serialized).toContain("Moon Blossom");
-    expect(serialized).toContain("https://example.com/products/moon-blossom.png");
-    expect(serialized).toContain('"type":"section"');
+    expect(serialized).toContain("https://example.com/storefront.png");
+    expect(serialized).not.toContain("https://example.com/products/moon-blossom.png");
+    expect(serialized).not.toContain('"type":"section"');
     expect(serialized).not.toContain("Seeds");
     expect(serialized).toContain("🔒");
     expect(serialized).toContain("💠");
@@ -108,7 +109,7 @@ describe("Discord catalog cards", () => {
     expect(serialized).not.toMatch(/encrypted_payload|auth_tag|fingerprint/i);
   });
 
-  it("pagina o catálogo visual respeitando o limite de componentes do Discord", () => {
+  it("mantém até 25 produtos em uma única mensagem", () => {
     const cards = catalogCards([
       {
         id: "game",
@@ -121,7 +122,7 @@ describe("Discord catalog cards", () => {
             description: "",
             colorHex: "#D4AF37",
             imageUrl: null,
-            products: Array.from({ length: 26 }, (_, index) => ({
+            products: Array.from({ length: 25 }, (_, index) => ({
               id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
               name: `Produto ${index}`,
               description: null,
@@ -134,19 +135,10 @@ describe("Discord catalog cards", () => {
       },
     ]);
 
-    expect(cards).toHaveLength(3);
+    expect(cards).toHaveLength(1);
     expect(toCardElement(cards[0])).toMatchObject({
-      title: "🛍️✨ GWSTORE • PRODUTOS 1/3 ✨🛍️",
+      title: "🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️",
     });
-    expect(toCardElement(cards[2])).toMatchObject({
-      title: "🛍️✨ GWSTORE • PRODUTOS 3/3 ✨🛍️",
-    });
-    expect(JSON.stringify(toCardElement(cards[0]))).not.toContain(
-      "00000000-0000-4000-8000-000000000025",
-    );
-    expect(JSON.stringify(toCardElement(cards[2]))).toContain(
-      "00000000-0000-4000-8000-000000000025",
-    );
     for (const card of cards) {
       const normalized = toCardElement(card);
       if (!normalized) throw new Error("Cartão de catálogo inválido.");
@@ -154,6 +146,37 @@ describe("Discord catalog cards", () => {
         contentFormat: DiscordContentFormat.ComponentsV2,
       })).not.toThrow();
     }
+  });
+
+  it("rejeita mais de 25 produtos para impedir truncamento silencioso", () => {
+    const products = Array.from({ length: 26 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      name: `Produto ${index}`,
+      description: null,
+      imageUrl: null,
+      priceCents: 100,
+      availableStock: 1,
+    }));
+
+    expect(() =>
+      catalogCards([
+        {
+          id: "game",
+          name: "Grow a Garden 2",
+          substores: [
+            {
+              id: "seeds",
+              name: "Seeds",
+              title: "Seeds",
+              description: "",
+              colorHex: "#D4AF37",
+              imageUrl: null,
+              products,
+            },
+          ],
+        },
+      ]),
+    ).toThrow("no máximo 25 produtos ativos");
   });
 
   it("mostra estado vazio sem criar botão", () => {

@@ -83,10 +83,9 @@ describe("Discord storefront", () => {
     expect(JSON.stringify(payload.components)).toContain(
       "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9:Ghost Pepper",
     );
-    expect(JSON.stringify(payload.components)).toContain(
+    expect(JSON.stringify(payload.components)).not.toContain(
       "https://example.com/products/ghost-pepper.png",
     );
-    expect(JSON.stringify(payload.components)).toContain('"type":11');
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.configuration).toMatchObject({
       channel_id: channelId,
