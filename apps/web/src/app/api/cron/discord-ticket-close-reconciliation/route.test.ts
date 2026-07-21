@@ -32,6 +32,7 @@ const giveawayResult = {
   referralsInvalidated: 1,
   drawsCompleted: 1,
   drawsWithoutWinner: 0,
+  drawsDeferred: 0,
   ticketsOpened: 1,
   failures: 0,
 };

@@ -1,17 +1,25 @@
 import "server-only";
 
-import { randomInt, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { publishGiveawayAnnouncement, ensureGiveawayWinnerTicket, type GiveawayPrize } from "@/lib/giveaways/discord";
-import { getDiscordGuildMembership } from "@/lib/giveaways/discord-membership";
+import {
+  getDiscordGuildMembership,
+  type DiscordGuildMembership,
+} from "@/lib/giveaways/discord-membership";
 import { getGiveawayAnnouncementInput } from "@/lib/giveaways/repository";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
 
-const MAX_REFERRALS_PER_RUN = 250;
-const MAX_DRAWS_PER_RUN = 10;
+const MAX_REFERRALS_PER_RUN = 50;
+const MAX_DRAWS_PER_RUN = 2;
 const MAX_TICKETS_PER_RUN = 10;
+const DRAW_RECONCILIATION_BATCH_SIZE = 50;
 const DISCORD_CONCURRENCY = 4;
+const DISCORD_JOIN_TIME_TOLERANCE_MS = 1_000;
+const RECONCILIATION_BUDGET_MS = 240_000;
+const DRAW_BATCH_BUDGET_MS = 120_000;
+const TICKET_BATCH_BUDGET_MS = 20_000;
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
 
@@ -22,6 +30,7 @@ export type GiveawayReconciliationResult = {
   referralsInvalidated: number;
   drawsCompleted: number;
   drawsWithoutWinner: number;
+  drawsDeferred: number;
   ticketsOpened: number;
   failures: number;
 };
@@ -32,6 +41,7 @@ export async function reconcileGiveaways(
   const client = options.client ?? requireAdminClient();
   const fetcher = options.fetcher ?? fetch;
   const now = options.now ?? Date.now;
+  const deadline = Date.now() + RECONCILIATION_BUDGET_MS;
   const result: GiveawayReconciliationResult = {
     activated: 0,
     referralsChecked: 0,
@@ -39,17 +49,22 @@ export async function reconcileGiveaways(
     referralsInvalidated: 0,
     drawsCompleted: 0,
     drawsWithoutWinner: 0,
+    drawsDeferred: 0,
     ticketsOpened: 0,
     failures: 0,
   };
 
-  const activation = await client.rpc("activate_due_giveaways");
+  const activation = await client.rpc("activate_due_giveaways_v2");
   if (activation.error) throw new Error(`Falha ao ativar sorteios: ${activation.error.message}`);
-  result.activated = Number(activation.data ?? 0);
+  const activatedIds = (activation.data ?? []).map((row) => row.giveaway_id);
+  result.activated = activatedIds.length;
+  await mapConcurrent(activatedIds, DISCORD_CONCURRENCY, async (giveawayId) => {
+    await refreshAnnouncement(client, giveawayId, fetcher, result);
+  });
 
   await reconcilePendingReferrals(client, fetcher, now(), result);
-  await drawDueGiveaways(client, fetcher, result);
-  await openWinnerTickets(client, fetcher, result);
+  if (Date.now() < deadline) await drawDueGiveaways(client, fetcher, deadline, result);
+  if (Date.now() < deadline) await openWinnerTickets(client, fetcher, deadline, result);
   return result;
 }
 
@@ -63,6 +78,7 @@ async function reconcilePendingReferrals(
     .from("giveaway_referrals")
     .select("id,giveaway_id,invitee_discord_user_id,joined_at")
     .eq("status", "pending")
+    .not("join_completed_at", "is", null)
     .order("joined_at")
     .limit(MAX_REFERRALS_PER_RUN);
   if (error) throw new Error(`Falha ao listar indicações pendentes: ${error.message}`);
@@ -71,7 +87,7 @@ async function reconcilePendingReferrals(
   const giveawayIds = [...new Set(referrals.map((referral) => referral.giveaway_id))];
   const { data: giveaways, error: giveawayError } = await client
     .from("giveaways")
-    .select("id,guild_id,status,minimum_stay_minutes")
+    .select("id,guild_id,status,minimum_stay_minutes,ends_at")
     .in("id", giveawayIds)
     .in("status", ["active", "drawing"]);
   if (giveawayError) throw new Error(`Falha ao carregar sorteios ativos: ${giveawayError.message}`);
@@ -86,7 +102,8 @@ async function reconcilePendingReferrals(
   await mapConcurrent(referrals, DISCORD_CONCURRENCY, async (referral) => {
     const giveaway = giveawayMap.get(referral.giveaway_id);
     if (!giveaway) return;
-    if (Date.parse(referral.joined_at) + giveaway.minimum_stay_minutes * 60_000 > now) return;
+    const validationCutoff = Math.min(now, Date.parse(giveaway.ends_at));
+    if (Date.parse(referral.joined_at) + giveaway.minimum_stay_minutes * 60_000 > validationCutoff) return;
     const discordGuildId = guildMap.get(giveaway.guild_id);
     if (!discordGuildId) return;
     try {
@@ -96,12 +113,17 @@ async function reconcilePendingReferrals(
         fetcher,
       );
       result.referralsChecked += 1;
-      if (!membership.exists) {
-        await setReferralStatus(client, referral.id, "invalid", "Saiu do servidor antes da validação.");
-        result.referralsInvalidated += 1;
-      } else if (!membership.pending) {
-        await setReferralStatus(client, referral.id, "valid", null);
-        result.referralsValidated += 1;
+      const decision = evaluateReferralMembership(
+        referral.joined_at,
+        membership,
+        giveaway.minimum_stay_minutes,
+        validationCutoff,
+        false,
+      );
+      if (decision.status !== "pending") {
+        await setReferralStatus(client, referral.id, decision.status, decision.reason);
+        if (decision.status === "valid") result.referralsValidated += 1;
+        else result.referralsInvalidated += 1;
       }
     } catch (error) {
       result.failures += 1;
@@ -113,48 +135,54 @@ async function reconcilePendingReferrals(
 async function drawDueGiveaways(
   client: AdminClient,
   fetcher: typeof fetch,
+  deadline: number,
   result: GiveawayReconciliationResult,
 ) {
   for (let index = 0; index < MAX_DRAWS_PER_RUN; index += 1) {
+    if (Date.now() + DRAW_BATCH_BUDGET_MS >= deadline) return;
     const claimToken = randomUUID();
     const { data: claim, error } = await client
-      .rpc("claim_due_giveaway", { p_claim_token: claimToken })
+      .rpc("claim_due_giveaway_v2", { p_claim_token: claimToken })
       .maybeSingle();
     if (error) throw new Error(`Falha ao reservar sorteio: ${error.message}`);
     if (!claim) return;
 
     try {
-      await revalidateGiveawayReferrals(
+      const referralsReady = await revalidateGiveawayReferralBatch(
         client,
-        claim.giveaway_id,
-        claim.discord_guild_id,
+        claim,
+        claimToken,
+        fetcher,
+        Date.parse(claim.ends_at),
+        result,
+      );
+      if (!referralsReady) {
+        result.drawsDeferred += 1;
+        continue;
+      }
+      const entriesReady = await revalidateGiveawayEntryBatch(
+        client,
+        claim,
+        claimToken,
         fetcher,
         result,
       );
-      const { data: entries, error: entryError } = await client
-        .from("giveaway_entries")
-        .select("id,discord_user_id")
-        .eq("giveaway_id", claim.giveaway_id)
-        .gte("valid_invite_count", claim.required_valid_invites)
-        .order("id")
-        .limit(2_000);
-      if (entryError) throw new Error(entryError.message);
-
-      const eligible: Array<{ id: string; discord_user_id: string }> = [];
-      await mapConcurrent(entries ?? [], DISCORD_CONCURRENCY, async (entry) => {
-        const membership = await getDiscordGuildMembership(
-          claim.discord_guild_id,
-          entry.discord_user_id,
-          fetcher,
-        );
-        if (membership.exists && !membership.pending) eligible.push(entry);
-      });
-      const winner = eligible.length ? eligible[randomInt(eligible.length)] : null;
-      const { data: completed, error: completionError } = await client
-        .rpc("complete_giveaway_draw", {
+      if (!entriesReady) {
+        result.drawsDeferred += 1;
+        continue;
+      }
+      const { data: winner, error: winnerError } = await client
+        .rpc("pick_giveaway_winner", {
           p_giveaway_id: claim.giveaway_id,
           p_claim_token: claimToken,
-          p_winner_entry_id: winner?.id ?? null,
+        })
+        .maybeSingle();
+      if (winnerError) throw new Error(winnerError.message);
+      const { data: completed, error: completionError } = await client
+        .rpc("complete_giveaway_draw_v2", {
+          p_giveaway_id: claim.giveaway_id,
+          p_claim_token: claimToken,
+          p_winner_entry_id: winner?.entry_id ?? null,
         })
         .single();
       if (completionError || !completed) {
@@ -170,63 +198,149 @@ async function drawDueGiveaways(
   }
 }
 
-async function revalidateGiveawayReferrals(
+type DrawClaim = {
+  giveaway_id: string;
+  discord_guild_id: string;
+  required_valid_invites: number;
+  minimum_stay_minutes: number;
+  ends_at: string;
+};
+
+async function revalidateGiveawayReferralBatch(
   client: AdminClient,
-  giveawayId: string,
-  discordGuildId: string,
+  claim: DrawClaim,
+  claimToken: string,
+  fetcher: typeof fetch,
+  now: number,
+  result: GiveawayReconciliationResult,
+) {
+  const staleFilter = `draw_checked_at.is.null,draw_checked_at.lt.${claim.ends_at}`;
+  const { data: referrals, error } = await client
+    .from("giveaway_referrals")
+    .select("id,invitee_discord_user_id,status,joined_at")
+    .eq("giveaway_id", claim.giveaway_id)
+    .in("status", ["pending", "valid"])
+    .not("join_completed_at", "is", null)
+    .or(staleFilter)
+    .order("id")
+    .limit(DRAW_RECONCILIATION_BATCH_SIZE);
+  if (error) throw new Error(error.message);
+  await mapConcurrent(referrals ?? [], DISCORD_CONCURRENCY, async (referral) => {
+    try {
+      const membership = await getDiscordGuildMembership(
+        claim.discord_guild_id,
+        referral.invitee_discord_user_id,
+        fetcher,
+      );
+      result.referralsChecked += 1;
+      const decision = evaluateReferralMembership(
+        referral.joined_at,
+        membership,
+        claim.minimum_stay_minutes,
+        now,
+        true,
+      );
+      const isValid = decision.status === "valid";
+      const { data, error: updateError } = await client.rpc(
+        "mark_giveaway_referral_draw_status",
+        {
+          p_giveaway_id: claim.giveaway_id,
+          p_claim_token: claimToken,
+          p_referral_id: referral.id,
+          p_is_valid: isValid,
+          p_invalid_reason: decision.reason,
+        },
+      );
+      if (updateError || !data) {
+        throw new Error(updateError?.message || "Reserva do sorteio substituída.");
+      }
+      if (decision.status === "valid" && referral.status !== "valid") {
+        result.referralsValidated += 1;
+      } else if (decision.status === "invalid" && referral.status !== "invalid") {
+        result.referralsInvalidated += 1;
+      }
+    } catch (error) {
+      result.failures += 1;
+      console.error(`[giveaway:referral:${referral.id}] ${errorMessage(error)}`);
+    }
+  });
+
+  const { data: remaining, error: remainingError } = await client
+    .from("giveaway_referrals")
+    .select("id")
+    .eq("giveaway_id", claim.giveaway_id)
+    .in("status", ["pending", "valid"])
+    .not("join_completed_at", "is", null)
+    .or(staleFilter)
+    .limit(1);
+  if (remainingError) throw new Error(remainingError.message);
+  return !remaining?.length;
+}
+
+async function revalidateGiveawayEntryBatch(
+  client: AdminClient,
+  claim: DrawClaim,
+  claimToken: string,
   fetcher: typeof fetch,
   result: GiveawayReconciliationResult,
 ) {
-  const [{ data: giveaway, error: giveawayError }, { data: referrals, error }] = await Promise.all([
-    client
-      .from("giveaways")
-      .select("minimum_stay_minutes")
-      .eq("id", giveawayId)
-      .single(),
-    client
-    .from("giveaway_referrals")
-    .select("id,invitee_discord_user_id,status,joined_at")
-    .eq("giveaway_id", giveawayId)
-    .in("status", ["pending", "valid"])
-    .limit(5_000),
-  ]);
-  if (giveawayError || !giveaway) throw new Error(giveawayError?.message || "Sorteio não encontrado.");
+  const staleFilter = `membership_checked_at.is.null,membership_checked_at.lt.${claim.ends_at}`;
+  const { data: entries, error } = await client
+    .from("giveaway_entries")
+    .select("id,discord_user_id")
+    .eq("giveaway_id", claim.giveaway_id)
+    .or(staleFilter)
+    .order("id")
+    .limit(DRAW_RECONCILIATION_BATCH_SIZE);
   if (error) throw new Error(error.message);
-  const now = Date.now();
-  await mapConcurrent(referrals ?? [], DISCORD_CONCURRENCY, async (referral) => {
-    const membership = await getDiscordGuildMembership(
-      discordGuildId,
-      referral.invitee_discord_user_id,
-      fetcher,
-    );
-    result.referralsChecked += 1;
-    if (!membership.exists || membership.pending && referral.status === "valid") {
-      await setReferralStatus(
-        client,
-        referral.id,
-        "invalid",
-        membership.exists
-          ? "Não concluiu a verificação do servidor."
-          : "Não permaneceu no servidor até o sorteio.",
+
+  await mapConcurrent(entries ?? [], DISCORD_CONCURRENCY, async (entry) => {
+    try {
+      const membership = await getDiscordGuildMembership(
+        claim.discord_guild_id,
+        entry.discord_user_id,
+        fetcher,
       );
-      result.referralsInvalidated += 1;
-    } else if (
-      !membership.pending &&
-      referral.status === "pending" &&
-      Date.parse(referral.joined_at) + giveaway.minimum_stay_minutes * 60_000 <= now
-    ) {
-      await setReferralStatus(client, referral.id, "valid", null);
-      result.referralsValidated += 1;
+      const isValid = membership.exists && !membership.pending;
+      const { data, error: updateError } = await client.rpc(
+        "mark_giveaway_entry_membership",
+        {
+          p_giveaway_id: claim.giveaway_id,
+          p_claim_token: claimToken,
+          p_entry_id: entry.id,
+          p_is_valid: isValid,
+          p_invalid_reason: isValid
+            ? null
+            : membership.exists
+              ? "Não concluiu a verificação do servidor."
+              : "Não faz mais parte do servidor.",
+        },
+      );
+      if (updateError || !data) throw new Error(updateError?.message || "Reserva do sorteio substituída.");
+    } catch (error) {
+      result.failures += 1;
+      console.error(`[giveaway:entry:${entry.id}] ${errorMessage(error)}`);
     }
   });
+
+  const { data: remaining, error: remainingError } = await client
+    .from("giveaway_entries")
+    .select("id")
+    .eq("giveaway_id", claim.giveaway_id)
+    .or(staleFilter)
+    .limit(1);
+  if (remainingError) throw new Error(remainingError.message);
+  return !remaining?.length;
 }
 
 async function openWinnerTickets(
   client: AdminClient,
   fetcher: typeof fetch,
+  deadline: number,
   result: GiveawayReconciliationResult,
 ) {
   for (let index = 0; index < MAX_TICKETS_PER_RUN; index += 1) {
+    if (Date.now() + TICKET_BATCH_BUDGET_MS >= deadline) return;
     const claimToken = randomUUID();
     const { data: claim, error } = await client
       .rpc("claim_giveaway_ticket", { p_claim_token: claimToken })
@@ -328,6 +442,41 @@ function parsePrizes(value: Json): GiveawayPrize[] {
   });
   if (!prizes.length) throw new Error("Pacote do ticket está vazio.");
   return prizes;
+}
+
+export function evaluateReferralMembership(
+  recordedJoinedAt: string,
+  membership: DiscordGuildMembership,
+  minimumStayMinutes: number,
+  now: number,
+  finalCheck: boolean,
+): { status: "pending" | "valid" | "invalid"; reason: string | null } {
+  if (!membership.exists) {
+    return { status: "invalid", reason: "Não permaneceu no servidor até o sorteio." };
+  }
+  if (!membership.joinedAt) {
+    return { status: "invalid", reason: "Discord não confirmou a data de entrada no servidor." };
+  }
+
+  const recordedJoin = Date.parse(recordedJoinedAt);
+  const currentJoin = Date.parse(membership.joinedAt);
+  if (!Number.isFinite(recordedJoin) || !Number.isFinite(currentJoin)) {
+    return { status: "invalid", reason: "Data de entrada no servidor inválida." };
+  }
+  if (currentJoin > recordedJoin + DISCORD_JOIN_TIME_TOLERANCE_MS) {
+    return { status: "invalid", reason: "Saiu e entrou novamente após usar o convite." };
+  }
+  if (membership.pending) {
+    return finalCheck
+      ? { status: "invalid", reason: "Não concluiu a verificação do servidor." }
+      : { status: "pending", reason: null };
+  }
+  if (currentJoin + minimumStayMinutes * 60_000 > now) {
+    return finalCheck
+      ? { status: "invalid", reason: "Não completou o tempo mínimo no servidor." }
+      : { status: "pending", reason: null };
+  }
+  return { status: "valid", reason: null };
 }
 
 async function mapConcurrent<T>(

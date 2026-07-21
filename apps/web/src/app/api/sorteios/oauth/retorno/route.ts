@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 
-import { discordBotRequest } from "@/lib/bot/discord-api";
 import {
   discordAccountCreatedAt,
   discordAvatarUrl,
@@ -80,16 +79,21 @@ export async function GET(request: Request) {
         })
         .single();
       if (error || !data) throw mapDatabaseError(error?.message);
+      const { data: privateEntry, error: privateEntryError } = await client
+        .from("giveaway_entries")
+        .select("access_token")
+        .eq("id", data.entry_id)
+        .single();
+      if (privateEntryError || !privateEntry) {
+        throw new Error(privateEntryError?.message || "Credencial privada da entrada não encontrada.");
+      }
       return successRedirect(
         requestUrl.origin,
         state.slug,
-        { entrada: data.referral_token },
+        { entrada: privateEntry.access_token },
       );
     }
 
-    if (existingMembership.exists) {
-      throw new GiveawayOAuthError("ja_era_membro");
-    }
     const accountCreatedAt = discordAccountCreatedAt(user.id);
     if (
       accountCreatedAt.getTime() >
@@ -97,26 +101,68 @@ export async function GET(request: Request) {
     ) {
       throw new GiveawayOAuthError("conta_recente");
     }
-    const addedMembership = await addDiscordGuildMember(
-      giveaway.discordGuildId,
-      user.id,
-      accessToken,
-    );
-    if (addedMembership.alreadyMember) throw new GiveawayOAuthError("ja_era_membro");
-    const initiallyValid = giveaway.minimumStayMinutes === 0 && !addedMembership.pending;
-    const { error } = await client.rpc("register_giveaway_referral", {
-      p_giveaway_id: giveaway.id,
-      p_referral_token: state.referralToken,
-      p_invitee_discord_user_id: user.id,
-      p_invitee_display_name: discordDisplayName(user),
-      p_invitee_avatar_url: discordAvatarUrl(user),
-      p_invitee_account_created_at: accountCreatedAt.toISOString(),
-      p_initially_valid: initiallyValid,
-    });
-    if (error) {
-      await removeJoinedMemberBestEffort(giveaway.discordGuildId, user.id);
-      throw mapDatabaseError(error.message);
+
+    let referralId: string;
+    let membership = existingMembership;
+    if (existingMembership.exists) {
+      const { data: existingClaim, error: existingClaimError } = await client
+        .from("giveaway_referrals")
+        .select("id,referrer_entry_id,status,join_completed_at")
+        .eq("giveaway_id", giveaway.id)
+        .eq("invitee_discord_user_id", user.id)
+        .maybeSingle();
+      if (existingClaimError) throw new Error(existingClaimError.message);
+      if (!existingClaim) throw new GiveawayOAuthError("ja_era_membro");
+      if (existingClaim.referrer_entry_id !== giveaway.referralEntryId) {
+        throw new GiveawayOAuthError("ja_atribuido");
+      }
+      if (existingClaim.status === "invalid") {
+        throw new GiveawayOAuthError("convite_invalido");
+      }
+      if (existingClaim.join_completed_at) {
+        return successRedirect(requestUrl.origin, state.slug, {
+          convite: existingClaim.status === "valid" ? "valido" : "em_validacao",
+        });
+      }
+      referralId = existingClaim.id;
+    } else {
+      const { data: claim, error: claimError } = await client
+        .rpc("prepare_giveaway_referral", {
+          p_giveaway_id: giveaway.id,
+          p_referral_token: state.referralToken,
+          p_invitee_discord_user_id: user.id,
+          p_invitee_display_name: discordDisplayName(user),
+          p_invitee_avatar_url: discordAvatarUrl(user),
+          p_invitee_account_created_at: accountCreatedAt.toISOString(),
+        })
+        .single();
+      if (claimError || !claim) throw mapDatabaseError(claimError?.message);
+      if (claim.referral_status === "invalid" || claim.join_completed_at) {
+        throw new GiveawayOAuthError("convite_invalido");
+      }
+      referralId = claim.referral_id;
+      const addedMembership = await addDiscordGuildMember(
+        giveaway.discordGuildId,
+        user.id,
+        accessToken,
+      );
+      membership = addedMembership.alreadyMember || !addedMembership.joinedAt
+        ? await getDiscordGuildMembership(giveaway.discordGuildId, user.id)
+        : addedMembership;
     }
+
+    if (!membership.exists || !membership.joinedAt) {
+      throw new Error("Discord não confirmou quando o membro entrou no servidor.");
+    }
+    const initiallyValid = giveaway.minimumStayMinutes === 0 && !membership.pending;
+    const { data: completed, error: completionError } = await client
+      .rpc("complete_giveaway_referral_join", {
+        p_referral_id: referralId,
+        p_joined_at: membership.joinedAt,
+        p_initially_valid: initiallyValid,
+      })
+      .single();
+    if (completionError || !completed) throw mapDatabaseError(completionError?.message);
     return successRedirect(
       requestUrl.origin,
       state.slug,
@@ -166,13 +212,7 @@ function readCookie(header: string | null, name: string) {
 function mapDatabaseError(message?: string) {
   if (message?.includes("too new")) return new GiveawayOAuthError("conta_recente");
   if (message?.includes("already attributed")) return new GiveawayOAuthError("ja_atribuido");
+  if (message?.includes("predates the referral claim")) return new GiveawayOAuthError("ja_era_membro");
   if (message?.includes("not accepting")) return new GiveawayOAuthError("fora_do_periodo");
   return new Error(message || "Não foi possível registrar a participação.");
-}
-
-async function removeJoinedMemberBestEffort(guildId: string, userId: string) {
-  await discordBotRequest(
-    `/guilds/${guildId}/members/${userId}`,
-    { method: "DELETE" },
-  ).catch(() => undefined);
 }
