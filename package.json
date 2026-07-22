@@ -18,13 +18,18 @@
   "engines": {
     "node": ">=24.0.0"
   },
+  "dependencies": {
+    "sharp": "0.35.3"
+  },
   "allowScripts": {
     "sharp": true,
     "unrs-resolver": true
   },
   "overrides": {
+    "sharp": "$sharp",
     "next@16.2.10": {
-      "postcss": "8.5.19"
+      "postcss": "8.5.19",
+      "sharp": "$sharp"
     }
   }
 }

@@ -276,7 +276,8 @@ $$;
 
 reset role;
 update public.giveaways
-set ends_at = now() - interval '1 second'
+set starts_at = now() - interval '2 seconds',
+    ends_at = now() - interval '1 second'
 where public_slug = 'giveawaytest0001';
 set local role service_role;
 
