@@ -1,6 +1,13 @@
 import { discordCommands } from "./discord-command-definitions.js";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
+const isDeploymentRegistration = process.argv.includes("--deployment");
+
+if (isDeploymentRegistration && process.env.VERCEL_ENV !== "production") {
+  console.log("Registro de comandos ignorado fora da produção.");
+  process.exit(0);
+}
+
 const applicationId = process.env.DISCORD_APPLICATION_ID?.trim();
 const botToken = process.env.DISCORD_BOT_TOKEN?.trim();
 const guildId = process.env.DISCORD_GUILD_ID?.trim();
@@ -35,4 +42,5 @@ if (!response.ok) {
 
 const registered = await response.json();
 const scope = guildId ? `servidor ${guildId}` : "global";
-console.log(`Registrados ${registered.length} comandos no escopo ${scope}: /loja, /ajuda.`);
+const commandNames = registered.map((command) => `/${command.name}`).join(", ");
+console.log(`Registrados ${registered.length} comandos no escopo ${scope}: ${commandNames}.`);
