@@ -2,7 +2,12 @@ import { generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encodeDiscordCartSelection } from "@/lib/bot/discord-cart-selection";
 
+const ticketDeliveryMocks = vi.hoisted(() => ({
+  completeDiscordTicketDelivery: vi.fn(async () => ({ status: "sent" as const })),
+}));
+
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@/lib/bot/message-customization-server", async () => {
   const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import(
     "@/lib/bot/message-customization"
@@ -49,10 +54,17 @@ vi.mock("@/lib/bot/supabase-repository", () => ({
     }
   },
 }));
+vi.mock("@/lib/bot/discord-ticket-delivery", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bot/discord-ticket-delivery")>()),
+  completeDiscordTicketDelivery: ticketDeliveryMocks.completeDiscordTicketDelivery,
+}));
 
 import { POST } from "./route";
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.clearAllMocks();
+});
 
 describe("Discord native quantity interactions", () => {
   it("verifica a assinatura no carrinho progressivo e na abertura das quantidades", async () => {
@@ -306,5 +318,93 @@ describe("Discord native ticket close interactions", () => {
 
     expect(response.status).toBe(401);
     await expect(response.text()).resolves.toBe("Stale interaction");
+  });
+});
+
+describe("Discord native ticket delivery interactions", () => {
+  it("verifica a assinatura e difere a mensagem para o administrador autorizado", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const orderId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      token: "route_ticket_delivery_interaction_token",
+      guild_id: "323456789012345678",
+      channel_id: "423456789012345678",
+      member: { user: { id: "385924725332901909" } },
+      data: {
+        component_type: 2,
+        custom_id: `gwstore_ticket_delivery:${orderId}`,
+      },
+    });
+    const timestamp = String(Math.floor(Date.now() / 1_000));
+    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
+
+    const response = await POST(
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      type: 5,
+      data: { flags: 64 },
+    });
+  });
+
+  it("responde privadamente sem executar a entrega para quem nao e administrador", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      token: "route_ticket_delivery_interaction_token",
+      guild_id: "323456789012345678",
+      channel_id: "423456789012345678",
+      member: { user: { id: "523456789012345678" } },
+      data: {
+        component_type: 2,
+        custom_id:
+          "gwstore_ticket_delivery:9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+      },
+    });
+    const timestamp = String(Math.floor(Date.now() / 1_000));
+    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
+
+    const response = await POST(
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      type: 4,
+      data: {
+        content: expect.stringContaining("Somente administradores"),
+        flags: 64,
+      },
+    });
+    expect(ticketDeliveryMocks.completeDiscordTicketDelivery).not.toHaveBeenCalled();
   });
 });

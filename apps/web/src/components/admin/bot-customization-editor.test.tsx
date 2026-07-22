@@ -218,6 +218,38 @@ describe("editor de mensagens do bot", () => {
     });
   });
 
+  it("edita a mensagem administrativa de conclusao da entrega", () => {
+    const { container } = render(
+      <BotCustomizationEditor
+        initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
+        initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
+        initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
+        updatedAt={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Ticket" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Botão para concluir a entrega" }), {
+      target: { value: "Finalizar e pedir feedback" },
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Mensagem de entrega e feedback" }), {
+      target: { value: "Entrega feita! Deixe seu feedback." },
+    });
+
+    expect(screen.getByText("Finalizar e pedir feedback")).toBeInTheDocument();
+    expect(
+      screen.getByText("Entrega feita! Deixe seu feedback.", { selector: "p" }),
+    ).toBeInTheDocument();
+
+    const serialized = container.querySelector<HTMLInputElement>('input[name="config"]');
+    expect(JSON.parse(serialized?.value ?? "{}")).toMatchObject({
+      ticket: {
+        deliveryButtonLabel: "Finalizar e pedir feedback",
+        deliveryMessageText: "Entrega feita! Deixe seu feedback.",
+      },
+    });
+  });
+
   it("mantém administradores de fechamento separados das pessoas notificadas", () => {
     const { container } = render(
       <BotCustomizationEditor
@@ -228,12 +260,16 @@ describe("editor de mensagens do bot", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Fechamento" }));
+    fireEvent.click(screen.getByRole("button", { name: "Administradores" }));
     expect(
-      screen.getByText("Nenhum administrador poderá fechar tickets pelo bot"),
+      screen.getByText(
+        "Nenhum administrador poderá concluir entregas ou fechar tickets pelo bot",
+      ),
     ).toBeInTheDocument();
 
-    const input = screen.getByRole("textbox", { name: "Discord ID autorizado a fechar" });
+    const input = screen.getByRole("textbox", {
+      name: "Discord ID administrador do ticket",
+    });
     fireEvent.change(input, { target: { value: "911402638975844354" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -252,6 +288,8 @@ describe("editor de mensagens do bot", () => {
 
     fireEvent.change(input, { target: { value: "911402638975844354" } });
     fireEvent.click(screen.getByRole("button", { name: "Adicionar administrador" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("já está na lista de fechamento");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "já está na lista de administradores",
+    );
   });
 });

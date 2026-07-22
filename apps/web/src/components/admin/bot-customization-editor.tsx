@@ -354,6 +354,29 @@ const EDITOR_SECTIONS: EditorSection[] = [
         ],
       },
       {
+        title: "Conclusão da entrega",
+        description:
+          "Botão administrativo e mensagem enviada ao comprador depois que os itens forem entregues.",
+        fields: [
+          f("ticket", "deliveryButtonLabel", "Botão para concluir a entrega", 80),
+          f("ticket", "deliveryMessageText", "Mensagem de entrega e feedback", 1_800, {
+            multiline: true,
+          }),
+          f("ticket", "deliverySuccessText", "Confirmação para o administrador", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "deliveryAlreadySentText", "Mensagem já enviada", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "deliveryUnauthorizedText", "Usuário sem permissão", 1_000, {
+            multiline: true,
+          }),
+          f("ticket", "deliveryUnavailableText", "Falha ao enviar", 1_000, {
+            multiline: true,
+          }),
+        ],
+      },
+      {
         title: "Fechamento do ticket",
         description: "Botões, confirmação e respostas usadas ao encerrar um atendimento.",
         fields: [
@@ -389,8 +412,9 @@ const EDITOR_SECTIONS: EditorSection[] = [
   },
   {
     id: "closing",
-    label: "Fechamento",
-    description: "Administradores autorizados a fechar os tickets pelo Discord.",
+    label: "Administradores",
+    description:
+      "Pessoas autorizadas a concluir entregas e fechar os tickets pelo Discord.",
     icon: ShieldCheck,
     preview: "ticket",
     groups: [],
@@ -520,7 +544,9 @@ export function BotCustomizationEditor({
       return;
     }
     if (ticketCloseAdminDiscordUserIds.includes(discordUserId)) {
-      setTicketCloseAdminDiscordUserIdError("Este Discord ID já está na lista de fechamento.");
+      setTicketCloseAdminDiscordUserIdError(
+        "Este Discord ID já está na lista de administradores.",
+      );
       return;
     }
     if (ticketCloseAdminDiscordUserIds.length >= MAX_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS) {
@@ -766,7 +792,7 @@ export function BotCustomizationEditor({
                     <div className="space-y-5">
                       <div className="rounded-xl border border-border bg-surface-muted p-4">
                         <Field
-                          label="Discord ID autorizado a fechar"
+                          label="Discord ID administrador do ticket"
                           htmlFor={`${formId}-ticket-close-admin-discord-user-id`}
                           hint={`${ticketCloseAdminDiscordUserIds.length}/${MAX_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS}`}
                           error={
@@ -817,10 +843,10 @@ export function BotCustomizationEditor({
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div>
                             <h4 className="text-sm font-semibold text-foreground">
-                              Administradores de fechamento
+                              Administradores do ticket
                             </h4>
                             <p className="mt-1 text-xs leading-5 text-muted">
-                              Somente estes Discord IDs poderão confirmar o encerramento pelo bot.
+                              Somente estes Discord IDs poderão concluir a entrega ou confirmar o encerramento pelo bot.
                             </p>
                           </div>
                           <Badge tone="neutral">
@@ -831,7 +857,7 @@ export function BotCustomizationEditor({
                         {ticketCloseAdminDiscordUserIds.length > 0 ? (
                           <ul
                             className="mt-4 space-y-2"
-                            aria-label="Discord IDs autorizados a fechar tickets"
+                            aria-label="Discord IDs administradores dos tickets"
                           >
                             {ticketCloseAdminDiscordUserIds.map((discordUserId) => (
                               <li
@@ -846,7 +872,7 @@ export function BotCustomizationEditor({
                                   variant="ghost"
                                   size="icon"
                                   className="size-8 shrink-0 text-danger"
-                                  aria-label={`Remover administrador de fechamento ${discordUserId}`}
+                                  aria-label={`Remover administrador do ticket ${discordUserId}`}
                                   onClick={() => removeTicketCloseAdminDiscordUserId(discordUserId)}
                                   disabled={pending}
                                 >
@@ -858,10 +884,10 @@ export function BotCustomizationEditor({
                         ) : (
                           <div className="mt-4 rounded-lg border border-dashed border-border-strong px-4 py-5 text-center">
                             <p className="text-sm font-medium text-muted-strong">
-                              Nenhum administrador poderá fechar tickets pelo bot
+                              Nenhum administrador poderá concluir entregas ou fechar tickets pelo bot
                             </p>
                             <p className="mt-1 text-xs leading-5 text-muted">
-                              Adicione um Discord ID para habilitar o encerramento administrativo.
+                              Adicione um Discord ID para habilitar as ações administrativas.
                             </p>
                           </div>
                         )}
@@ -869,8 +895,8 @@ export function BotCustomizationEditor({
 
                       <div className="rounded-xl border border-warning/25 bg-warning/[0.06] px-4 py-3 text-xs leading-5 text-[#e7d39b]">
                         Administradores desta lista recebem acesso aos tickets pagos para visualizar o
-                        atendimento e usar o botão de fechamento. Isso não os adiciona à lista de
-                        notificações.
+                        atendimento, concluir a entrega e fechar o ticket. Isso não os adiciona à
+                        lista de notificações.
                       </div>
                     </div>
                   ) : (

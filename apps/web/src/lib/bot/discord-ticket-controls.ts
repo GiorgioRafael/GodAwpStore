@@ -11,6 +11,7 @@ import {
 } from "./discord-api";
 import { gameNicknameInteractionId } from "./discord-game-nickname";
 import { ticketCloseInteractionId } from "./discord-ticket-close";
+import { ticketDeliveryInteractionId } from "./discord-ticket-delivery";
 import { normalizeTicketCloseAdminDiscordUserIds } from "./ticket-close-admins";
 import { normalizeTicketNotificationDiscordUserIds } from "./ticket-notifications";
 
@@ -104,6 +105,16 @@ export function buildPaidTicketControlComponents(
           custom_id: gameNicknameInteractionId(orderId),
           label: interpolateBotMessageLimited(
             customization.ticket.nicknameButtonLabel,
+            {},
+            80,
+          ),
+        },
+        {
+          type: 2,
+          style: 3,
+          custom_id: ticketDeliveryInteractionId(orderId),
+          label: interpolateBotMessageLimited(
+            customization.ticket.deliveryButtonLabel,
             {},
             80,
           ),

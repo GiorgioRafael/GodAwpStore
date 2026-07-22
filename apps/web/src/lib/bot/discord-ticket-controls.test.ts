@@ -63,7 +63,7 @@ describe("Discord ticket controls", () => {
     ]);
   });
 
-  it("repara retroativamente permissoes e os dois botoes da mensagem inicial", async () => {
+  it("repara retroativamente permissoes e os tres botoes da mensagem inicial", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
     const requests: Array<{ url: string; method: string; body: unknown; headers: Headers }> = [];
     const fetcher = controlsFetcher(requests, { permissionOverwrites: [], components: [] });
@@ -104,6 +104,12 @@ describe("Discord ticket controls", () => {
               style: 1,
               custom_id: `gwstore_game_nickname:${orderId}`,
               label: "Adicionar nick",
+            },
+            {
+              type: 2,
+              style: 3,
+              custom_id: `gwstore_ticket_delivery:${orderId}`,
+              label: "Marcar entrega concluída",
             },
             {
               type: 2,

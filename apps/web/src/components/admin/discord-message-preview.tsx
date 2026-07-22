@@ -272,9 +272,23 @@ function TicketPreview({
           <Send aria-hidden="true" className="size-3.5 shrink-0" />
           <DiscordText>{renderText(ticket.nicknameButtonLabel)}</DiscordText>
         </div>
+        <div className="inline-flex min-h-9 max-w-full items-center rounded-md bg-[#248046] px-3 text-sm font-medium text-white">
+          <DiscordText>{renderText(ticket.deliveryButtonLabel)}</DiscordText>
+        </div>
         <div className="inline-flex min-h-9 max-w-full items-center rounded-md bg-[#da373c] px-3 text-sm font-medium text-white">
           <DiscordText>{renderText(ticket.closeButtonLabel)}</DiscordText>
         </div>
+      </div>
+
+      <div className="rounded-md border border-[#248046]/40 bg-[#248046]/10 px-3 py-2.5">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[.14em] text-[#80d69b]">
+          Após concluir a entrega
+        </p>
+        <div className="mb-1"><DiscordMention label="comprador" /></div>
+        <DiscordText className="whitespace-pre-line text-sm leading-5 text-[#dbdee1]">
+          {renderText(ticket.deliveryMessageText)}
+        </DiscordText>
+        <div className="mt-1"><DiscordMention label="#feedbacks" /></div>
       </div>
 
       <div className="rounded-lg border border-[#da373c]/45 bg-[#2b2d31] p-4">
@@ -294,7 +308,8 @@ function TicketPreview({
         </div>
         <p className="mt-3 text-[11px] leading-5 text-[#949ba4]">
           {ticketCloseAdminDiscordUserIds.length.toLocaleString("pt-BR")} administrador(es)
-          autorizado(s). Essa permissão não gera menção na mensagem.
+          autorizado(s) a concluir a entrega e fechar o ticket. Essa permissão não gera menção
+          na mensagem.
         </p>
       </div>
 

@@ -146,6 +146,11 @@ describe("Discord paid-order ticket", () => {
             },
             {
               type: 2,
+              style: 3,
+              custom_id: `gwstore_ticket_delivery:${order.orderId}`,
+            },
+            {
+              type: 2,
               style: 4,
               custom_id: `gwstore_ticket_close:${order.orderId}`,
             },

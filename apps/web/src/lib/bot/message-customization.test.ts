@@ -40,6 +40,9 @@ describe("personalização das mensagens do bot", () => {
     expect(legacyTicket.ticket.closeUnauthorizedText).toBe(
       DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeUnauthorizedText,
     );
+    expect(legacyTicket.ticket.deliveryMessageText).toBe(
+      DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.deliveryMessageText,
+    );
   });
 
   it("interpola apenas tokens entregues e mantém desconhecidos literais", () => {
@@ -218,6 +221,41 @@ describe("personalização das mensagens do bot", () => {
         ticket: {
           ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
           closeUnauthorizedText: "",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("valida os textos administrativos da conclusao da entrega", () => {
+    const parsed = botMessageCustomizationSchema.safeParse({
+      ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticket: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+        deliveryButtonLabel: "Finalizar entrega",
+        deliveryMessageText: "Entrega pronta. Obrigado pela preferencia!",
+        deliverySuccessText: "Mensagem enviada.",
+        deliveryAlreadySentText: "Mensagem ja enviada.",
+        deliveryUnauthorizedText: "Sem permissao.",
+        deliveryUnavailableText: "Tente novamente.",
+      },
+    });
+    expect(parsed.success).toBe(true);
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          deliveryButtonLabel: "x".repeat(81),
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        ticket: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket,
+          deliveryMessageText: "",
         },
       }).success,
     ).toBe(false);

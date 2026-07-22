@@ -24,6 +24,11 @@ import {
   createNativeDiscordTicketClosePrompt,
   parseNativeDiscordTicketCloseInteraction,
 } from "@/lib/bot/discord-ticket-close";
+import {
+  completeDiscordTicketDelivery,
+  createNativeDiscordTicketDeliveryResponse,
+  parseNativeDiscordTicketDeliveryInteraction,
+} from "@/lib/bot/discord-ticket-delivery";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import {
   loadBotMessageCustomization,
@@ -59,7 +64,7 @@ export async function POST(request: Request) {
       }
 
       if (
-        native.scope === "ticket_close" &&
+        (native.scope === "ticket_close" || native.scope === "ticket_delivery") &&
         !isFreshDestructiveInteractionTimestamp(timestamp)
       ) {
         return new Response("Stale interaction", { status: 401 });
@@ -89,6 +94,25 @@ export async function POST(request: Request) {
           }
         });
         return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "ticket_delivery") {
+        const settings = await loadBotRuntimeSettingsQuickly();
+        const delivery = createNativeDiscordTicketDeliveryResponse(native.raw, settings);
+        if (delivery.authorized) {
+          after(async () => {
+            try {
+              await completeDiscordTicketDelivery(
+                native.raw,
+                await loadBotRuntimeSettings(),
+              );
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "erro desconhecido";
+              console.error(`[discord-ticket-delivery] ${message}`);
+            }
+          });
+        }
+        return Response.json(delivery.response);
       }
 
       if (native.scope === "game_nickname") {
@@ -238,6 +262,16 @@ async function readNativeDiscordInteraction(request: Request) {
   const ticketClose = parseNativeDiscordTicketCloseInteraction(raw);
   if (ticketClose) {
     return { body, raw, scope: "ticket_close" as const, interaction: ticketClose };
+  }
+
+  const ticketDelivery = parseNativeDiscordTicketDeliveryInteraction(raw);
+  if (ticketDelivery) {
+    return {
+      body,
+      raw,
+      scope: "ticket_delivery" as const,
+      interaction: ticketDelivery,
+    };
   }
 
   const gameNickname = parseNativeDiscordGameNicknameInteraction(raw);

@@ -97,6 +97,12 @@ export type BotMessageCustomization = {
     nicknameInvalidText: string;
     nicknameUnauthorizedText: string;
     nicknameUnavailableText: string;
+    deliveryButtonLabel: string;
+    deliveryMessageText: string;
+    deliverySuccessText: string;
+    deliveryAlreadySentText: string;
+    deliveryUnauthorizedText: string;
+    deliveryUnavailableText: string;
     closeButtonLabel: string;
     closeConfirmationText: string;
     closeConfirmButtonLabel: string;
@@ -230,6 +236,21 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
       "⛔ Somente o comprador deste pedido pode informar o nick no jogo.",
     nicknameUnavailableText:
       "⚠️ Não foi possível vincular o nick a este pedido. Confirme se o pagamento foi aprovado e tente novamente.",
+    deliveryButtonLabel: "Marcar entrega concluída",
+    deliveryMessageText: [
+      "✅ Entrega concluída!",
+      "",
+      "Se puder, deixa um feedback aqui no servidor 🙏",
+      "Isso ajuda muito a loja a crescer.",
+      "",
+      "Obrigado pela preferência 👑",
+    ].join("\n"),
+    deliverySuccessText: "✅ Mensagem de entrega enviada ao comprador.",
+    deliveryAlreadySentText: "✅ A mensagem de entrega já foi enviada neste ticket.",
+    deliveryUnauthorizedText:
+      "⛔ Somente administradores autorizados podem concluir a entrega.",
+    deliveryUnavailableText:
+      "⚠️ Não foi possível enviar a mensagem de entrega agora. Tente novamente.",
     closeButtonLabel: "Fechar ticket",
     closeConfirmationText:
       "⚠️ Tem certeza de que deseja fechar este ticket? O canal será excluído e esta ação não poderá ser desfeita.",
@@ -324,6 +345,12 @@ export const BOT_MESSAGE_FIELD_LIMITS = {
   "ticket.nicknameInvalidText": 1_000,
   "ticket.nicknameUnauthorizedText": 1_000,
   "ticket.nicknameUnavailableText": 1_000,
+  "ticket.deliveryButtonLabel": 80,
+  "ticket.deliveryMessageText": 1_800,
+  "ticket.deliverySuccessText": 1_000,
+  "ticket.deliveryAlreadySentText": 1_000,
+  "ticket.deliveryUnauthorizedText": 1_000,
+  "ticket.deliveryUnavailableText": 1_000,
   "ticket.closeButtonLabel": 80,
   "ticket.closeConfirmationText": 1_000,
   "ticket.closeConfirmButtonLabel": 80,
