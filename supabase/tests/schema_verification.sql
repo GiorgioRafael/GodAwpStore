@@ -776,13 +776,13 @@ begin
     raise exception 'Product reorder function execute privileges are invalid';
   end if;
 
-  if exists (
+  if not exists (
     select 1
     from pg_proc
     where oid = 'public.admin_reorder_products(uuid[])'::regprocedure
       and prosecdef
   ) then
-    raise exception 'Product reorder function must remain security invoker';
+    raise exception 'Product reorder function must preserve the table access boundary';
   end if;
 end
 $$;
