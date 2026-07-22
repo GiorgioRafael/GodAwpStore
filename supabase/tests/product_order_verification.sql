@@ -70,13 +70,10 @@ end
 $$;
 
 reset role;
-select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-set local role service_role;
 
 do $$
 declare
   v_ordered_ids uuid[];
-  v_reordered_count integer;
 begin
   select array_agg(
     product.id
@@ -93,23 +90,25 @@ begin
   into v_ordered_ids
   from public.products as product;
 
+  perform set_config(
+    'app.product_order_verification_ids',
+    v_ordered_ids::text,
+    true
+  );
+end
+$$;
+
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+set local role service_role;
+
+do $$
+declare
+  v_ordered_ids uuid[] := current_setting('app.product_order_verification_ids')::uuid[];
+  v_reordered_count integer;
+begin
   v_reordered_count := public.admin_reorder_products(v_ordered_ids);
   if v_reordered_count <> cardinality(v_ordered_ids) then
     raise exception 'product reorder returned the wrong row count';
-  end if;
-
-  if not exists (
-    select 1
-    from public.products
-    where id = '85000000-0000-4000-8000-000000000002'
-      and sort_order = 0
-  ) or not exists (
-    select 1
-    from public.products
-    where id = '85000000-0000-4000-8000-000000000001'
-      and sort_order = 1
-  ) then
-    raise exception 'product order was not persisted as requested';
   end if;
 
   if public.admin_reorder_products(v_ordered_ids) <> cardinality(v_ordered_ids) then
@@ -133,6 +132,25 @@ end
 $$;
 
 reset role;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.products
+    where id = '85000000-0000-4000-8000-000000000002'
+      and sort_order = 0
+  ) or not exists (
+    select 1
+    from public.products
+    where id = '85000000-0000-4000-8000-000000000001'
+      and sort_order = 1
+  ) then
+    raise exception 'product order was not persisted as requested';
+  end if;
+end
+$$;
+
 rollback;
 
 select 'Product order verification passed' as result;
