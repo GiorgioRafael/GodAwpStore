@@ -32,6 +32,22 @@ const boosterDiscount = {
   discount_bps: 500,
   minimum_subtotal_cents: 5_000,
 };
+const noRank = {
+  guildId: "guild-row",
+  buyerDiscordId: input.buyerDiscordId,
+  totalSpentCents: 0,
+  currentRank: null,
+  nextRank: {
+    code: "bronze_i",
+    name: "Bronze I",
+    roleName: "🥉 Cliente Bronze I",
+    minimumSpendCents: 500,
+    discountBps: 100,
+    color: 9_194_031,
+    sortOrder: 1,
+  },
+  amountToNextRankCents: 500,
+};
 
 function repository(overrides: Partial<BotCommerceRepository> = {}) {
   const base: BotCommerceRepository = {
@@ -44,6 +60,7 @@ function repository(overrides: Partial<BotCommerceRepository> = {}) {
     })),
     findPurchasableProduct: vi.fn(async () => product),
     countAvailableStock: vi.fn(async () => 2),
+    getCustomerRankProgress: vi.fn(async () => noRank),
     getCommissionBps: vi.fn(async () => 1_000),
     createAwaitingPaymentOrder: vi.fn(async () => ({
       id: "order-row",
@@ -263,6 +280,74 @@ describe("BotCommerceService", () => {
         totalPriceCents: 4_750,
       }),
     );
+  });
+
+  it("aplica o desconto do ranking e recalcula o mínimo final da LivePix", async () => {
+    const bronze = {
+      ...noRank,
+      totalSpentCents: 500,
+      currentRank: noRank.nextRank,
+      nextRank: { ...noRank.nextRank, code: "bronze_ii", name: "Bronze II", minimumSpendCents: 1_500, sortOrder: 2 },
+      amountToNextRankCents: 1_000,
+    };
+    const cheapProduct = { ...product, minimumPriceCents: 10 };
+    const repo = repository({
+      findPurchasableProduct: vi.fn(async () => cheapProduct),
+      countAvailableStock: vi.fn(async () => 20),
+      getCustomerRankProgress: vi.fn(async () => bronze),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(service.purchase({ ...input, quantity: 10 })).resolves.toEqual({
+      kind: "quantity_below_minimum",
+      minimumQuantity: 11,
+      minimumTotalCents: 109,
+    });
+
+    await expect(
+      service.purchase({
+        ...input,
+        interactionId: "323456789012345679",
+        quantity: 11,
+      }),
+    ).resolves.toMatchObject({
+      kind: "created",
+      subtotalPriceCents: 110,
+      discountBps: 100,
+      discountAmountCents: 1,
+      discountReason: "customer_rank",
+      totalPriceCents: 109,
+    });
+  });
+
+  it("usa o maior benefício e atribui o empate ao ranking", async () => {
+    const goldRank = {
+      ...noRank,
+      totalSpentCents: 25_000,
+      currentRank: {
+        code: "ouro_i",
+        name: "Ouro I",
+        roleName: "🥇 Cliente Ouro I",
+        minimumSpendCents: 25_000,
+        discountBps: 500,
+        color: 12_024_095,
+        sortOrder: 7,
+      },
+    };
+    const boosterProduct = { ...product, minimumPriceCents: 5_000 };
+    const repo = repository({
+      findPurchasableProduct: vi.fn(async () => boosterProduct),
+      getCustomerRankProgress: vi.fn(async () => goldRank),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.purchase({ ...input, isServerBooster: true }),
+    ).resolves.toMatchObject({
+      discountBps: 500,
+      discountReason: "customer_rank",
+      totalPriceCents: 4_750,
+    });
   });
 
   it("recalcula quantidade minima e total quando o admin altera o preco", async () => {

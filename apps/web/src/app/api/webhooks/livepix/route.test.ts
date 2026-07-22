@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   completeTicket: vi.fn(),
   failTicket: vi.fn(),
   ensurePaidOrderTicket: vi.fn(),
+  synchronizeDiscordCustomerRankRole: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -20,6 +21,9 @@ vi.mock("@/lib/livepix/runtime", () => ({
 vi.mock("@/lib/bot/discord-ticket", () => ({
   ensurePaidOrderTicket: mocks.ensurePaidOrderTicket,
 }));
+vi.mock("@/lib/bot/discord-customer-rank", () => ({
+  synchronizeDiscordCustomerRankRole: mocks.synchronizeDiscordCustomerRankRole,
+}));
 
 import { POST } from "./route";
 
@@ -27,7 +31,7 @@ const clientId = "11111111-1111-4111-8111-111111111111";
 const orderId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
 
 afterEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   vi.unstubAllEnvs();
 });
 
@@ -51,6 +55,8 @@ describe("LivePix webhook route", () => {
       orderId,
       orderStatus: "paid",
       firstConfirmation: true,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
     });
     mocks.claimTicket.mockResolvedValue({
       orderId,
@@ -79,6 +85,10 @@ describe("LivePix webhook route", () => {
       paidAmountCents: 200,
     });
     expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
+    expect(mocks.synchronizeDiscordCustomerRankRole).toHaveBeenCalledWith({
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
   });
 
   it("aceita o webhook tardio sem abrir ticket para o pedido cancelado", async () => {
@@ -100,9 +110,45 @@ describe("LivePix webhook route", () => {
     expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
   });
 
+  it("continua abrindo o ticket quando só a sincronização do cargo falha", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({
+      orderId,
+      orderStatus: "paid",
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
+    mocks.synchronizeDiscordCustomerRankRole.mockRejectedValue(
+      new Error("Manage Roles ausente"),
+    );
+    mocks.claimTicket.mockResolvedValue({
+      orderId,
+      claimed: true,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+      productName: "Unicórnio",
+      quantity: 1,
+      paidAmountCents: 100,
+      ticketStatus: "creating",
+      existingChannelId: null,
+    });
+    mocks.ensurePaidOrderTicket.mockResolvedValue({ channelId: "323456789012345678" });
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, ticket: "open" });
+    expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
+  });
+
   it("libera o lease e pede retry quando o Discord falha", async () => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
-    mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus: "paid" });
+    mocks.reconcilePayment.mockResolvedValue({
+      orderId,
+      orderStatus: "paid",
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
     mocks.claimTicket.mockResolvedValue({
       orderId,
       claimed: true,

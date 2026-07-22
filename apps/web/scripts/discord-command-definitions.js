@@ -11,4 +11,10 @@ export const discordCommands = Object.freeze([
     type: 1,
     dm_permission: false,
   }),
+  Object.freeze({
+    name: "rank",
+    description: "Mostra seu total gasto e o progresso até o próximo ranking",
+    type: 1,
+    dm_permission: false,
+  }),
 ]);

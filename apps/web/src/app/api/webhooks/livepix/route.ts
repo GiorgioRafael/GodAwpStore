@@ -1,4 +1,5 @@
 import { ensurePaidOrderTicket } from "@/lib/bot/discord-ticket";
+import { synchronizeDiscordCustomerRankRole } from "@/lib/bot/discord-customer-rank";
 import { readLimitedBody, RequestBodyTooLargeError } from "@/lib/http/limited-body";
 import { getLivePixPaymentService } from "@/lib/livepix/runtime";
 import { parseLivePixPaymentWebhook } from "@/lib/livepix/webhook";
@@ -38,6 +39,17 @@ export async function POST(request: Request) {
 
     if (!["paid", "processing", "delivered"].includes(confirmation.orderStatus)) {
       return Response.json({ received: true, ticket: "not_applicable" });
+    }
+
+    try {
+      await synchronizeDiscordCustomerRankRole({
+        discordGuildId: confirmation.discordGuildId,
+        buyerDiscordId: confirmation.buyerDiscordId,
+      });
+    } catch (error) {
+      // Payment and ticket delivery must not be rolled back by a temporary
+      // Discord role failure. A webhook replay or /rank retries the sync.
+      logWebhookError("customer_rank_role", error);
     }
 
     const claim = await payments.claimTicket(confirmation.orderId);

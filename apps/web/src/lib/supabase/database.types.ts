@@ -186,6 +186,34 @@ type GuildRow = {
   updated_at: string;
 };
 
+type CustomerRankLevelRow = {
+  code: string;
+  name: string;
+  role_name: string;
+  minimum_spend_cents: number;
+  discount_bps: number;
+  color: number;
+  sort_order: number;
+  created_at: string;
+};
+
+type GuildCustomerRankRoleRow = {
+  guild_id: string;
+  rank_code: string;
+  discord_role_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type GuildCustomerRankRoleSyncRow = {
+  guild_id: string;
+  claim_token: string | null;
+  claimed_at: string | null;
+  completed_at: string | null;
+  last_error: string | null;
+  updated_at: string;
+};
+
 type GiveawayRow = {
   id: string;
   public_slug: string;
@@ -544,6 +572,57 @@ export type Database = {
             ["whitelist_entry_id"],
             "whitelist_entries",
             ["id"]
+          >,
+        ];
+      };
+      customer_rank_levels: {
+        Row: CustomerRankLevelRow;
+        Insert: InsertRow<
+          CustomerRankLevelRow,
+          | "code"
+          | "name"
+          | "role_name"
+          | "minimum_spend_cents"
+          | "discount_bps"
+          | "color"
+          | "sort_order"
+        >;
+        Update: UpdateRow<CustomerRankLevelRow>;
+        Relationships: [];
+      };
+      guild_customer_rank_roles: {
+        Row: GuildCustomerRankRoleRow;
+        Insert: InsertRow<
+          GuildCustomerRankRoleRow,
+          "guild_id" | "rank_code" | "discord_role_id"
+        >;
+        Update: UpdateRow<GuildCustomerRankRoleRow>;
+        Relationships: [
+          Relationship<
+            "guild_customer_rank_roles_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
+          Relationship<
+            "guild_customer_rank_roles_rank_code_fkey",
+            ["rank_code"],
+            "customer_rank_levels",
+            ["code"]
+          >,
+        ];
+      };
+      guild_customer_rank_role_syncs: {
+        Row: GuildCustomerRankRoleSyncRow;
+        Insert: InsertRow<GuildCustomerRankRoleSyncRow, "guild_id">;
+        Update: UpdateRow<GuildCustomerRankRoleSyncRow>;
+        Relationships: [
+          Relationship<
+            "guild_customer_rank_role_syncs_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"],
+            true
           >,
         ];
       };
@@ -1338,6 +1417,28 @@ export type Database = {
           out_of_stock: boolean;
         }[];
       };
+      create_ranked_bot_order_with_reservation: {
+        Args: {
+          p_interaction_id: string;
+          p_guild_id: string;
+          p_whitelist_entry_id: string;
+          p_product_id: string;
+          p_buyer_discord_id: string;
+          p_quantity: number;
+          p_subtotal_price_cents: number;
+          p_sale_price_cents: number;
+          p_discount_bps: number;
+          p_discount_amount_cents: number;
+          p_discount_reason: string | null;
+          p_commission_bps: number;
+        };
+        Returns: {
+          created_order_id: string | null;
+          resulting_status: Database["public"]["Enums"]["order_status"];
+          was_created: boolean;
+          out_of_stock: boolean;
+        }[];
+      };
       create_bot_cart_with_reservation: {
         Args: {
           p_interaction_id: string;
@@ -1354,6 +1455,62 @@ export type Database = {
           was_created: boolean;
           out_of_stock: boolean;
         }[];
+      };
+      create_ranked_bot_cart_with_reservation: {
+        Args: {
+          p_interaction_id: string;
+          p_guild_id: string;
+          p_whitelist_entry_id: string;
+          p_buyer_discord_id: string;
+          p_items: Json;
+          p_discount_bps: number;
+          p_discount_reason: string | null;
+          p_commission_bps: number;
+        };
+        Returns: {
+          checkout_order_id: string | null;
+          was_created: boolean;
+          out_of_stock: boolean;
+        }[];
+      };
+      get_customer_rank_progress: {
+        Args: {
+          p_guild_id: string;
+          p_buyer_discord_id: string;
+        };
+        Returns: {
+          guild_id: string;
+          buyer_discord_id: string;
+          total_spent_cents: number;
+          current_rank_code: string | null;
+          current_rank_name: string | null;
+          current_rank_role_name: string | null;
+          current_rank_minimum_spend_cents: number | null;
+          current_rank_discount_bps: number | null;
+          current_rank_color: number | null;
+          current_rank_sort_order: number | null;
+          next_rank_code: string | null;
+          next_rank_name: string | null;
+          next_rank_role_name: string | null;
+          next_rank_minimum_spend_cents: number | null;
+          next_rank_discount_bps: number | null;
+          next_rank_color: number | null;
+          next_rank_sort_order: number | null;
+          amount_to_next_rank_cents: number;
+        }[];
+      };
+      claim_customer_rank_role_sync: {
+        Args: { p_guild_id: string; p_claim_token: string };
+        Returns: boolean;
+      };
+      release_customer_rank_role_sync: {
+        Args: {
+          p_guild_id: string;
+          p_claim_token: string;
+          p_succeeded: boolean;
+          p_error?: string | null;
+        };
+        Returns: boolean;
       };
     };
     Enums: {

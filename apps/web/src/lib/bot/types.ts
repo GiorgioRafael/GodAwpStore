@@ -1,4 +1,8 @@
 import type { BoosterDiscountConfiguration } from "./booster-discount";
+import type {
+  CustomerDiscountReason,
+  CustomerRankProgress,
+} from "./customer-rank";
 import type { DiscordProductEmoji } from "./discord-product-emoji-shared";
 
 export const MAXIMUM_CART_ITEMS = 3;
@@ -58,7 +62,7 @@ export type ExistingOrder = {
   salePriceCents: number;
   discountBps: number;
   discountAmountCents: number;
-  discountReason: "server_booster" | null;
+  discountReason: CustomerDiscountReason;
   status: string;
 };
 
@@ -93,7 +97,7 @@ export type ExistingPurchase = {
   salePriceCents: number;
   discountBps: number;
   discountAmountCents: number;
-  discountReason: "server_booster" | null;
+  discountReason: CustomerDiscountReason;
   status: string;
 };
 
@@ -110,6 +114,10 @@ export interface BotCommerceRepository {
   ensureGuild(identity: DiscordGuildIdentity): Promise<RegisteredGuild>;
   findPurchasableProduct(productId: string): Promise<PurchasableProduct | null>;
   countAvailableStock(productId: string): Promise<number>;
+  getCustomerRankProgress(
+    guildId: string,
+    buyerDiscordId: string,
+  ): Promise<CustomerRankProgress>;
   getCommissionBps(whitelistEntryId: string | null): Promise<number>;
   createAwaitingPaymentOrder(input: {
     interactionId: string;
@@ -122,7 +130,7 @@ export interface BotCommerceRepository {
     totalPriceCents: number;
     discountBps: number;
     discountAmountCents: number;
-    discountReason: "server_booster" | null;
+    discountReason: CustomerDiscountReason;
     commissionBps: number;
   }): Promise<OrderCreation>;
   findPurchaseByInteraction(interactionId: string): Promise<ExistingPurchase | null>;
@@ -135,7 +143,7 @@ export interface BotCommerceRepository {
     buyerDiscordId: string;
     items: CartItemInput[];
     discountBps: number;
-    discountReason: "server_booster" | null;
+    discountReason: CustomerDiscountReason;
     commissionBps: number;
   }): Promise<PurchaseCreation>;
 }
@@ -151,7 +159,7 @@ export type PurchaseResult =
       totalPriceCents: number;
       discountBps: number;
       discountAmountCents: number;
-      discountReason: "server_booster" | null;
+      discountReason: CustomerDiscountReason;
     }
   | {
       kind: "quantity_below_minimum";
@@ -178,7 +186,7 @@ export type CartPurchaseResult =
       totalPriceCents: number;
       discountBps: number;
       discountAmountCents: number;
-      discountReason: "server_booster" | null;
+      discountReason: CustomerDiscountReason;
     }
   | { kind: "total_below_minimum"; minimumTotalCents: number }
   | {

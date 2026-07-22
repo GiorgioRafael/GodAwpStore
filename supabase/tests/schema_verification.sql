@@ -19,6 +19,9 @@ begin
     'inventory_batches',
     'inventory_units',
     'guilds',
+    'customer_rank_levels',
+    'guild_customer_rank_roles',
+    'guild_customer_rank_role_syncs',
     'giveaways',
     'giveaway_prizes',
     'giveaway_entries',
@@ -66,6 +69,11 @@ begin
     'public.admin_change_inventory_status(uuid,text,text)',
     'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
     'public.create_bot_cart_with_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
+    'public.create_ranked_bot_order_with_reservation(text,uuid,uuid,uuid,text,integer,bigint,bigint,integer,bigint,text,integer)',
+    'public.create_ranked_bot_cart_with_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
+    'public.get_customer_rank_progress(uuid,text)',
+    'public.claim_customer_rank_role_sync(uuid,uuid)',
+    'public.release_customer_rank_role_sync(uuid,uuid,boolean,text)',
     'public.submit_paid_order_game_nickname(uuid,text,text,text,text)',
     'public.claim_discord_ticket_close(uuid,text,text,text,uuid)',
     'public.complete_discord_ticket_close(uuid,text,uuid)',
@@ -166,6 +174,10 @@ begin
 
   if to_regclass('public.orders_paid_created_at_idx') is null then
     raise exception 'The paid order period index is missing';
+  end if;
+
+  if to_regclass('public.orders_customer_rank_spend_idx') is null then
+    raise exception 'The customer rank spend index is missing';
   end if;
 
   if not exists (

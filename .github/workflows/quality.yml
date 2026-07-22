@@ -69,6 +69,11 @@ jobs:
           PGPASSWORD: postgres
         run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/schema_verification.sql
 
+      - name: Validar ranking de clientes
+        env:
+          PGPASSWORD: postgres
+        run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/customer_rank_verification.sql
+
       - name: Executar testes transacionais
         env:
           PGPASSWORD: postgres

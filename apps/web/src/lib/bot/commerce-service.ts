@@ -10,9 +10,11 @@ import type {
 import {
   calculateOrderTotalCents,
   LIVEPIX_MINIMUM_BRL_CENTS,
-  minimumLivePixQuantity,
 } from "@/lib/livepix/limits";
-import { applyBoosterDiscount } from "./booster-discount";
+import {
+  applyBestCustomerDiscount,
+  minimumLivePixQuantityWithCustomerDiscount,
+} from "./customer-rank";
 import { MAXIMUM_CART_ITEMS as MAX_CART_ITEMS } from "./types";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -90,23 +92,33 @@ export class BotCommerceService {
       return { kind: "guild_not_authorized" };
     }
 
-    const minimumQuantity = minimumLivePixQuantity(product.minimumPriceCents);
+    const rank = await this.repository.getCustomerRankProgress(
+      guild.id,
+      input.buyerDiscordId,
+    );
+    const minimumPurchase = minimumLivePixQuantityWithCustomerDiscount({
+      unitPriceCents: product.minimumPriceCents,
+      boosterConfiguration: guild.boosterDiscount,
+      isServerBooster: input.isServerBooster,
+      rank,
+    });
     const subtotalPriceCents = calculateOrderTotalCents(product.minimumPriceCents, input.quantity);
     const pricing = subtotalPriceCents === null
       ? null
-      : applyBoosterDiscount(
+      : applyBestCustomerDiscount(
           subtotalPriceCents,
           guild.boosterDiscount,
           input.isServerBooster,
+          rank,
         );
-    if (!minimumQuantity || !pricing) {
+    if (!minimumPurchase || !pricing) {
       return { kind: "invalid_quantity" };
     }
     if (pricing.totalPriceCents < LIVEPIX_MINIMUM_BRL_CENTS) {
       return {
         kind: "quantity_below_minimum",
-        minimumQuantity,
-        minimumTotalCents: product.minimumPriceCents * minimumQuantity,
+        minimumQuantity: minimumPurchase.quantity,
+        minimumTotalCents: minimumPurchase.totalPriceCents,
       };
     }
 
@@ -234,10 +246,15 @@ export class BotCommerceService {
       (sum, item) => sum + (item?.subtotalPriceCents ?? 0),
       0,
     );
-    const pricing = applyBoosterDiscount(
+    const rank = await this.repository.getCustomerRankProgress(
+      guild.id,
+      input.buyerDiscordId,
+    );
+    const pricing = applyBestCustomerDiscount(
       subtotalPriceCents,
       guild.boosterDiscount,
       input.isServerBooster,
+      rank,
     );
     if (!pricing) return { kind: "invalid_quantity" };
     if (pricing.totalPriceCents < LIVEPIX_MINIMUM_BRL_CENTS) {

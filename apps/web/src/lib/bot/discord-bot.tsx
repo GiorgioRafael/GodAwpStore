@@ -34,6 +34,12 @@ import {
 import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
+import {
+  customerRankCard,
+  customerRankUnavailableCard,
+} from "./customer-rank-card";
+import { SupabaseCustomerRankRepository } from "./customer-rank-repository";
+import { synchronizeDiscordCustomerRankRole } from "./discord-customer-rank";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { encodeDiscordCartSelection } from "./discord-cart-selection";
 import {
@@ -80,7 +86,7 @@ function createBot() {
   const discord = new GWStoreDiscordAdapter({
     contentFormat: DiscordContentFormat.ComponentsV2,
     interactionFlags: ({ command }) =>
-      command === "/loja" || command === "/ajuda"
+      command === "/loja" || command === "/ajuda" || command === "/rank"
         ? DiscordInteractionResponseFlag.Ephemeral
         : undefined,
   });
@@ -121,6 +127,44 @@ function createBot() {
       await event.channel.post(
         errorCard(customization.error.storeUnavailable, customization),
       );
+    }
+  });
+
+  bot.onSlashCommand("/rank", async (event) => {
+    try {
+      const context = readDiscordInteraction(event.raw, event.user.userId);
+      if (!context.guildId || !context.userId) {
+        await event.channel.post(customerRankUnavailableCard());
+        return;
+      }
+
+      const identity = await fetchDiscordGuildIdentity(context.guildId);
+      const guild = await service.registerGuild(identity);
+      if (!guild) {
+        await event.channel.post(customerRankUnavailableCard());
+        return;
+      }
+
+      const repository = new SupabaseCustomerRankRepository();
+      const progress = await repository.getProgress(guild.id, context.userId);
+      await event.channel.post(customerRankCard(progress));
+
+      try {
+        await synchronizeDiscordCustomerRankRole(
+          {
+            discordGuildId: context.guildId,
+            buyerDiscordId: context.userId,
+            guildId: guild.id,
+            progress,
+          },
+          repository,
+        );
+      } catch (error) {
+        logBotError("customer_rank_role", error);
+      }
+    } catch (error) {
+      logBotError("customer_rank", error);
+      await event.channel.post(customerRankUnavailableCard());
     }
   });
 
@@ -407,6 +451,9 @@ function helpCard(
           <CardText key={`help-line-${index}`}>{line}</CardText>
         ),
       )}
+      <CardText>
+        🏆 Use **/rank** para ver seu total gasto, desconto atual e quanto falta para o próximo nível.
+      </CardText>
     </Card>
   );
 }
@@ -618,7 +665,7 @@ export function purchaseResultCard(
         {message.unitPriceLabel ? (
           <CardText>{message.unitPriceLabel} {formatBrl(result.unitPriceCents)}</CardText>
         ) : null}
-        {result.discountReason === "server_booster" && message.subtotalLabel ? (
+        {result.discountAmountCents > 0 && message.subtotalLabel ? (
           <CardText>{message.subtotalLabel} {formatBrl(result.subtotalPriceCents)}</CardText>
         ) : null}
         {result.discountReason === "server_booster" && message.discountLabel ? (
@@ -626,6 +673,11 @@ export function purchaseResultCard(
             {interpolateBotMessage(message.discountLabel, {
               discount_percent: formatPercentage(result.discountBps),
             })} -{formatBrl(result.discountAmountCents)}
+          </CardText>
+        ) : null}
+        {result.discountReason === "customer_rank" ? (
+          <CardText>
+            🏆 **Desconto do seu ranking ({formatPercentage(result.discountBps)}):** -{formatBrl(result.discountAmountCents)}
           </CardText>
         ) : null}
         {message.totalLabel ? (
@@ -699,7 +751,7 @@ export function cartPurchaseResultCard(
             {productEmoji(item.productName)} **{item.productName}** • 🔢 **{item.quantity} unidade{item.quantity === 1 ? "" : "s"}** • {formatBrl(item.totalPriceCents)}
           </CardText>
         ))}
-        {result.discountReason === "server_booster" && message.subtotalLabel ? (
+        {result.discountAmountCents > 0 && message.subtotalLabel ? (
           <CardText>{message.subtotalLabel} {formatBrl(result.subtotalPriceCents)}</CardText>
         ) : null}
         {result.discountReason === "server_booster" && message.discountLabel ? (
@@ -707,6 +759,11 @@ export function cartPurchaseResultCard(
             {interpolateBotMessage(message.discountLabel, {
               discount_percent: formatPercentage(result.discountBps),
             })} -{formatBrl(result.discountAmountCents)}
+          </CardText>
+        ) : null}
+        {result.discountReason === "customer_rank" ? (
+          <CardText>
+            🏆 **Desconto do seu ranking ({formatPercentage(result.discountBps)}):** -{formatBrl(result.discountAmountCents)}
           </CardText>
         ) : null}
         {message.totalLabel ? (

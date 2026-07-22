@@ -13,6 +13,7 @@ import type {
   RegisteredGuild,
 } from "./types";
 import { readBoosterDiscountConfiguration } from "./booster-discount";
+import { SupabaseCustomerRankRepository } from "./customer-rank-repository";
 import {
   discordProductImageSourceSha256,
   readDiscordProductEmoji,
@@ -125,7 +126,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
           salePriceCents: safeInteger(data.sale_price_cents),
           discountBps: safeInteger(data.discount_bps),
           discountAmountCents: safeInteger(data.discount_amount_cents),
-          discountReason: data.discount_reason === "server_booster" ? "server_booster" : null,
+          discountReason: readDiscountReason(data.discount_reason),
           status: data.status,
         }
       : null;
@@ -180,7 +181,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         (sum, row) => sum + safeInteger(row.discount_amount_cents),
         0,
       ),
-      discountReason: lead.discount_reason === "server_booster" ? "server_booster" : null,
+      discountReason: readDiscountReason(lead.discount_reason),
       status: lead.status,
     };
   }
@@ -288,6 +289,13 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     return safeInteger(data?.available_count ?? 0);
   }
 
+  getCustomerRankProgress(guildId: string, buyerDiscordId: string) {
+    return new SupabaseCustomerRankRepository(this.client).getProgress(
+      guildId,
+      buyerDiscordId,
+    );
+  }
+
   async countAvailableStocks(productIds: string[]): Promise<Map<string, number>> {
     if (productIds.length === 0) return new Map();
     const { data, error } = await this.client
@@ -331,14 +339,14 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     totalPriceCents: number;
     discountBps: number;
     discountAmountCents: number;
-    discountReason: "server_booster" | null;
+    discountReason: "server_booster" | "customer_rank" | null;
     commissionBps: number;
   }): Promise<OrderCreation> {
     if (!input.whitelistEntryId) {
       throw new Error("Servidor sem vendedor autorizado.");
     }
     const { data, error } = await this.client
-      .rpc("create_bot_order_with_reservation", {
+      .rpc("create_ranked_bot_order_with_reservation", {
         p_interaction_id: input.interactionId,
         p_guild_id: input.guildId,
         p_whitelist_entry_id: input.whitelistEntryId,
@@ -369,14 +377,14 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     buyerDiscordId: string;
     items: CartItemInput[];
     discountBps: number;
-    discountReason: "server_booster" | null;
+    discountReason: "server_booster" | "customer_rank" | null;
     commissionBps: number;
   }) {
     if (!input.whitelistEntryId) {
       throw new Error("Servidor sem vendedor autorizado.");
     }
     const { data, error } = await this.client
-      .rpc("create_bot_cart_with_reservation", {
+      .rpc("create_ranked_bot_cart_with_reservation", {
         p_interaction_id: input.interactionId,
         p_guild_id: input.guildId,
         p_whitelist_entry_id: input.whitelistEntryId,
@@ -420,4 +428,8 @@ function safeInteger(value: number) {
 
 function clampCommission(value: number) {
   return Number.isInteger(value) && value >= 0 && value <= 10_000 ? value : 0;
+}
+
+function readDiscountReason(value: string | null) {
+  return value === "server_booster" || value === "customer_rank" ? value : null;
 }
