@@ -68,6 +68,8 @@ begin
     'public.admin_check_inventory_fingerprints(text[])',
     'public.admin_change_inventory_status(uuid,text,text)',
     'public.get_paid_order_summary(timestamp with time zone,timestamp with time zone)',
+    'public.get_admin_order_metrics()',
+    'public.get_admin_order_daily_series()',
     'public.create_bot_cart_with_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
     'public.create_ranked_bot_order_with_reservation(text,uuid,uuid,uuid,text,integer,bigint,bigint,integer,bigint,text,integer)',
     'public.create_ranked_bot_cart_with_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
@@ -174,6 +176,22 @@ begin
 
   if to_regclass('public.orders_paid_created_at_idx') is null then
     raise exception 'The paid order period index is missing';
+  end if;
+
+  if to_regclass('public.orders_admin_created_at_id_idx') is null
+    or to_regclass('public.orders_admin_status_created_at_id_idx') is null
+    or to_regclass('public.orders_admin_awaiting_payment_created_idx') is null then
+    raise exception 'One or more admin order analytics indexes are missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'orders'
+  ) then
+    raise exception 'public.orders is not part of the supabase_realtime publication';
   end if;
 
   if to_regclass('public.orders_customer_rank_spend_idx') is null then
@@ -365,6 +383,13 @@ begin
     'EXECUTE'
   ) then
     raise exception 'Paid order summary RPC execute privileges are invalid';
+  end if;
+
+  if not has_function_privilege('authenticated', 'public.get_admin_order_metrics()', 'EXECUTE')
+    or not has_function_privilege('authenticated', 'public.get_admin_order_daily_series()', 'EXECUTE')
+    or has_function_privilege('anon', 'public.get_admin_order_metrics()', 'EXECUTE')
+    or has_function_privilege('anon', 'public.get_admin_order_daily_series()', 'EXECUTE') then
+    raise exception 'Admin order analytics RPC execute privileges are invalid';
   end if;
 
   if not has_function_privilege(

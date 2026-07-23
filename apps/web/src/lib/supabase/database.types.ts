@@ -1395,6 +1395,26 @@ export type Database = {
           total_received_cents: number;
         }[];
       };
+      get_admin_order_metrics: {
+        Args: Record<never, never>;
+        Returns: {
+          orders_today_count: number;
+          revenue_today_cents: number;
+          orders_last_7_days_count: number;
+          revenue_last_7_days_cents: number;
+          orders_last_30_days_count: number;
+          revenue_last_30_days_cents: number;
+        }[];
+      };
+      get_admin_order_daily_series: {
+        Args: Record<never, never>;
+        Returns: {
+          metric_date: string;
+          orders_count: number;
+          paid_orders_count: number;
+          revenue_cents: number;
+        }[];
+      };
       create_bot_order_with_reservation: {
         Args: {
           p_interaction_id: string;
