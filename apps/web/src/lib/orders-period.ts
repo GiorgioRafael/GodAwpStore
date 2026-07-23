@@ -6,7 +6,17 @@ export const ORDERS_PERIOD_OPTIONS = [
   { value: "custom", label: "Personalizado" },
 ] as const;
 
+export const ORDERS_STATUS_OPTIONS = [
+  { value: "all", label: "Todos" },
+  { value: "paid", label: "Pagos" },
+  { value: "cancelled", label: "Cancelados" },
+  { value: "awaiting_payment", label: "Aguardando pagamento" },
+] as const;
+
+export const ORDERS_PAGE_SIZE = 50;
+
 export type OrdersPeriodKey = (typeof ORDERS_PERIOD_OPTIONS)[number]["value"];
+export type OrdersStatusFilter = (typeof ORDERS_STATUS_OPTIONS)[number]["value"];
 
 export type OrdersPeriodRange = {
   from: string | null;
@@ -33,6 +43,10 @@ function first(value: SearchParamValue): string | undefined {
 
 function isPeriodKey(value: string | undefined): value is OrdersPeriodKey {
   return ORDERS_PERIOD_OPTIONS.some((option) => option.value === value);
+}
+
+function isStatusFilter(value: string | undefined): value is OrdersStatusFilter {
+  return ORDERS_STATUS_OPTIONS.some((option) => option.value === value);
 }
 
 function isCalendarDate(value: string): boolean {
@@ -136,4 +150,16 @@ export function resolveOrdersPeriod(
     to: startOfSaoPauloDay(shiftCalendarDate(toInput, 1)),
     error: null,
   };
+}
+
+export function resolveOrdersStatus(value: SearchParamValue): OrdersStatusFilter {
+  const requested = first(value);
+  return isStatusFilter(requested) ? requested : "all";
+}
+
+export function resolveOrdersPage(value: SearchParamValue): number {
+  const requested = first(value);
+  if (!requested || !/^\d+$/.test(requested)) return 1;
+  const page = Number(requested);
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
 }

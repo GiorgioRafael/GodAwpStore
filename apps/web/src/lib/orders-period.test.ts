@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveOrdersPeriod } from "./orders-period";
+import { resolveOrdersPage, resolveOrdersPeriod, resolveOrdersStatus } from "./orders-period";
 
 const NOW = new Date("2026-07-17T15:00:00.000Z");
 
@@ -55,5 +55,20 @@ describe("resolveOrdersPeriod", () => {
       to: null,
       error: "A data inicial não pode ser posterior à data final.",
     });
+  });
+});
+
+describe("filtros de pedidos", () => {
+  it("aceita somente grupos de status conhecidos", () => {
+    expect(resolveOrdersStatus("paid")).toBe("paid");
+    expect(resolveOrdersStatus("cancelled")).toBe("cancelled");
+    expect(resolveOrdersStatus("forged")).toBe("all");
+  });
+
+  it("normaliza a paginação para inteiros positivos", () => {
+    expect(resolveOrdersPage("3")).toBe(3);
+    expect(resolveOrdersPage("0")).toBe(1);
+    expect(resolveOrdersPage("1.5")).toBe(1);
+    expect(resolveOrdersPage(["2", "4"])).toBe(2);
   });
 });

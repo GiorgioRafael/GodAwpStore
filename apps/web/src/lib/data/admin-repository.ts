@@ -1,8 +1,9 @@
 import "server-only";
 
 import { requireAdmin } from "@/lib/auth";
+import type { OrderAnalyticsMetrics, OrderDailyPoint } from "@/lib/orders-analytics";
 import type { JsonObject, Tables, Views } from "@/lib/supabase/database.types";
-import type { OrdersPeriodRange } from "@/lib/orders-period";
+import type { OrdersPeriodRange, OrdersStatusFilter } from "@/lib/orders-period";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type DashboardSummary = {
@@ -39,6 +40,21 @@ export type AdminOrder = Tables<"orders"> & {
     productName: string;
     quantity: number;
   }>;
+};
+
+export type PaginatedOrders = {
+  rows: AdminOrder[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type ListOrdersOptions = {
+  period: OrdersPeriodRange;
+  status: OrdersStatusFilter;
+  page: number;
+  pageSize: number;
 };
 
 export type GameRow = Pick<
@@ -228,23 +244,72 @@ export async function getPaidOrderSummary(
   };
 }
 
-export async function listOrders(
-  period: OrdersPeriodRange,
-  limit = 500,
-): Promise<AdminOrder[]> {
+export async function getOrderAnalyticsMetrics(): Promise<OrderAnalyticsMetrics> {
   const supabase = await client();
-  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
-  let query = supabase.from("orders").select("*");
+  const { data, error } = await supabase.rpc("get_admin_order_metrics");
+  assertQuerySucceeded(error, "carregar os indicadores de pedidos");
+  const metrics = data?.[0];
 
-  if (period.from) query = query.gte("created_at", period.from);
-  if (period.to) query = query.lt("created_at", period.to);
+  return {
+    ordersTodayCount: toSafeNumber(metrics?.orders_today_count),
+    revenueTodayCents: toSafeNumber(metrics?.revenue_today_cents),
+    ordersLast7DaysCount: toSafeNumber(metrics?.orders_last_7_days_count),
+    revenueLast7DaysCents: toSafeNumber(metrics?.revenue_last_7_days_cents),
+    ordersLast30DaysCount: toSafeNumber(metrics?.orders_last_30_days_count),
+    revenueLast30DaysCents: toSafeNumber(metrics?.revenue_last_30_days_cents),
+  };
+}
 
-  const { data, error } = await query
+export async function getOrderDailySeries(): Promise<OrderDailyPoint[]> {
+  const supabase = await client();
+  const { data, error } = await supabase.rpc("get_admin_order_daily_series");
+  assertQuerySucceeded(error, "carregar o histórico diário de pedidos");
+
+  return (data ?? []).map((point) => ({
+    date: point.metric_date,
+    ordersCount: toSafeNumber(point.orders_count),
+    paidOrdersCount: toSafeNumber(point.paid_orders_count),
+    revenueCents: toSafeNumber(point.revenue_cents),
+  }));
+}
+
+export async function listOrders(
+  options: ListOrdersOptions,
+): Promise<PaginatedOrders> {
+  const supabase = await client();
+  const page = Math.max(1, Math.trunc(options.page));
+  const pageSize = Math.min(Math.max(Math.trunc(options.pageSize), 1), 100);
+  const offset = (page - 1) * pageSize;
+  let query = supabase.from("orders").select("*", { count: "exact" });
+
+  if (options.period.from) query = query.gte("created_at", options.period.from);
+  if (options.period.to) query = query.lt("created_at", options.period.to);
+
+  if (options.status === "paid") {
+    query = query
+      .eq("payment_status", "paid")
+      .in("status", ["paid", "processing", "delivered"])
+      .is("stock_released_at", null);
+  } else if (options.status === "cancelled") {
+    query = query.in("status", ["cancelled", "expired"]);
+  } else if (options.status === "awaiting_payment") {
+    query = query
+      .in("status", ["pending", "awaiting_payment"])
+      .in("payment_status", ["uninitialized", "pending"])
+      .is("paid_at", null);
+  }
+
+  const { data, error, count } = await query
     .order("created_at", { ascending: false })
-    .limit(safeLimit);
+    .order("id", { ascending: false })
+    .range(offset, offset + pageSize - 1);
   assertQuerySucceeded(error, "carregar os pedidos");
   const orders = data ?? [];
-  if (orders.length === 0) return [];
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (orders.length === 0) {
+    return { rows: [], total, page, pageSize, totalPages };
+  }
 
   const { data: itemRows, error: itemError } = await supabase
     .from("order_items")
@@ -264,10 +329,16 @@ export async function listOrders(
     itemsByOrder.set(item.order_id, items);
   }
 
-  return orders.map((order) => ({
-    ...order,
-    items: itemsByOrder.get(order.id) ?? [],
-  }));
+  return {
+    rows: orders.map((order) => ({
+      ...order,
+      items: itemsByOrder.get(order.id) ?? [],
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
 }
 
 export async function listGames(): Promise<GameRow[]> {
