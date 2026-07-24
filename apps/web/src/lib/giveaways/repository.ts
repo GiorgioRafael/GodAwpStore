@@ -230,6 +230,7 @@ export async function getGiveawayAnnouncementInput(giveawayId: string) {
     publicSlug: giveaway.public_slug,
     channelId: giveaway.publication_channel_id,
     messageId: giveaway.publication_message_id,
+    resultMessageId: giveaway.result_message_id,
     title: giveaway.title,
     description: giveaway.description,
     rulesText: giveaway.rules_text,

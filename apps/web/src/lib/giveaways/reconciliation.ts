@@ -2,7 +2,12 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { publishGiveawayAnnouncement, ensureGiveawayWinnerTicket, type GiveawayPrize } from "@/lib/giveaways/discord";
+import {
+  ensureGiveawayWinnerTicket,
+  publishGiveawayAnnouncement,
+  publishGiveawayResultAnnouncement,
+  type GiveawayPrize,
+} from "@/lib/giveaways/discord";
 import {
   getDiscordGuildMembership,
   type DiscordGuildMembership,
@@ -32,6 +37,7 @@ export type GiveawayReconciliationResult = {
   drawsCompleted: number;
   drawsWithoutWinner: number;
   drawsDeferred: number;
+  resultsPublished: number;
   ticketsOpened: number;
   failures: number;
 };
@@ -51,6 +57,7 @@ export async function reconcileGiveaways(
     drawsCompleted: 0,
     drawsWithoutWinner: 0,
     drawsDeferred: 0,
+    resultsPublished: 0,
     ticketsOpened: 0,
     failures: 0,
   };
@@ -65,6 +72,9 @@ export async function reconcileGiveaways(
 
   await reconcilePendingReferrals(client, fetcher, now(), result);
   if (Date.now() < deadline) await drawDueGiveaways(client, fetcher, deadline, result);
+  if (Date.now() < deadline) {
+    await publishPendingResultAnnouncements(client, fetcher, result);
+  }
   if (Date.now() < deadline) await openWinnerTickets(client, fetcher, deadline, result);
   return result;
 }
@@ -199,6 +209,9 @@ async function drawDueGiveaways(
       if (completed.resulting_status === "completed") result.drawsCompleted += 1;
       else result.drawsWithoutWinner += 1;
       await refreshAnnouncement(client, claim.giveaway_id, fetcher, result);
+      if (completed.resulting_status === "completed") {
+        await publishResultAnnouncement(client, claim.giveaway_id, fetcher, result);
+      }
     } catch (error) {
       result.failures += 1;
       console.error(`[giveaway:draw:${claim.giveaway_id}] ${errorMessage(error)}`);
@@ -452,6 +465,52 @@ async function refreshAnnouncement(
       p_message_id: null,
       p_error: message,
     });
+  }
+}
+
+async function publishPendingResultAnnouncements(
+  client: AdminClient,
+  fetcher: typeof fetch,
+  result: GiveawayReconciliationResult,
+) {
+  const { data: giveaways, error } = await client
+    .from("giveaways")
+    .select("id")
+    .eq("status", "completed")
+    .is("result_message_id", null)
+    .order("drawn_at")
+    .limit(10);
+  if (error) throw new Error(`Falha ao listar resultados pendentes: ${error.message}`);
+  for (const giveaway of giveaways ?? []) {
+    await publishResultAnnouncement(client, giveaway.id, fetcher, result);
+  }
+}
+
+async function publishResultAnnouncement(
+  client: AdminClient,
+  giveawayId: string,
+  fetcher: typeof fetch,
+  result: GiveawayReconciliationResult,
+) {
+  try {
+    const input = await getGiveawayAnnouncementInput(giveawayId);
+    const publication = await publishGiveawayResultAnnouncement(input, { fetcher });
+    const { error } = await client.rpc("record_giveaway_result_publication", {
+      p_giveaway_id: giveawayId,
+      p_message_id: publication.messageId,
+      p_error: null,
+    });
+    if (error) throw new Error(error.message);
+    result.resultsPublished += 1;
+  } catch (error) {
+    result.failures += 1;
+    const message = errorMessage(error);
+    await client.rpc("record_giveaway_result_publication", {
+      p_giveaway_id: giveawayId,
+      p_message_id: null,
+      p_error: message,
+    });
+    console.error(`[giveaway:result:${giveawayId}] ${message}`);
   }
 }
 

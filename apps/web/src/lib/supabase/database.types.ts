@@ -222,6 +222,8 @@ type GiveawayRow = {
   publication_channel_name: string;
   publication_message_id: string | null;
   publication_error: string | null;
+  result_message_id: string | null;
+  result_publication_error: string | null;
   ticket_category_id: string | null;
   ticket_category_name: string | null;
   title: string;
@@ -1025,6 +1027,10 @@ export type Database = {
         Returns: { cancelled_giveaway_id: string; was_cancelled: boolean }[];
       };
       record_giveaway_publication: {
+        Args: { p_giveaway_id: string; p_message_id: string | null; p_error: string | null };
+        Returns: boolean;
+      };
+      record_giveaway_result_publication: {
         Args: { p_giveaway_id: string; p_message_id: string | null; p_error: string | null };
         Returns: boolean;
       };

@@ -12,6 +12,7 @@ vi.mock("@/lib/bot/message-customization-server", () => ({
 import {
   ensureGiveawayWinnerTicket,
   giveawayAnnouncementPayload,
+  giveawayResultAnnouncementPayload,
   giveawayWinnerTicketPayload,
   publishGiveawayAnnouncement,
   type GiveawayAnnouncementInput,
@@ -107,6 +108,26 @@ describe("giveaway Discord announcement", () => {
     expect(payload.allowed_mentions).toEqual({
       parse: [],
       users: winners.map((winner) => winner.discordUserId),
+    });
+  });
+
+  it("cria uma mensagem de resultado separada no canal do sorteio", () => {
+    const winners = [
+      { discordUserId: "223456789012345678", displayName: "Primeiro" },
+      { discordUserId: "323456789012345678", displayName: "Segundo" },
+    ];
+    const payload = giveawayResultAnnouncementPayload(
+      { ...input, status: "completed", winners },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.content).toContain("Sorteio encerrado");
+    expect(payload.embeds[0].title).toBe("🏆 RESULTADO DO SORTEIO");
+    expect(payload.embeds[0].description).toContain("1.** <@223456789012345678>");
+    expect(payload.embeds[0].description).toContain("2.** <@323456789012345678>");
+    expect(payload.components[0].components[0]).toMatchObject({
+      label: "Ver resultado",
+      url: "https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",
     });
   });
 

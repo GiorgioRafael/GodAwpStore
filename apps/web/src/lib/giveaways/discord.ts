@@ -38,6 +38,7 @@ export type GiveawayAnnouncementInput = {
   publicSlug: string;
   channelId: string;
   messageId?: string | null;
+  resultMessageId?: string | null;
   title: string;
   description: string;
   rulesText: string;
@@ -78,6 +79,48 @@ export async function publishGiveawayAnnouncement(
     (message.channel_id !== undefined && message.channel_id !== input.channelId)
   ) {
     throw new Error("Discord retornou uma publicação de sorteio inválida.");
+  }
+  return { messageId: message.id };
+}
+
+export async function publishGiveawayResultAnnouncement(
+  input: GiveawayAnnouncementInput,
+  options: { fetcher?: typeof fetch; siteUrl?: string } = {},
+) {
+  validateAnnouncement(input);
+  const winners = normalizedWinners(input);
+  if (input.status !== "completed" || !winners.length) {
+    throw new Error("O resultado só pode ser publicado após definir os ganhadores.");
+  }
+  const fetcher = options.fetcher ?? fetch;
+  const siteUrl = options.siteUrl ?? getSiteUrl();
+  const payload = giveawayResultAnnouncementPayload(input, siteUrl);
+  const send = (messageId?: string | null) => discordBotJson<{
+    id?: unknown;
+    channel_id?: unknown;
+  }>(
+    messageId
+      ? `/channels/${input.channelId}/messages/${messageId}`
+      : `/channels/${input.channelId}/messages`,
+    {
+      method: messageId ? "PATCH" : "POST",
+      body: JSON.stringify(payload),
+    },
+    fetcher,
+  );
+  let message;
+  try {
+    message = await send(input.resultMessageId);
+  } catch (error) {
+    if (!input.resultMessageId || !isUnknownDiscordMessage(error)) throw error;
+    message = await send();
+  }
+  if (
+    typeof message.id !== "string"
+    || !SNOWFLAKE_PATTERN.test(message.id)
+    || (message.channel_id !== undefined && message.channel_id !== input.channelId)
+  ) {
+    throw new Error("Discord retornou uma publicação de resultado inválida.");
   }
   return { messageId: message.id };
 }
@@ -161,6 +204,48 @@ export function giveawayAnnouncementPayload(
   };
   assertDiscordEmbeds(payload.embeds);
   return payload;
+}
+
+export function giveawayResultAnnouncementPayload(
+  input: GiveawayAnnouncementInput,
+  siteUrl: string,
+) {
+  const winners = normalizedWinners(input);
+  const winnerLines = winners.map(
+    (winner, index) => `**${index + 1}.** <@${winner.discordUserId}>`,
+  );
+  const prizeLines = input.prizes.map(
+    (prize) => `• **${formatQuantity(prize.quantity)}×** ${sanitize(prize.productName, 100)}`,
+  );
+  const embed = {
+    color: 0xd4a64a,
+    title: "🏆 RESULTADO DO SORTEIO",
+    description: limitText([
+      `O sorteio **${sanitize(input.title, 220)}** foi encerrado.`,
+      `\n**${winners.length === 1 ? "Ganhador" : "Ganhadores"}**\n${winnerLines.join("\n")}`,
+      `\n**Prêmios**\n${prizeLines.join("\n")}`,
+      "\nOs tickets privados de entrega serão abertos automaticamente.",
+    ].join("\n"), EMBED_DESCRIPTION_LIMIT),
+    footer: { text: `GWStore Giveaway • ${input.id}` },
+  };
+  assertDiscordEmbeds([embed]);
+  return {
+    content: "🎉 **Sorteio encerrado — confiram os ganhadores!**",
+    allowed_mentions: {
+      parse: [],
+      users: winners.map((winner) => winner.discordUserId),
+    },
+    embeds: [embed],
+    components: [{
+      type: 1,
+      components: [{
+        type: 2,
+        style: 5,
+        label: "Ver resultado",
+        url: giveawayViewerUrl(siteUrl, input.publicSlug),
+      }],
+    }],
+  };
 }
 
 function giveawayViewerUrl(siteUrl: string, publicSlug: string) {
@@ -404,6 +489,9 @@ function validateAnnouncement(input: GiveawayAnnouncementInput) {
   if (!SNOWFLAKE_PATTERN.test(input.channelId)) throw new Error("Canal do sorteio inválido.");
   if (input.messageId && !SNOWFLAKE_PATTERN.test(input.messageId)) {
     throw new Error("Mensagem do sorteio inválida.");
+  }
+  if (input.resultMessageId && !SNOWFLAKE_PATTERN.test(input.resultMessageId)) {
+    throw new Error("Mensagem de resultado inválida.");
   }
   if (input.prizes.length < 1 || input.prizes.length > 20) {
     throw new Error("Pacote de prêmios inválido.");
