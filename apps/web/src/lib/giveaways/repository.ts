@@ -72,6 +72,7 @@ export type GiveawayOAuthContext = {
 export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView[]> {
   await requireAdmin();
   const client = await createServerSupabaseClient();
+  const adminClient = requireAdminClient();
   if (!client) throw new Error("Supabase não configurado.");
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 200);
   const { data: giveaways, error } = await client
@@ -90,7 +91,7 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
       .select("giveaway_id,product_id,product_name,quantity,position")
       .in("giveaway_id", giveawayIds)
       .order("position"),
-    client
+    adminClient
       .from("giveaway_winners")
       .select(
         "id,giveaway_id,winner_position,discord_user_id,display_name,ticket_status,ticket_channel_id,ticket_error",
