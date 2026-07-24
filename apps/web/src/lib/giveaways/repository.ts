@@ -52,7 +52,6 @@ export type PublicGiveawayView = Pick<
   winners: GiveawayWinnerView[];
   entry: {
     displayName: string;
-    referralToken: string;
     validInviteCount: number;
   } | null;
 };
@@ -162,7 +161,7 @@ export async function getPublicGiveaway(
   const entryQuery = entryAccessToken
     ? client
         .from("giveaway_entries")
-        .select("display_name,referral_token,valid_invite_count")
+        .select("display_name,valid_invite_count")
         .eq("giveaway_id", giveaway.id)
         .eq("access_token", entryAccessToken)
         .maybeSingle()
@@ -195,7 +194,6 @@ export async function getPublicGiveaway(
     entry: entryResult.data
       ? {
           displayName: entryResult.data.display_name,
-          referralToken: entryResult.data.referral_token,
           validInviteCount: entryResult.data.valid_invite_count,
         }
       : null,

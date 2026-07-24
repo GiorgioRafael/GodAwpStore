@@ -49,6 +49,10 @@ describe("GiveawayManager", () => {
     expect(screen.getByText(
       "O sorteio começa assim que for criado e o pacote é reservado na mesma operação.",
     )).toBeTruthy();
+    expect(screen.getByLabelText("Indicações válidas")).toBeTruthy();
+    expect(screen.getByLabelText("Observações adicionais")).toBeTruthy();
+    expect(screen.getByText(/usuário cria um convite nativo pelo próprio Discord/))
+      .toBeTruthy();
   });
 
   it("permite selecionar exatamente quantos ganhadores serão resorteados", () => {

@@ -49,19 +49,27 @@ describe("giveaway Discord announcement", () => {
 
     expect(description).toContain("2×** Super Watering");
     expect(description).toContain("1×** Dragon's Breath");
-    expect(description).toContain("2 convite(s) válido(s)");
+    expect(description).toContain("2 convite(s) nativo(s) válido(s)");
     expect(description).toContain("7 dia(s)");
     expect(description).toContain("1 hora(s)");
+    expect(description).toContain("Crie um convite do servidor pelo próprio Discord");
+    expect(description).toContain("O bot reconhecerá o criador do convite");
     expect(payload.components[0]?.components[0]).toMatchObject({
       label: "Participar",
       style: 3,
       custom_id: "gwstore_giveaway_join:11111111-1111-4111-8111-111111111111",
     });
     expect(payload.components[0]?.components[1]).toMatchObject({
-      label: "Visualizar",
+      label: "Consultar status",
       style: 5,
       url: "https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",
     });
+    expect(payload.embeds[0].fields.at(-1)).toMatchObject({
+      name: "Observações adicionais",
+    });
+    expect(payload.embeds[0].fields.at(-1)?.value).toContain(
+      "Os requisitos automáticos acima são os únicos usados pelo sistema",
+    );
     expect(payload.allowed_mentions).toEqual({ parse: [], users: [] });
   });
 
@@ -74,8 +82,23 @@ describe("giveaway Discord announcement", () => {
     expect(payload.components[0]?.components).toHaveLength(2);
     expect(payload.components[0]?.components.map((component) => component.label)).toEqual([
       "Participar",
-      "Visualizar",
+      "Consultar status",
     ]);
+  });
+
+  it("simplifica a participação quando não há indicação obrigatória", () => {
+    const payload = giveawayAnnouncementPayload(
+      { ...input, requiredValidInvites: 0 },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.embeds[0].description).toContain("Sem indicação obrigatória");
+    expect(payload.embeds[0].description).not.toContain(
+      "Convites comuns criados diretamente no Discord não são contabilizados",
+    );
+    expect(payload.embeds[0].description).not.toContain("Conta Discord com");
+    expect(payload.embeds[0].description).not.toContain("Permanecer 1 hora");
+    expect(payload.components[0]?.components[0].label).toBe("Participar");
   });
 
   it("remove o botão ao concluir e menciona somente o ganhador", () => {

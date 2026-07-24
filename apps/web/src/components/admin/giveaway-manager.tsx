@@ -119,7 +119,7 @@ export function GiveawayManager({
             </span>
             <div>
               <h2 className="text-base font-semibold tracking-tight">Novo sorteio</h2>
-              <p className="mt-1 text-sm leading-6 text-muted">Configure o pacote, os critérios de convite, o anúncio e o ticket do ganhador.</p>
+              <p className="mt-1 text-sm leading-6 text-muted">Configure o pacote, os critérios de indicação, o anúncio e o ticket do ganhador.</p>
             </div>
           </div>
         </CardHeader>
@@ -158,8 +158,8 @@ export function GiveawayManager({
               <Field label="Descrição" htmlFor={`${formId}-description`}>
                 <Textarea id={`${formId}-description`} name="description" placeholder="Explique o sorteio e destaque o prêmio." maxLength={2000} />
               </Field>
-              <Field label="Regras adicionais" htmlFor={`${formId}-rules`} hint="Opcional">
-                <Textarea id={`${formId}-rules`} name="rulesText" placeholder="Ex.: contas alternativas serão desclassificadas." maxLength={2000} />
+              <Field label="Observações adicionais" htmlFor={`${formId}-rules`} hint="Não repita os critérios automáticos">
+                <Textarea id={`${formId}-rules`} name="rulesText" placeholder="Ex.: contas alternativas serão desclassificadas. Idade, permanência e quantidade são configuradas abaixo." maxLength={2000} />
               </Field>
             </div>
 
@@ -195,7 +195,7 @@ export function GiveawayManager({
             </div>
 
             <div className="grid gap-5 sm:grid-cols-3">
-              <Field label="Convites válidos" htmlFor={`${formId}-invites`} hint="Por participante" error={fieldError(state, "requiredValidInvites")}>
+              <Field label="Indicações válidas" htmlFor={`${formId}-invites`} hint="Por participante" error={fieldError(state, "requiredValidInvites")}>
                 <Input id={`${formId}-invites`} name="requiredValidInvites" type="number" min={0} max={100} defaultValue={1} required />
               </Field>
               <Field label="Idade mínima da conta" htmlFor={`${formId}-age`} hint="Dias" error={fieldError(state, "minimumAccountAgeDays")}>
@@ -205,6 +205,9 @@ export function GiveawayManager({
                 <Input id={`${formId}-stay`} name="minimumStayHours" type="number" min={0} max={720} step="0.5" defaultValue={1} required />
               </Field>
             </div>
+            <p className="rounded-xl border border-gold/20 bg-gold/[0.05] px-4 py-3 text-xs leading-5 text-muted">
+              Depois de participar, o usuário cria um convite nativo pelo próprio Discord. O bot identifica quem criou o convite e contabiliza automaticamente as entradas que cumprirem estes critérios.
+            </p>
           </CardContent>
           <CardFooter className="flex items-center justify-between gap-3">
             <p className="text-xs leading-5 text-muted">O sorteio começa assim que for criado e o pacote é reservado na mesma operação.</p>

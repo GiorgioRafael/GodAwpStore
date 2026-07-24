@@ -186,6 +186,38 @@ type GuildRow = {
   updated_at: string;
 };
 
+type DiscordNativeInviteEventRow = {
+  id: string;
+  guild_id: string;
+  discord_guild_id: string;
+  invitee_discord_user_id: string;
+  invitee_display_name: string;
+  invitee_avatar_url: string | null;
+  invitee_account_created_at: string;
+  joined_at: string;
+  invite_code: string | null;
+  inviter_discord_user_id: string | null;
+  status: string;
+  details: Json;
+  affected_giveaway_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type DiscordNativeInviteSnapshotRow = {
+  guild_id: string;
+  invite_code: string;
+  inviter_discord_user_id: string | null;
+  channel_id: string | null;
+  uses: number;
+  max_uses: number | null;
+  created_at_discord: string | null;
+  expires_at: string | null;
+  last_seen_at: string;
+  deleted_at: string | null;
+  updated_at: string;
+};
+
 type CustomerRankLevelRow = {
   code: string;
   name: string;
@@ -338,6 +370,10 @@ type GiveawayReferralRow = {
   validated_at: string | null;
   invalid_reason: string | null;
   last_checked_at: string | null;
+  attribution_source: string;
+  native_invite_code: string | null;
+  native_inviter_discord_user_id: string | null;
+  native_invite_event_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -619,6 +655,44 @@ export type Database = {
           >,
         ];
       };
+      discord_native_invite_events: {
+        Row: DiscordNativeInviteEventRow;
+        Insert: InsertRow<
+          DiscordNativeInviteEventRow,
+          | "guild_id"
+          | "discord_guild_id"
+          | "invitee_discord_user_id"
+          | "invitee_display_name"
+          | "invitee_account_created_at"
+          | "joined_at"
+          | "status"
+        >;
+        Update: UpdateRow<DiscordNativeInviteEventRow>;
+        Relationships: [
+          Relationship<
+            "discord_native_invite_events_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
+        ];
+      };
+      discord_native_invite_snapshots: {
+        Row: DiscordNativeInviteSnapshotRow;
+        Insert: InsertRow<
+          DiscordNativeInviteSnapshotRow,
+          "guild_id" | "invite_code" | "uses"
+        >;
+        Update: UpdateRow<DiscordNativeInviteSnapshotRow>;
+        Relationships: [
+          Relationship<
+            "discord_native_invite_snapshots_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
+        ];
+      };
       customer_rank_levels: {
         Row: CustomerRankLevelRow;
         Insert: InsertRow<
@@ -836,6 +910,12 @@ export type Database = {
             "giveaway_referrals_referrer_entry_id_fkey",
             ["referrer_entry_id"],
             "giveaway_entries",
+            ["id"]
+          >,
+          Relationship<
+            "giveaway_referrals_native_invite_event_id_fkey",
+            ["native_invite_event_id"],
+            "discord_native_invite_events",
             ["id"]
           >,
         ];
@@ -1110,6 +1190,27 @@ export type Database = {
       record_giveaway_result_publication: {
         Args: { p_giveaway_id: string; p_message_id: string | null; p_error: string | null };
         Returns: boolean;
+      };
+      record_discord_native_invite_join: {
+        Args: {
+          p_discord_guild_id: string;
+          p_invitee_discord_user_id: string;
+          p_invitee_display_name: string;
+          p_invitee_avatar_url: string | null;
+          p_invitee_account_created_at: string;
+          p_joined_at: string;
+          p_invitee_is_pending: boolean;
+          p_attribution_status: string;
+          p_invite_code: string | null;
+          p_inviter_discord_user_id: string | null;
+          p_details: Json;
+        };
+        Returns: {
+          invite_event_id: string;
+          event_status: string;
+          affected_giveaway_count: number;
+          was_created: boolean;
+        }[];
       };
       register_giveaway_participant: {
         Args: {

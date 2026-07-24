@@ -47,12 +47,18 @@ describe("Discord giveaway participation", () => {
     const repository = participationRepository({
       wasCreated: true,
       validInviteCount: 0,
+      publicSlug: "abc123def456",
+      requiredValidInvites: 1,
     });
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
 
     await expect(completeDiscordGiveawayParticipation(
       interaction(),
-      { repository, fetcher: fetchMock as unknown as typeof fetch },
+      {
+        repository,
+        fetcher: fetchMock as unknown as typeof fetch,
+        siteUrl: "https://gwstore.vercel.app",
+      },
     )).resolves.toEqual({ status: "created" });
 
     expect(repository.register).toHaveBeenCalledWith({
@@ -68,10 +74,18 @@ describe("Discord giveaway participation", () => {
     expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: "PATCH" });
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body).toMatchObject({
-      components: [],
       allowed_mentions: { parse: [] },
     });
     expect(body.content).toContain("Participação cadastrada");
+    expect(body.content).toContain("Crie um convite pelo próprio Discord");
+    expect(body.content).toContain("O bot identifica automaticamente");
+    expect(body.content).not.toContain("?ref=");
+    expect(body.components[0].components[0]).toMatchObject({
+      type: 2,
+      style: 5,
+      label: "Consultar meu status",
+      url: "https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",
+    });
   });
 
   it("avisa em privado quando a participação já existia", async () => {
@@ -79,16 +93,48 @@ describe("Discord giveaway participation", () => {
     const repository = participationRepository({
       wasCreated: false,
       validInviteCount: 2,
+      publicSlug: "abc123def456",
+      requiredValidInvites: 2,
     });
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
 
     await expect(completeDiscordGiveawayParticipation(
       interaction(),
-      { repository, fetcher: fetchMock as unknown as typeof fetch },
+      {
+        repository,
+        fetcher: fetchMock as unknown as typeof fetch,
+        siteUrl: "https://gwstore.vercel.app",
+      },
     )).resolves.toEqual({ status: "existing" });
 
     const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(body.content).toContain("já está cadastrado");
+    expect(body.content).toContain("todas as indicações válidas");
+  });
+
+  it("simplifica a confirmação quando o sorteio não exige indicações", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", applicationId);
+    const repository = participationRepository({
+      wasCreated: true,
+      validInviteCount: 0,
+      publicSlug: "abc123def456",
+      requiredValidInvites: 0,
+    });
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
+
+    await completeDiscordGiveawayParticipation(
+      interaction(),
+      {
+        repository,
+        fetcher: fetchMock as unknown as typeof fetch,
+        siteUrl: "https://gwstore.vercel.app",
+      },
+    );
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.content).toContain("não exige indicações");
+    expect(body.content).not.toContain("?ref=");
+    expect(body.components[0].components[0].label).toBe("Consultar meu status");
   });
 
   it("informa quando o sorteio não aceita mais participações", async () => {
@@ -118,7 +164,12 @@ describe("Discord giveaway participation", () => {
       member: undefined,
       user: raw.member.user,
     };
-    const repository = participationRepository({ wasCreated: true, validInviteCount: 0 });
+    const repository = participationRepository({
+      wasCreated: true,
+      validInviteCount: 0,
+      publicSlug: "abc123def456",
+      requiredValidInvites: 1,
+    });
 
     await expect(completeDiscordGiveawayParticipation(
       interactionWithoutMember,

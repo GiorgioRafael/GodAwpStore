@@ -12,11 +12,9 @@ import {
 } from "lucide-react";
 
 import { Brand } from "@/components/layout/brand";
-import { ReferralLink } from "@/components/giveaways/referral-link";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { getSiteUrl } from "@/lib/env";
 import { giveawayEntryCookieName } from "@/lib/giveaways/oauth-state";
 import { getPublicGiveaway, getServerTimestamp } from "@/lib/giveaways/repository";
 
@@ -79,13 +77,10 @@ export default async function GiveawayPage({
       ? {
           tone: "success" as const,
           message: inviteResult === "valido"
-            ? "Convite validado! Sua entrada no servidor já contou para quem indicou você."
-            : "Entrada confirmada. O convite será validado automaticamente após você concluir a verificação e permanecer no servidor pelo tempo exigido.",
+            ? "Indicação validada! Sua entrada no servidor já contou para quem indicou você."
+            : "Entrada confirmada. A indicação será validada automaticamente após você concluir a verificação e permanecer no servidor pelo tempo exigido.",
         }
       : participationFeedback(participationResult);
-  const referralUrl = giveaway.entry
-    ? `${getSiteUrl()}/sorteios/${slug}?ref=${giveaway.entry.referralToken}`
-    : null;
   const missingInvites = giveaway.entry
     ? Math.max(giveaway.required_valid_invites - giveaway.entry.validInviteCount, 0)
     : 0;
@@ -141,14 +136,37 @@ export default async function GiveawayPage({
             </div>
 
             <section className="rounded-2xl border border-border bg-surface-muted p-4">
-              <h2 className="flex items-center gap-2 text-sm font-semibold"><ShieldCheck aria-hidden="true" className="size-4 text-success" /> O que torna um convite válido</h2>
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <ShieldCheck aria-hidden="true" className="size-4 text-success" />
+                {giveaway.required_valid_invites === 0
+                  ? "Requisitos de participação"
+                  : "O que torna uma indicação válida"}
+              </h2>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-muted">
-                <li>• O participante precisa ter {formatNumber(giveaway.required_valid_invites)} convite(s) válido(s).</li>
-                <li>• A pessoa convidada não pode já fazer parte do servidor.</li>
-                <li>• A conta deve ter ao menos {formatNumber(giveaway.minimum_account_age_days)} dia(s).</li>
-                <li>• Ela deve concluir a verificação e permanecer {formatDuration(giveaway.minimum_stay_minutes)} no servidor.</li>
+                <li>• O participante precisa continuar no servidor até o encerramento do sorteio.</li>
+                {giveaway.required_valid_invites === 0 ? (
+                  <li>• Este sorteio não exige indicações.</li>
+                ) : (
+                  <>
+                    <li>• O participante precisa ter {formatNumber(giveaway.required_valid_invites)} indicação(ões) válida(s).</li>
+                    <li>• O participante deve criar o convite pelo próprio Discord usando a sua conta.</li>
+                    <li>• O Discord precisa mostrar o participante como criador desse convite.</li>
+                    <li>• Ela não pode já fazer parte do servidor.</li>
+                    <li>• A conta indicada deve ter ao menos {formatNumber(giveaway.minimum_account_age_days)} dia(s).</li>
+                    <li>• Ela deve concluir a verificação e permanecer {formatDuration(giveaway.minimum_stay_minutes)} no servidor.</li>
+                    <li>• O bot contabiliza automaticamente quando a pessoa entra pelo convite nativo.</li>
+                  </>
+                )}
               </ul>
-              {giveaway.rules_text ? <p className="mt-4 border-t border-border pt-4 whitespace-pre-line text-sm leading-6 text-muted-strong">{giveaway.rules_text}</p> : null}
+              {giveaway.rules_text ? (
+                <div className="mt-4 border-t border-border pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-[.14em] text-muted">Observações adicionais</p>
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    Os requisitos automáticos acima são os únicos usados pelo sistema para calcular a elegibilidade.
+                  </p>
+                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-muted-strong">{giveaway.rules_text}</p>
+                </div>
+              ) : null}
             </section>
 
             {giveaway.status === "completed" && giveaway.winners.length ? (
@@ -174,10 +192,20 @@ export default async function GiveawayPage({
               <section className="rounded-2xl border border-success/25 bg-success/[0.06] p-5">
                 <h2 className="flex items-center gap-2 font-semibold"><CheckCircle2 aria-hidden="true" className="size-5 text-success" /> Participação confirmada</h2>
                 <p className="mt-2 text-sm leading-6 text-muted">
-                  {giveaway.entry.displayName}, você possui <strong className="text-foreground">{formatNumber(giveaway.entry.validInviteCount)}</strong> de <strong className="text-foreground">{formatNumber(giveaway.required_valid_invites)}</strong> convite(s) válido(s).
-                  {missingInvites > 0 ? ` Faltam ${formatNumber(missingInvites)}.` : " Você já está elegível para o sorteio."}
+                  {giveaway.required_valid_invites === 0 ? (
+                    <>{giveaway.entry.displayName}, este sorteio não exige indicações. Você já está elegível enquanto continuar no servidor.</>
+                  ) : (
+                    <>
+                      {giveaway.entry.displayName}, você possui <strong className="text-foreground">{formatNumber(giveaway.entry.validInviteCount)}</strong> de <strong className="text-foreground">{formatNumber(giveaway.required_valid_invites)}</strong> indicação(ões) válida(s).
+                      {missingInvites > 0 ? ` Faltam ${formatNumber(missingInvites)}.` : " Você já está elegível para o sorteio."}
+                    </>
+                  )}
                 </p>
-                {referralUrl && isOpen ? <div className="mt-4"><ReferralLink url={referralUrl} /></div> : null}
+                {giveaway.required_valid_invites > 0 && isOpen ? (
+                  <p className="mt-3 rounded-xl border border-success/20 bg-black/10 px-3 py-2 text-xs leading-5 text-muted">
+                    Para convidar, use <strong className="text-foreground">Convidar pessoas</strong> no Discord e compartilhe um convite criado pela sua própria conta. A contagem é automática.
+                  </p>
+                ) : null}
               </section>
             ) : isOpen ? (
               <div className="rounded-2xl border border-border bg-surface-muted p-5 text-center">
@@ -193,9 +221,9 @@ export default async function GiveawayPage({
                 </p>
                 <LinkButton href={oauthUrl} size="lg" className="mt-4 w-full sm:w-auto">
                   <UserPlus aria-hidden="true" className="size-5" />
-                  {validReferralToken ? "Entrar e validar convite" : "Participar com Discord"}
+                  {validReferralToken ? "Entrar no servidor e validar indicação" : "Participar com Discord"}
                 </LinkButton>
-                <p className="mt-3 text-xs leading-5 text-muted">A autorização identifica sua conta e, em links de indicação, adiciona você ao servidor oficial. Sua senha nunca é compartilhada.</p>
+                <p className="mt-3 text-xs leading-5 text-muted">A autorização serve para identificar sua participação. Depois, os convites nativos criados pela sua conta no Discord são contabilizados automaticamente. Sua senha nunca é compartilhada.</p>
               </div>
             ) : !isFinished ? (
               <p className="text-center text-sm text-muted">As participações ainda não estão abertas ou estão sendo encerradas.</p>
@@ -231,10 +259,10 @@ function giveawayError(code?: string) {
     configuracao: "A participação por Discord ainda não está configurada.",
     sessao_expirada: "A autorização expirou. Tente participar novamente.",
     membro_necessario: "Conclua a entrada e a verificação no servidor antes de participar.",
-    ja_era_membro: "Esse convite não pode ser validado porque você já fazia parte do servidor.",
+    ja_era_membro: "Essa indicação não pode ser validada porque você já fazia parte do servidor.",
     conta_recente: "Sua conta Discord ainda não tem a idade mínima exigida.",
     ja_atribuido: "Sua entrada já foi atribuída a outro convite deste sorteio.",
-    convite_invalido: "Este convite já foi utilizado ou deixou de ser válido para esta conta.",
+    convite_invalido: "Esta indicação já foi utilizada ou deixou de ser válida para esta conta.",
     indisponivel: "Não foi possível concluir agora. Tente novamente em alguns instantes.",
   };
   return code ? messages[code] ?? messages.indisponivel : null;

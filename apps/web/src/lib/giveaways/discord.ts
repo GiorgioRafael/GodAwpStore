@@ -16,6 +16,7 @@ import {
 } from "@/lib/bot/discord-ticket-controls";
 import { loadBotRuntimeSettings } from "@/lib/bot/message-customization-server";
 import { giveawayParticipationInteractionId } from "@/lib/giveaways/discord-participation";
+import { giveawayViewerUrl } from "@/lib/giveaways/links";
 import type { Enums } from "@/lib/supabase/database.types";
 
 const UUID_PATTERN =
@@ -183,14 +184,17 @@ export function giveawayAnnouncementPayload(
     (prize) => `• **${formatQuantity(prize.quantity)}×** ${sanitize(prize.productName, 100)}`,
   );
   const requirement = input.requiredValidInvites === 0
-    ? "Sem convite obrigatório"
-    : `${formatQuantity(input.requiredValidInvites)} convite(s) válido(s)`;
+    ? "Sem indicação obrigatória"
+    : `${formatQuantity(input.requiredValidInvites)} convite(s) nativo(s) válido(s)`;
   const accountAge = input.minimumAccountAgeDays === 0
     ? "Sem idade mínima de conta"
     : `Conta Discord com ${formatQuantity(input.minimumAccountAgeDays)} dia(s) ou mais`;
   const stay = input.minimumStayMinutes === 0
     ? "Validação após entrar"
     : `Permanecer ${formatDuration(input.minimumStayMinutes)} no servidor`;
+  const automaticRequirements = input.requiredValidInvites === 0
+    ? `• ${requirement}\n• O participante deve continuar no servidor até o encerramento`
+    : `• ${requirement}\n• ${accountAge}\n• ${stay}\n• O participante deve continuar no servidor até o encerramento`;
   const winners = normalizedWinners(input);
   const winnerLine = winners.length
     ? `\n\n🏆 **${winners.length === 1 ? "Ganhador" : "Ganhadores"}:**\n${winners
@@ -204,6 +208,15 @@ export function giveawayAnnouncementPayload(
     ? `Prêmios distribuídos entre ${formatQuantity(winners.length)} ganhadores`
     : "Pacote completo para 1 ganhador";
   const mentionedWinnerIds = winners.map((winner) => winner.discordUserId);
+  const participationSteps = input.requiredValidInvites === 0
+    ? "\n**Como participar**\n1. Clique em **Participar**.\n2. Consulte seu status no botão ao lado."
+    : [
+        "\n**Como participar**",
+        "1. Clique em **Participar**.",
+        "2. Crie um convite do servidor pelo próprio Discord usando a sua conta.",
+        "3. Envie esse convite a uma pessoa que ainda não está no servidor.",
+        "4. O bot reconhecerá o criador do convite e validará a indicação após os requisitos.",
+      ].join("\n");
 
   const payload = {
     allowed_mentions: { parse: [], users: mentionedWinnerIds },
@@ -214,7 +227,8 @@ export function giveawayAnnouncementPayload(
         description: limitText([
           sanitize(input.description, 900),
           `\n**${prizeHeading}**\n${prizeLines.join("\n")}`,
-          `\n**Requisitos**\n• ${requirement}\n• ${accountAge}\n• ${stay}`,
+          participationSteps,
+          `\n**Requisitos automáticos**\n${automaticRequirements}`,
           winnerLine,
           failureLine,
         ].filter(Boolean).join("\n"), EMBED_DESCRIPTION_LIMIT),
@@ -223,7 +237,14 @@ export function giveawayAnnouncementPayload(
           { name: "Início", value: discordTimestamp(input.startsAt), inline: true },
           { name: "Encerramento", value: discordTimestamp(input.endsAt), inline: true },
           ...(input.rulesText
-            ? [{ name: "Regras adicionais", value: sanitize(input.rulesText, 900), inline: false }]
+            ? [{
+                name: "Observações adicionais",
+                value: limitText(
+                  `Os requisitos automáticos acima são os únicos usados pelo sistema para calcular a elegibilidade.\n\n${sanitize(input.rulesText, 820)}`,
+                  EMBED_FIELD_VALUE_LIMIT,
+                ),
+                inline: false,
+              }]
             : []),
         ],
         footer: { text: `GWStore Giveaway • ${input.id}` },
@@ -243,7 +264,7 @@ export function giveawayAnnouncementPayload(
               {
                 type: 2,
                 style: 5,
-                label: "Visualizar",
+                label: "Consultar status",
                 url: giveawayViewerUrl(siteUrl, input.publicSlug),
               },
             ],
@@ -333,13 +354,6 @@ export function giveawayRerollAnnouncementPayload(
       }],
     }],
   };
-}
-
-function giveawayViewerUrl(siteUrl: string, publicSlug: string) {
-  const url = new URL("/api/sorteios/oauth/iniciar", siteUrl);
-  url.searchParams.set("slug", publicSlug);
-  url.searchParams.set("modo", "visualizar");
-  return url.toString();
 }
 
 export type GiveawayWinnerTicketInput = {

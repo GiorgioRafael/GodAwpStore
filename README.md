@@ -20,9 +20,23 @@ conteúdo do estoque continua manual dentro do ticket.
 
 ```text
 apps/web/         painel Next.js
+apps/discord-worker/ rastreador persistente de convites nativos do Discord
 packages/domain/ regras, tipos, validações e criptografia compartilháveis
 supabase/         configuração, migrações e testes do banco
 ```
+
+O rastreador de convites dos sorteios deve rodar como um serviço separado:
+
+```bash
+npm run build --workspace @godawp/discord-worker
+npm run start --workspace @godawp/discord-worker
+```
+
+Ele usa `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_IDS`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` e `PORT`. No Discord Developer Portal, ative o
+**Server Members Intent**. No servidor, o cargo do bot precisa de
+**Gerenciar Servidor** para ler o uso e o criador dos convites. O endpoint
+`GET /healthz` pode ser usado pelo Railway para monitoramento.
 
 ## Pré-requisitos
 

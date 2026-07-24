@@ -2,6 +2,8 @@ import "server-only";
 
 import { discordApiUrl } from "@/lib/bot/discord-api";
 import { readDiscordInteraction } from "@/lib/bot/discord-context";
+import { getSiteUrl } from "@/lib/env";
+import { giveawayViewerUrl } from "@/lib/giveaways/links";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 const DISCORD_MESSAGE_COMPONENT = 3;
@@ -26,6 +28,8 @@ export type GiveawayParticipationInput = {
 export type GiveawayParticipationResult = {
   wasCreated: boolean;
   validInviteCount: number;
+  publicSlug: string;
+  requiredValidInvites: number;
 };
 
 export interface GiveawayParticipationRepository {
@@ -57,7 +61,7 @@ implements GiveawayParticipationRepository {
 
     const { data: giveaway, error: giveawayError } = await client
       .from("giveaways")
-      .select("guild_id")
+      .select("guild_id,public_slug,required_valid_invites")
       .eq("id", input.giveawayId)
       .maybeSingle();
     if (giveawayError) {
@@ -106,6 +110,8 @@ implements GiveawayParticipationRepository {
     return {
       wasCreated: data.was_created,
       validInviteCount: data.valid_invite_count,
+      publicSlug: giveaway.public_slug,
+      requiredValidInvites: giveaway.required_valid_invites,
     };
   }
 }
@@ -140,6 +146,7 @@ export async function completeDiscordGiveawayParticipation(
   options: {
     repository?: GiveawayParticipationRepository;
     fetcher?: typeof fetch;
+    siteUrl?: string;
   } = {},
 ) {
   const parsed = parseNativeDiscordGiveawayParticipation(raw);
@@ -159,8 +166,10 @@ export async function completeDiscordGiveawayParticipation(
 
   const repository = options.repository ?? new SupabaseGiveawayParticipationRepository();
   const fetcher = options.fetcher ?? fetch;
+  const siteUrl = options.siteUrl ?? getSiteUrl();
   let status: "created" | "existing" | "closed" | "unavailable";
   let content: string;
+  let components: DiscordActionRow[] = [];
 
   try {
     const result = await repository.register({
@@ -171,9 +180,38 @@ export async function completeDiscordGiveawayParticipation(
       avatarUrl: discordAvatarUrl(raw, context.userId),
     });
     status = result.wasCreated ? "created" : "existing";
-    content = result.wasCreated
-      ? "✅ Participação cadastrada com sucesso! Use **Visualizar** para acompanhar seu status."
-      : "ℹ️ Você já está cadastrado neste sorteio. Use **Visualizar** para acompanhar seu status.";
+    const viewerUrl = giveawayViewerUrl(siteUrl, result.publicSlug);
+    if (result.requiredValidInvites === 0) {
+      content = result.wasCreated
+        ? "✅ **Participação cadastrada!** Este sorteio não exige indicações. Use o botão abaixo para acompanhar seu status."
+        : "ℹ️ **Você já está cadastrado.** Este sorteio não exige indicações. Use o botão abaixo para acompanhar seu status.";
+    } else {
+      const remaining = Math.max(
+        result.requiredValidInvites - result.validInviteCount,
+        0,
+      );
+      content = [
+        result.wasCreated
+          ? "✅ **Participação cadastrada!**"
+          : "ℹ️ **Você já está cadastrado neste sorteio.**",
+        remaining === 0
+          ? "Você já possui todas as indicações válidas exigidas."
+          : `Faltam **${formatQuantity(remaining)}** indicação(ões) válida(s).`,
+        "",
+        remaining === 0
+          ? "Continue no servidor até o encerramento para manter sua elegibilidade."
+          : "Crie um convite pelo próprio Discord usando **a sua conta** e envie para uma pessoa que ainda não está no servidor. O bot identifica automaticamente quem criou o convite.",
+      ].join("\n");
+    }
+    components = [{
+      type: 1,
+      components: [{
+        type: 2,
+        style: 5,
+        label: "Consultar meu status",
+        url: viewerUrl,
+      }],
+    }];
   } catch (error) {
     if (error instanceof GiveawayParticipationError && error.reason === "closed") {
       status = "closed";
@@ -186,9 +224,19 @@ export async function completeDiscordGiveawayParticipation(
     }
   }
 
-  await updateDiscordOriginalInteraction(raw, content, fetcher);
+  await updateDiscordOriginalInteraction(raw, content, components, fetcher);
   return { status };
 }
+
+type DiscordActionRow = {
+  type: 1;
+  components: Array<{
+    type: 2;
+    style: 5;
+    label: string;
+    url: string;
+  }>;
+};
 
 function discordDisplayName(raw: unknown, discordUserId: string) {
   const user = discordInteractionUser(raw);
@@ -218,6 +266,7 @@ function discordInteractionUser(raw: unknown) {
 async function updateDiscordOriginalInteraction(
   raw: unknown,
   content: string,
+  components: DiscordActionRow[],
   fetcher: typeof fetch,
 ) {
   if (!isObject(raw)) throw new Error("Interação Discord inválida.");
@@ -240,7 +289,7 @@ async function updateDiscordOriginalInteraction(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content,
-        components: [],
+        components,
         allowed_mentions: { parse: [] },
       }),
       cache: "no-store",
@@ -250,6 +299,10 @@ async function updateDiscordOriginalInteraction(
   if (!response.ok) {
     throw new Error(`Discord recusou a confirmação privada (${response.status}).`);
   }
+}
+
+function formatQuantity(value: number) {
+  return new Intl.NumberFormat("pt-BR").format(value);
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
