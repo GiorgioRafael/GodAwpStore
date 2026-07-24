@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "npm run build --workspace @godawp/discord-worker"
+  },
+  "deploy": {
+    "startCommand": "npm run start --workspace @godawp/discord-worker",
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 30,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
