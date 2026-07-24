@@ -5,7 +5,7 @@ begin;
 
 set local lock_timeout = '5s';
 
-create table public.giveaway_rerolls (
+create table if not exists public.giveaway_rerolls (
   id uuid primary key default gen_random_uuid(),
   giveaway_id uuid not null references public.giveaways (id) on delete cascade,
   replaced_winner_count smallint not null
@@ -20,11 +20,11 @@ create table public.giveaway_rerolls (
   )
 );
 
-create index giveaway_rerolls_pending_announcement_idx
+create index if not exists giveaway_rerolls_pending_announcement_idx
   on public.giveaway_rerolls (created_at, id)
   where announcement_message_id is null;
 
-create table public.giveaway_winner_history (
+create table if not exists public.giveaway_winner_history (
   id uuid primary key default gen_random_uuid(),
   reroll_id uuid not null references public.giveaway_rerolls (id) on delete cascade,
   giveaway_id uuid not null references public.giveaways (id) on delete cascade,
@@ -68,11 +68,11 @@ create table public.giveaway_winner_history (
   )
 );
 
-create index giveaway_winner_history_cleanup_idx
+create index if not exists giveaway_winner_history_cleanup_idx
   on public.giveaway_winner_history (ticket_cleanup_status, replaced_at, id)
   where ticket_cleanup_status in ('pending', 'failed', 'deleting');
 
-create index giveaway_winner_history_giveaway_entry_idx
+create index if not exists giveaway_winner_history_giveaway_entry_idx
   on public.giveaway_winner_history (giveaway_id, entry_id);
 
 alter table public.giveaway_rerolls enable row level security;
@@ -80,8 +80,10 @@ alter table public.giveaway_rerolls force row level security;
 alter table public.giveaway_winner_history enable row level security;
 alter table public.giveaway_winner_history force row level security;
 
-revoke all on table public.giveaway_rerolls from public, anon, authenticated;
-revoke all on table public.giveaway_winner_history from public, anon, authenticated;
+revoke all on table public.giveaway_rerolls
+  from public, anon, authenticated, service_role;
+revoke all on table public.giveaway_winner_history
+  from public, anon, authenticated, service_role;
 grant select, insert, update on table public.giveaway_rerolls to service_role;
 grant select, insert, update, delete on table public.giveaway_winner_history to service_role;
 

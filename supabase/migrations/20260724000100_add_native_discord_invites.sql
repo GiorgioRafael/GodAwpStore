@@ -143,8 +143,10 @@ alter table public.discord_native_invite_events force row level security;
 alter table public.discord_native_invite_snapshots enable row level security;
 alter table public.discord_native_invite_snapshots force row level security;
 
-revoke all on table public.discord_native_invite_events from public, anon, authenticated;
-revoke all on table public.discord_native_invite_snapshots from public, anon, authenticated;
+revoke all on table public.discord_native_invite_events
+  from public, anon, authenticated, service_role;
+revoke all on table public.discord_native_invite_snapshots
+  from public, anon, authenticated, service_role;
 grant select, insert, update on table public.discord_native_invite_events to service_role;
 grant select, insert, update, delete on table public.discord_native_invite_snapshots to service_role;
 
