@@ -3,8 +3,10 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import {
+  deleteGiveawayWinnerTicketChannel,
   ensureGiveawayWinnerTicket,
   publishGiveawayAnnouncement,
+  publishGiveawayRerollAnnouncement,
   publishGiveawayResultAnnouncement,
   type GiveawayPrize,
 } from "@/lib/giveaways/discord";
@@ -38,6 +40,8 @@ export type GiveawayReconciliationResult = {
   drawsWithoutWinner: number;
   drawsDeferred: number;
   resultsPublished: number;
+  rerollsPublished: number;
+  obsoleteTicketsClosed: number;
   ticketsOpened: number;
   failures: number;
 };
@@ -58,6 +62,8 @@ export async function reconcileGiveaways(
     drawsWithoutWinner: 0,
     drawsDeferred: 0,
     resultsPublished: 0,
+    rerollsPublished: 0,
+    obsoleteTicketsClosed: 0,
     ticketsOpened: 0,
     failures: 0,
   };
@@ -74,6 +80,12 @@ export async function reconcileGiveaways(
   if (Date.now() < deadline) await drawDueGiveaways(client, fetcher, deadline, result);
   if (Date.now() < deadline) {
     await publishPendingResultAnnouncements(client, fetcher, result);
+  }
+  if (Date.now() < deadline) {
+    await publishPendingRerollAnnouncements(client, fetcher, result);
+  }
+  if (Date.now() < deadline) {
+    await cleanupObsoleteWinnerTickets(client, fetcher, deadline, result);
   }
   if (Date.now() < deadline) await openWinnerTickets(client, fetcher, deadline, result);
   return result;
@@ -511,6 +523,106 @@ async function publishResultAnnouncement(
       p_error: message,
     });
     console.error(`[giveaway:result:${giveawayId}] ${message}`);
+  }
+}
+
+async function publishPendingRerollAnnouncements(
+  client: AdminClient,
+  fetcher: typeof fetch,
+  result: GiveawayReconciliationResult,
+) {
+  const { data: rerolls, error } = await client
+    .from("giveaway_rerolls")
+    .select("id,giveaway_id,announcement_message_id")
+    .is("announcement_message_id", null)
+    .order("created_at")
+    .limit(10);
+  if (error) throw new Error(`Falha ao listar resorteios pendentes: ${error.message}`);
+  for (const reroll of rerolls ?? []) {
+    await publishRerollAnnouncement(
+      client,
+      reroll.id,
+      reroll.giveaway_id,
+      reroll.announcement_message_id,
+      fetcher,
+      result,
+    );
+  }
+}
+
+export async function publishRerollAnnouncement(
+  client: AdminClient,
+  rerollId: string,
+  giveawayId: string,
+  messageId: string | null,
+  fetcher: typeof fetch,
+  result: GiveawayReconciliationResult,
+) {
+  try {
+    const input = await getGiveawayAnnouncementInput(giveawayId);
+    const publication = await publishGiveawayRerollAnnouncement(
+      input,
+      { id: rerollId, messageId },
+      { fetcher },
+    );
+    const { error } = await client.rpc("record_giveaway_reroll_publication", {
+      p_reroll_id: rerollId,
+      p_message_id: publication.messageId,
+      p_error: null,
+    });
+    if (error) throw new Error(error.message);
+    result.rerollsPublished += 1;
+  } catch (error) {
+    result.failures += 1;
+    const message = errorMessage(error);
+    await client.rpc("record_giveaway_reroll_publication", {
+      p_reroll_id: rerollId,
+      p_message_id: null,
+      p_error: message,
+    });
+    console.error(`[giveaway:reroll:${giveawayId}:${rerollId}] ${message}`);
+  }
+}
+
+async function cleanupObsoleteWinnerTickets(
+  client: AdminClient,
+  fetcher: typeof fetch,
+  deadline: number,
+  result: GiveawayReconciliationResult,
+) {
+  for (let index = 0; index < MAX_TICKETS_PER_RUN; index += 1) {
+    if (Date.now() + TICKET_BATCH_BUDGET_MS >= deadline) return;
+    const claimToken = randomUUID();
+    const { data: claim, error } = await client
+      .rpc("claim_giveaway_reroll_ticket_cleanup", { p_claim_token: claimToken })
+      .maybeSingle();
+    if (error) throw new Error(`Falha ao reservar limpeza de ticket: ${error.message}`);
+    if (!claim) return;
+    try {
+      await deleteGiveawayWinnerTicketChannel(claim.ticket_channel_id, { fetcher });
+      const { data: completed, error: completionError } = await client.rpc(
+        "record_giveaway_reroll_ticket_cleanup",
+        {
+          p_history_id: claim.history_id,
+          p_claim_token: claimToken,
+          p_error: null,
+        },
+      );
+      if (completionError || !completed) {
+        throw new Error(completionError?.message || "Reserva de limpeza substituída.");
+      }
+      result.obsoleteTicketsClosed += 1;
+    } catch (error) {
+      result.failures += 1;
+      const message = errorMessage(error);
+      await client.rpc("record_giveaway_reroll_ticket_cleanup", {
+        p_history_id: claim.history_id,
+        p_claim_token: claimToken,
+        p_error: message,
+      });
+      console.error(`[giveaway:reroll-ticket:${claim.giveaway_id}:${claim.history_id}] ${message}`);
+      return;
+    }
   }
 }
 

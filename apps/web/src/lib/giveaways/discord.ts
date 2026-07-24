@@ -6,6 +6,8 @@ import {
   assertDiscordBotGuildAccess,
   DiscordApiError,
   discordBotJson,
+  discordBotRequest,
+  isDiscordUnknownChannelResponse,
 } from "@/lib/bot/discord-api";
 import {
   buildTicketPermissionOverwrites,
@@ -125,6 +127,53 @@ export async function publishGiveawayResultAnnouncement(
   return { messageId: message.id };
 }
 
+export async function publishGiveawayRerollAnnouncement(
+  input: GiveawayAnnouncementInput,
+  reroll: { id: string; messageId?: string | null },
+  options: { fetcher?: typeof fetch; siteUrl?: string } = {},
+) {
+  validateAnnouncement(input);
+  if (!UUID_PATTERN.test(reroll.id)) throw new Error("ID do resorteio inválido.");
+  const winners = normalizedWinners(input);
+  if (input.status !== "completed" || !winners.length) {
+    throw new Error("O resorteio só pode ser anunciado com ganhadores definidos.");
+  }
+  if (reroll.messageId && !SNOWFLAKE_PATTERN.test(reroll.messageId)) {
+    throw new Error("Mensagem do resorteio inválida.");
+  }
+  const fetcher = options.fetcher ?? fetch;
+  const siteUrl = options.siteUrl ?? getSiteUrl();
+  const payload = giveawayRerollAnnouncementPayload(input, siteUrl);
+  const send = (messageId?: string | null) => discordBotJson<{
+    id?: unknown;
+    channel_id?: unknown;
+  }>(
+    messageId
+      ? `/channels/${input.channelId}/messages/${messageId}`
+      : `/channels/${input.channelId}/messages`,
+    {
+      method: messageId ? "PATCH" : "POST",
+      body: JSON.stringify(payload),
+    },
+    fetcher,
+  );
+  let message;
+  try {
+    message = await send(reroll.messageId);
+  } catch (error) {
+    if (!reroll.messageId || !isUnknownDiscordMessage(error)) throw error;
+    message = await send();
+  }
+  if (
+    typeof message.id !== "string"
+    || !SNOWFLAKE_PATTERN.test(message.id)
+    || (message.channel_id !== undefined && message.channel_id !== input.channelId)
+  ) {
+    throw new Error("Discord retornou uma publicação de resorteio inválida.");
+  }
+  return { messageId: message.id };
+}
+
 export function giveawayAnnouncementPayload(
   input: GiveawayAnnouncementInput,
   siteUrl: string,
@@ -230,9 +279,47 @@ export function giveawayResultAnnouncementPayload(
   };
   assertDiscordEmbeds([embed]);
   return {
-    content: "🎉 **Sorteio encerrado — confiram os ganhadores!**",
+    content: "@everyone\n🎉 **Sorteio encerrado — confiram os ganhadores!**",
     allowed_mentions: {
-      parse: [],
+      parse: ["everyone"],
+      users: winners.map((winner) => winner.discordUserId),
+    },
+    embeds: [embed],
+    components: [{
+      type: 1,
+      components: [{
+        type: 2,
+        style: 5,
+        label: "Ver resultado",
+        url: giveawayViewerUrl(siteUrl, input.publicSlug),
+      }],
+    }],
+  };
+}
+
+export function giveawayRerollAnnouncementPayload(
+  input: GiveawayAnnouncementInput,
+  siteUrl: string,
+) {
+  const winners = normalizedWinners(input);
+  const winnerLines = winners.map(
+    (winner, index) => `**${index + 1}.** <@${winner.discordUserId}>`,
+  );
+  const embed = {
+    color: 0xe4ad55,
+    title: "🔄 NOVO RESULTADO DO SORTEIO",
+    description: limitText([
+      `A equipe realizou um resorteio de **${sanitize(input.title, 220)}**.`,
+      `\n**${winners.length === 1 ? "Ganhador atual" : "Ganhadores atuais"}**\n${winnerLines.join("\n")}`,
+      "\nOs novos tickets privados de entrega serão abertos automaticamente.",
+    ].join("\n"), EMBED_DESCRIPTION_LIMIT),
+    footer: { text: `GWStore Giveaway • ${input.id}` },
+  };
+  assertDiscordEmbeds([embed]);
+  return {
+    content: "@everyone\n🔄 **Ganhadores atualizados após resorteio!**",
+    allowed_mentions: {
+      parse: ["everyone"],
       users: winners.map((winner) => winner.discordUserId),
     },
     embeds: [embed],
@@ -363,6 +450,27 @@ export async function ensureGiveawayWinnerTicket(
   }
 
   return { channelId: channel.id, created };
+}
+
+export async function deleteGiveawayWinnerTicketChannel(
+  channelId: string,
+  options: { fetcher?: typeof fetch } = {},
+) {
+  if (!SNOWFLAKE_PATTERN.test(channelId)) throw new Error("Canal de prêmio inválido.");
+  const response = await discordBotRequest(
+    `/channels/${channelId}`,
+    {
+      method: "DELETE",
+      headers: {
+        "X-Audit-Log-Reason": encodeURIComponent(
+          "GWStore giveaway winner rerolled",
+        ),
+      },
+    },
+    options.fetcher ?? fetch,
+  );
+  if (response.ok || await isDiscordUnknownChannelResponse(response)) return;
+  throw new Error(`Discord recusou excluir o ticket antigo (${response.status}).`);
 }
 
 async function sendGiveawayAnnouncement(

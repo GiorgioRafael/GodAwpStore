@@ -21,6 +21,7 @@ import {
   cancelGiveawayAction,
   createGiveawayAction,
   republishGiveawayAction,
+  rerollGiveawayWinnersAction,
 } from "@/app/actions/giveaways";
 import {
   ActionFeedback,
@@ -235,6 +236,8 @@ export function GiveawayManager({
 function GiveawayCard({ giveaway }: { giveaway: GiveawayListItem }) {
   const [cancelState, cancelAction, cancelling] = useActionState(cancelGiveawayAction, initialAdminActionState);
   const [publishState, publishAction, publishing] = useActionState(republishGiveawayAction, initialAdminActionState);
+  const [rerollState, rerollAction, rerolling] = useActionState(rerollGiveawayWinnersAction, initialAdminActionState);
+  const [selectedWinnerIds, setSelectedWinnerIds] = useState<string[]>([]);
   const canCancel = giveaway.status === "scheduled" || giveaway.status === "active" || giveaway.status === "drawing";
   return (
     <Card>
@@ -273,10 +276,70 @@ function GiveawayCard({ giveaway }: { giveaway: GiveawayListItem }) {
             </ol>
           </div>
         ) : giveaway.winnerDiscordUserId ? <div className="flex items-center gap-3 rounded-xl border border-gold/25 bg-gold/[0.06] p-3"><Trophy aria-hidden="true" className="size-5 text-gold" /><div><p className="text-xs text-muted">Ganhador</p><p className="text-sm font-semibold">{giveaway.winnerDisplayName} <span className="font-mono text-xs font-normal text-muted">({giveaway.winnerDiscordUserId})</span></p></div></div> : null}
+        {giveaway.status === "completed" && giveaway.winners.length ? (
+          <form
+            action={rerollAction}
+            className="rounded-xl border border-warning/25 bg-warning/[0.05] p-3"
+            onSubmit={(event) => {
+              if (
+                !window.confirm(
+                  `Substituir ${selectedWinnerIds.length} ganhador(es)? Os tickets atuais dessas pessoas serão encerrados.`,
+                )
+              ) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="giveawayId" value={giveaway.id} />
+            <p className="text-sm font-semibold">Resortear quem não apareceu</p>
+            <p className="mt-1 text-xs leading-5 text-muted">
+              Marque exatamente quem deve ser substituído. Ganhadores atuais ou anteriores não podem ganhar novamente.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {giveaway.winners.map((winner) => (
+                <label
+                  key={winner.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    name="winnerId"
+                    value={winner.id}
+                    checked={selectedWinnerIds.includes(winner.id)}
+                    onChange={(event) => {
+                      setSelectedWinnerIds((current) => event.target.checked
+                        ? [...current, winner.id]
+                        : current.filter((id) => id !== winner.id));
+                    }}
+                    className="size-4 accent-[var(--color-gold)]"
+                  />
+                  <span className="min-w-0 truncate">
+                    {winner.position}. {winner.displayName}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="submit"
+                variant="secondary"
+                size="sm"
+                disabled={rerolling || selectedWinnerIds.length === 0}
+              >
+                {rerolling
+                  ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+                  : <RefreshCw aria-hidden="true" className="size-4" />}
+                {rerolling
+                  ? "Resorteando..."
+                  : `Resortear ${selectedWinnerIds.length || ""}`.trim()}
+              </Button>
+            </div>
+          </form>
+        ) : null}
         {!giveaway.winners.length && giveaway.discordTicketChannelId ? <p className="flex items-center gap-2 text-sm text-success"><Ticket aria-hidden="true" className="size-4" /> Ticket aberto: <span className="font-mono">{giveaway.discordTicketChannelId}</span></p> : !giveaway.winners.length && giveaway.status === "completed" ? <p className="flex items-center gap-2 text-sm text-warning"><Ticket aria-hidden="true" className="size-4" /> Ticket: {giveaway.discordTicketStatus === "failed" ? "tentativa falhou; o cron tentará novamente" : "aguardando abertura"}</p> : null}
         {giveaway.publicationError ? <p className="rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-xs leading-5 text-[#f3c878]">Anúncio pendente: {giveaway.publicationError}</p> : null}
         {giveaway.failureReason ? <p className="rounded-xl border border-danger/25 bg-danger/[0.06] p-3 text-xs leading-5 text-[#ffc0bd]">{giveaway.failureReason}</p> : null}
-        <ActionFeedback state={cancelState.message ? cancelState : publishState} />
+        <ActionFeedback state={rerollState.message ? rerollState : cancelState.message ? cancelState : publishState} />
       </CardContent>
       <CardFooter className="flex flex-wrap justify-end gap-2">
         <LinkButton href={`/sorteios/${giveaway.publicSlug}`} target="_blank" variant="secondary" size="sm">Abrir página</LinkButton>

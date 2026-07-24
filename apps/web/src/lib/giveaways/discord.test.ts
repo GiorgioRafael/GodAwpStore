@@ -12,6 +12,7 @@ vi.mock("@/lib/bot/message-customization-server", () => ({
 import {
   ensureGiveawayWinnerTicket,
   giveawayAnnouncementPayload,
+  giveawayRerollAnnouncementPayload,
   giveawayResultAnnouncementPayload,
   giveawayWinnerTicketPayload,
   publishGiveawayAnnouncement,
@@ -122,6 +123,11 @@ describe("giveaway Discord announcement", () => {
     );
 
     expect(payload.content).toContain("Sorteio encerrado");
+    expect(payload.content).toContain("@everyone");
+    expect(payload.allowed_mentions).toEqual({
+      parse: ["everyone"],
+      users: winners.map((winner) => winner.discordUserId),
+    });
     expect(payload.embeds[0].title).toBe("🏆 RESULTADO DO SORTEIO");
     expect(payload.embeds[0].description).toContain("1.** <@223456789012345678>");
     expect(payload.embeds[0].description).toContain("2.** <@323456789012345678>");
@@ -129,6 +135,27 @@ describe("giveaway Discord announcement", () => {
       label: "Ver resultado",
       url: "https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",
     });
+  });
+
+  it("anuncia um resorteio em uma nova mensagem e marca todos", () => {
+    const winners = [
+      { discordUserId: "223456789012345678", displayName: "Primeiro" },
+      { discordUserId: "323456789012345678", displayName: "Segundo" },
+    ];
+    const payload = giveawayRerollAnnouncementPayload(
+      { ...input, status: "completed", winners },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.content).toContain("@everyone");
+    expect(payload.content).toContain("Ganhadores atualizados");
+    expect(payload.allowed_mentions).toEqual({
+      parse: ["everyone"],
+      users: winners.map((winner) => winner.discordUserId),
+    });
+    expect(payload.embeds[0].title).toBe("🔄 NOVO RESULTADO DO SORTEIO");
+    expect(payload.embeds[0].description).toContain("<@223456789012345678>");
+    expect(payload.embeds[0].description).toContain("<@323456789012345678>");
   });
 
   it("mantém os embeds dentro dos limites com 20 itens e textos máximos", () => {

@@ -278,6 +278,33 @@ type GiveawayWinnerRow = {
   created_at: string;
 };
 
+type GiveawayRerollRow = {
+  id: string;
+  giveaway_id: string;
+  replaced_winner_count: number;
+  announcement_message_id: string | null;
+  announcement_error: string | null;
+  requested_by: string | null;
+  created_at: string;
+};
+
+type GiveawayWinnerHistoryRow = {
+  id: string;
+  reroll_id: string;
+  giveaway_id: string;
+  winner_id: string;
+  entry_id: string;
+  winner_position: number;
+  discord_user_id: string;
+  display_name: string;
+  ticket_channel_id: string | null;
+  ticket_cleanup_status: string;
+  ticket_cleanup_claim_token: string | null;
+  ticket_cleanup_claimed_at: string | null;
+  ticket_cleanup_error: string | null;
+  replaced_at: string;
+};
+
 type GiveawayEntryRow = {
   id: string;
   giveaway_id: string;
@@ -715,6 +742,56 @@ export type Database = {
           >,
           Relationship<
             "giveaway_winners_entry_id_fkey",
+            ["entry_id"],
+            "giveaway_entries",
+            ["id"]
+          >,
+        ];
+      };
+      giveaway_rerolls: {
+        Row: GiveawayRerollRow;
+        Insert: InsertRow<
+          GiveawayRerollRow,
+          "giveaway_id" | "replaced_winner_count"
+        >;
+        Update: UpdateRow<GiveawayRerollRow>;
+        Relationships: [
+          Relationship<
+            "giveaway_rerolls_giveaway_id_fkey",
+            ["giveaway_id"],
+            "giveaways",
+            ["id"]
+          >,
+        ];
+      };
+      giveaway_winner_history: {
+        Row: GiveawayWinnerHistoryRow;
+        Insert: InsertRow<
+          GiveawayWinnerHistoryRow,
+          | "reroll_id"
+          | "giveaway_id"
+          | "winner_id"
+          | "entry_id"
+          | "winner_position"
+          | "discord_user_id"
+          | "display_name"
+        >;
+        Update: UpdateRow<GiveawayWinnerHistoryRow>;
+        Relationships: [
+          Relationship<
+            "giveaway_winner_history_reroll_id_fkey",
+            ["reroll_id"],
+            "giveaway_rerolls",
+            ["id"]
+          >,
+          Relationship<
+            "giveaway_winner_history_giveaway_id_fkey",
+            ["giveaway_id"],
+            "giveaways",
+            ["id"]
+          >,
+          Relationship<
+            "giveaway_winner_history_entry_id_fkey",
             ["entry_id"],
             "giveaway_entries",
             ["id"]
@@ -1219,6 +1296,46 @@ export type Database = {
           p_error: string | null;
         };
         Returns: boolean;
+      };
+      admin_reroll_giveaway_winners: {
+        Args: {
+          p_giveaway_id: string;
+          p_winner_ids: string[];
+          p_replacement_entry_ids: string[];
+        };
+        Returns: {
+          reroll_id: string;
+          history_id: string;
+          replaced_ticket_channel_id: string | null;
+          new_winner_id: string;
+          winner_position: number;
+          new_winner_discord_user_id: string;
+          new_winner_display_name: string;
+        }[];
+      };
+      record_giveaway_reroll_publication: {
+        Args: {
+          p_reroll_id: string;
+          p_message_id: string | null;
+          p_error: string | null;
+        };
+        Returns: boolean;
+      };
+      record_giveaway_reroll_ticket_cleanup: {
+        Args: {
+          p_history_id: string;
+          p_claim_token: string;
+          p_error: string | null;
+        };
+        Returns: boolean;
+      };
+      claim_giveaway_reroll_ticket_cleanup: {
+        Args: { p_claim_token: string };
+        Returns: {
+          history_id: string;
+          giveaway_id: string;
+          ticket_channel_id: string;
+        }[];
       };
       admin_giveaway_entry_counts: {
         Args: { p_giveaway_ids: string[] };
