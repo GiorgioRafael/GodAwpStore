@@ -10,10 +10,22 @@ export type GiveawayPrizeView = Pick<
   "product_id" | "product_name" | "quantity" | "position"
 >;
 
+export type GiveawayWinnerView = Pick<
+  Tables<"giveaway_winners">,
+  | "id"
+  | "winner_position"
+  | "discord_user_id"
+  | "display_name"
+  | "ticket_status"
+  | "ticket_channel_id"
+  | "ticket_error"
+>;
+
 export type AdminGiveawayView = Tables<"giveaways"> & {
   guildName: string;
   discordGuildId: string;
   prizes: GiveawayPrizeView[];
+  winners: GiveawayWinnerView[];
   participantCount: number;
   eligibleParticipantCount: number;
 };
@@ -37,6 +49,7 @@ export type PublicGiveawayView = Pick<
 > & {
   guildName: string;
   prizes: GiveawayPrizeView[];
+  winners: GiveawayWinnerView[];
   entry: {
     displayName: string;
     referralToken: string;
@@ -71,12 +84,19 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
 
   const giveawayIds = giveaways.map((giveaway) => giveaway.id);
   const guildIds = [...new Set(giveaways.map((giveaway) => giveaway.guild_id))];
-  const [prizeResult, entryCountResult, guildResult] = await Promise.all([
+  const [prizeResult, winnerResult, entryCountResult, guildResult] = await Promise.all([
     client
       .from("giveaway_prizes")
       .select("giveaway_id,product_id,product_name,quantity,position")
       .in("giveaway_id", giveawayIds)
       .order("position"),
+    client
+      .from("giveaway_winners")
+      .select(
+        "id,giveaway_id,winner_position,discord_user_id,display_name,ticket_status,ticket_channel_id,ticket_error",
+      )
+      .in("giveaway_id", giveawayIds)
+      .order("winner_position"),
     client.rpc("admin_giveaway_entry_counts", {
       p_giveaway_ids: giveawayIds,
     }),
@@ -85,7 +105,7 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
       .select("id,name,discord_guild_id")
       .in("id", guildIds),
   ]);
-  if (prizeResult.error || entryCountResult.error || guildResult.error) {
+  if (prizeResult.error || winnerResult.error || entryCountResult.error || guildResult.error) {
     throw new Error("Não foi possível carregar os detalhes dos sorteios.");
   }
 
@@ -94,6 +114,12 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
     const rows = prizes.get(prize.giveaway_id) ?? [];
     rows.push(prize);
     prizes.set(prize.giveaway_id, rows);
+  }
+  const winners = new Map<string, GiveawayWinnerView[]>();
+  for (const winner of winnerResult.data ?? []) {
+    const rows = winners.get(winner.giveaway_id) ?? [];
+    rows.push(winner);
+    winners.set(winner.giveaway_id, rows);
   }
   const entryCounts = new Map(
     (entryCountResult.data ?? []).map((entry) => [entry.giveaway_id, entry]),
@@ -110,6 +136,7 @@ export async function listAdminGiveaways(limit = 100): Promise<AdminGiveawayView
       guildName: guild?.name ?? "Servidor removido",
       discordGuildId: guild?.discord_guild_id ?? "",
       prizes: prizes.get(giveaway.id) ?? [],
+      winners: winners.get(giveaway.id) ?? [],
       participantCount: Number(counts?.participant_count ?? 0),
       eligibleParticipantCount: Number(counts?.eligible_participant_count ?? 0),
     };
@@ -139,16 +166,23 @@ export async function getPublicGiveaway(
         .eq("access_token", entryAccessToken)
         .maybeSingle()
     : Promise.resolve({ data: null, error: null });
-  const [prizeResult, guildResult, entryResult] = await Promise.all([
+  const [prizeResult, winnerResult, guildResult, entryResult] = await Promise.all([
     client
       .from("giveaway_prizes")
       .select("product_id,product_name,quantity,position")
       .eq("giveaway_id", giveaway.id)
       .order("position"),
+    client
+      .from("giveaway_winners")
+      .select(
+        "id,winner_position,discord_user_id,display_name,ticket_status,ticket_channel_id,ticket_error",
+      )
+      .eq("giveaway_id", giveaway.id)
+      .order("winner_position"),
     client.from("guilds").select("name").eq("id", giveaway.guild_id).maybeSingle(),
     entryQuery,
   ]);
-  if (prizeResult.error || guildResult.error || entryResult.error) {
+  if (prizeResult.error || winnerResult.error || guildResult.error || entryResult.error) {
     throw new Error("Não foi possível carregar os detalhes do sorteio.");
   }
 
@@ -156,6 +190,7 @@ export async function getPublicGiveaway(
     ...giveaway,
     guildName: guildResult.data?.name ?? "GWStore",
     prizes: prizeResult.data ?? [],
+    winners: winnerResult.data ?? [],
     entry: entryResult.data
       ? {
           displayName: entryResult.data.display_name,
@@ -174,12 +209,22 @@ export async function getGiveawayAnnouncementInput(giveawayId: string) {
     .eq("id", giveawayId)
     .maybeSingle();
   if (error || !giveaway) throw new Error("Sorteio não encontrado.");
-  const { data: prizes, error: prizeError } = await client
-    .from("giveaway_prizes")
-    .select("product_name,quantity,position")
-    .eq("giveaway_id", giveaway.id)
-    .order("position");
-  if (prizeError || !prizes?.length) throw new Error("Pacote do sorteio não encontrado.");
+  const [prizeResult, winnerResult] = await Promise.all([
+    client
+      .from("giveaway_prizes")
+      .select("product_name,quantity,position")
+      .eq("giveaway_id", giveaway.id)
+      .order("position"),
+    client
+      .from("giveaway_winners")
+      .select("winner_position,discord_user_id,display_name")
+      .eq("giveaway_id", giveaway.id)
+      .order("winner_position"),
+  ]);
+  if (prizeResult.error || !prizeResult.data?.length) {
+    throw new Error("Pacote do sorteio não encontrado.");
+  }
+  if (winnerResult.error) throw new Error("Ganhadores do sorteio não encontrados.");
   return {
     id: giveaway.id,
     publicSlug: giveaway.public_slug,
@@ -195,8 +240,12 @@ export async function getGiveawayAnnouncementInput(giveawayId: string) {
     minimumAccountAgeDays: giveaway.minimum_account_age_days,
     minimumStayMinutes: giveaway.minimum_stay_minutes,
     winnerDiscordUserId: giveaway.winner_discord_user_id,
+    winners: (winnerResult.data ?? []).map((winner) => ({
+      discordUserId: winner.discord_user_id,
+      displayName: winner.display_name,
+    })),
     failureReason: giveaway.failure_reason,
-    prizes: prizes.map((prize) => ({
+    prizes: prizeResult.data.map((prize) => ({
       productName: prize.product_name,
       quantity: prize.quantity,
     })),

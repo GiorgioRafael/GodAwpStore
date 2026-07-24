@@ -14,8 +14,9 @@ import type { Json } from "@/lib/supabase/database.types";
 const MAX_REFERRALS_PER_RUN = 50;
 const MAX_DRAWS_PER_RUN = 2;
 const MAX_TICKETS_PER_RUN = 10;
-const DRAW_RECONCILIATION_BATCH_SIZE = 50;
+const DRAW_RECONCILIATION_BATCH_SIZE = 200;
 const DISCORD_CONCURRENCY = 4;
+const DRAW_DISCORD_CONCURRENCY = 1;
 const DISCORD_JOIN_TIME_TOLERANCE_MS = 1_000;
 const RECONCILIATION_BUDGET_MS = 240_000;
 const DRAW_BATCH_BUDGET_MS = 120_000;
@@ -148,6 +149,17 @@ async function drawDueGiveaways(
     if (!claim) return;
 
     try {
+      if (!await hasPotentiallyEligibleEntry(client, claim)) {
+        const completed = await completeGiveawayDraw(
+          client,
+          claim.giveaway_id,
+          claimToken,
+          null,
+        );
+        result.drawsWithoutWinner += 1;
+        await refreshAnnouncement(client, completed.completed_giveaway_id, fetcher, result);
+        continue;
+      }
       const referralsReady = await revalidateGiveawayReferralBatch(
         client,
         claim,
@@ -178,16 +190,12 @@ async function drawDueGiveaways(
         })
         .maybeSingle();
       if (winnerError) throw new Error(winnerError.message);
-      const { data: completed, error: completionError } = await client
-        .rpc("complete_giveaway_draw_v2", {
-          p_giveaway_id: claim.giveaway_id,
-          p_claim_token: claimToken,
-          p_winner_entry_id: winner?.entry_id ?? null,
-        })
-        .single();
-      if (completionError || !completed) {
-        throw new Error(completionError?.message || "Sorteio não retornou resultado.");
-      }
+      const completed = await completeGiveawayDraw(
+        client,
+        claim.giveaway_id,
+        claimToken,
+        winner?.entry_id ?? null,
+      );
       if (completed.resulting_status === "completed") result.drawsCompleted += 1;
       else result.drawsWithoutWinner += 1;
       await refreshAnnouncement(client, claim.giveaway_id, fetcher, result);
@@ -205,6 +213,39 @@ type DrawClaim = {
   minimum_stay_minutes: number;
   ends_at: string;
 };
+
+async function hasPotentiallyEligibleEntry(
+  client: AdminClient,
+  claim: DrawClaim,
+) {
+  const { data, error } = await client
+    .from("giveaway_entries")
+    .select("id")
+    .eq("giveaway_id", claim.giveaway_id)
+    .gte("valid_invite_count", claim.required_valid_invites)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  return Boolean(data?.length);
+}
+
+async function completeGiveawayDraw(
+  client: AdminClient,
+  giveawayId: string,
+  claimToken: string,
+  winnerEntryId: string | null,
+) {
+  const { data, error } = await client
+    .rpc("complete_giveaway_draw_v2", {
+      p_giveaway_id: giveawayId,
+      p_claim_token: claimToken,
+      p_winner_entry_id: winnerEntryId,
+    })
+    .single();
+  if (error || !data) {
+    throw new Error(error?.message || "Sorteio não retornou resultado.");
+  }
+  return data;
+}
 
 async function revalidateGiveawayReferralBatch(
   client: AdminClient,
@@ -225,7 +266,7 @@ async function revalidateGiveawayReferralBatch(
     .order("id")
     .limit(DRAW_RECONCILIATION_BATCH_SIZE);
   if (error) throw new Error(error.message);
-  await mapConcurrent(referrals ?? [], DISCORD_CONCURRENCY, async (referral) => {
+  await mapConcurrent(referrals ?? [], DRAW_DISCORD_CONCURRENCY, async (referral) => {
     try {
       const membership = await getDiscordGuildMembership(
         claim.discord_guild_id,
@@ -289,12 +330,13 @@ async function revalidateGiveawayEntryBatch(
     .from("giveaway_entries")
     .select("id,discord_user_id")
     .eq("giveaway_id", claim.giveaway_id)
+    .gte("valid_invite_count", claim.required_valid_invites)
     .or(staleFilter)
     .order("id")
     .limit(DRAW_RECONCILIATION_BATCH_SIZE);
   if (error) throw new Error(error.message);
 
-  await mapConcurrent(entries ?? [], DISCORD_CONCURRENCY, async (entry) => {
+  await mapConcurrent(entries ?? [], DRAW_DISCORD_CONCURRENCY, async (entry) => {
     try {
       const membership = await getDiscordGuildMembership(
         claim.discord_guild_id,
@@ -327,6 +369,7 @@ async function revalidateGiveawayEntryBatch(
     .from("giveaway_entries")
     .select("id")
     .eq("giveaway_id", claim.giveaway_id)
+    .gte("valid_invite_count", claim.required_valid_invites)
     .or(staleFilter)
     .limit(1);
   if (remainingError) throw new Error(remainingError.message);
@@ -343,7 +386,7 @@ async function openWinnerTickets(
     if (Date.now() + TICKET_BATCH_BUDGET_MS >= deadline) return;
     const claimToken = randomUUID();
     const { data: claim, error } = await client
-      .rpc("claim_giveaway_ticket", { p_claim_token: claimToken })
+      .rpc("claim_giveaway_winner_ticket", { p_claim_token: claimToken })
       .maybeSingle();
     if (error) throw new Error(`Falha ao reservar ticket de sorteio: ${error.message}`);
     if (!claim) return;
@@ -352,6 +395,7 @@ async function openWinnerTickets(
       const ticket = await ensureGiveawayWinnerTicket(
         {
           giveawayId: claim.giveaway_id,
+          winnerId: claim.winner_id,
           guildId: claim.discord_guild_id,
           winnerDiscordUserId: claim.winner_discord_user_id,
           winnerDisplayName: claim.winner_display_name,
@@ -362,24 +406,25 @@ async function openWinnerTickets(
         { fetcher },
       );
       const { data: completed, error: completionError } = await client.rpc(
-        "complete_giveaway_ticket",
+        "complete_giveaway_winner_ticket",
         {
-          p_giveaway_id: claim.giveaway_id,
+          p_winner_id: claim.winner_id,
           p_claim_token: claimToken,
           p_channel_id: ticket.channelId,
         },
       );
       if (completionError || !completed) throw new Error(completionError?.message || "Reserva de ticket substituída.");
       result.ticketsOpened += 1;
+      await refreshAnnouncement(client, claim.giveaway_id, fetcher, result);
     } catch (error) {
       result.failures += 1;
       const message = errorMessage(error);
-      await client.rpc("fail_giveaway_ticket", {
-        p_giveaway_id: claim.giveaway_id,
+      await client.rpc("fail_giveaway_winner_ticket", {
+        p_winner_id: claim.winner_id,
         p_claim_token: claimToken,
         p_error: message,
       });
-      console.error(`[giveaway:ticket:${claim.giveaway_id}] ${message}`);
+      console.error(`[giveaway:ticket:${claim.giveaway_id}:${claim.winner_id}] ${message}`);
       return;
     }
   }

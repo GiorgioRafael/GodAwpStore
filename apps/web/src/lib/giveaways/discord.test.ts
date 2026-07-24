@@ -90,6 +90,26 @@ describe("giveaway Discord announcement", () => {
     });
   });
 
+  it("anuncia vários ganhadores e permite mencionar somente os sorteados", () => {
+    const winners = [
+      { discordUserId: "223456789012345678", displayName: "Primeiro" },
+      { discordUserId: "323456789012345678", displayName: "Segundo" },
+    ];
+    const payload = giveawayAnnouncementPayload(
+      { ...input, status: "completed", winners },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.components).toEqual([]);
+    expect(payload.embeds[0].description).toContain("2 ganhadores");
+    expect(payload.embeds[0].description).toContain("1. <@223456789012345678>");
+    expect(payload.embeds[0].description).toContain("2. <@323456789012345678>");
+    expect(payload.allowed_mentions).toEqual({
+      parse: [],
+      users: winners.map((winner) => winner.discordUserId),
+    });
+  });
+
   it("mantém os embeds dentro dos limites com 20 itens e textos máximos", () => {
     const largeInput = {
       ...input,

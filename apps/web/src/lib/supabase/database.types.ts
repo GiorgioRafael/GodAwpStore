@@ -261,6 +261,21 @@ type GiveawayPrizeRow = {
   created_at: string;
 };
 
+type GiveawayWinnerRow = {
+  id: string;
+  giveaway_id: string;
+  entry_id: string;
+  winner_position: number;
+  discord_user_id: string;
+  display_name: string;
+  ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+  ticket_channel_id: string | null;
+  ticket_claim_token: string | null;
+  ticket_claimed_at: string | null;
+  ticket_error: string | null;
+  created_at: string;
+};
+
 type GiveawayEntryRow = {
   id: string;
   giveaway_id: string;
@@ -674,6 +689,32 @@ export type Database = {
             "giveaway_prizes_product_id_fkey",
             ["product_id"],
             "products",
+            ["id"]
+          >,
+        ];
+      };
+      giveaway_winners: {
+        Row: GiveawayWinnerRow;
+        Insert: InsertRow<
+          GiveawayWinnerRow,
+          | "giveaway_id"
+          | "entry_id"
+          | "winner_position"
+          | "discord_user_id"
+          | "display_name"
+        >;
+        Update: UpdateRow<GiveawayWinnerRow>;
+        Relationships: [
+          Relationship<
+            "giveaway_winners_giveaway_id_fkey",
+            ["giveaway_id"],
+            "giveaways",
+            ["id"]
+          >,
+          Relationship<
+            "giveaway_winners_entry_id_fkey",
+            ["entry_id"],
+            "giveaway_entries",
             ["id"]
           >,
         ];
@@ -1136,12 +1177,41 @@ export type Database = {
           prizes: Json;
         }[];
       };
+      claim_giveaway_winner_ticket: {
+        Args: { p_claim_token: string };
+        Returns: {
+          winner_id: string;
+          giveaway_id: string;
+          discord_guild_id: string;
+          winner_discord_user_id: string;
+          winner_display_name: string;
+          ticket_category_id: string | null;
+          giveaway_title: string;
+          prizes: Json;
+        }[];
+      };
       complete_giveaway_ticket: {
         Args: { p_giveaway_id: string; p_claim_token: string; p_channel_id: string };
         Returns: boolean;
       };
+      complete_giveaway_winner_ticket: {
+        Args: {
+          p_winner_id: string;
+          p_claim_token: string;
+          p_channel_id: string;
+        };
+        Returns: boolean;
+      };
       fail_giveaway_ticket: {
         Args: { p_giveaway_id: string; p_claim_token: string; p_error: string | null };
+        Returns: boolean;
+      };
+      fail_giveaway_winner_ticket: {
+        Args: {
+          p_winner_id: string;
+          p_claim_token: string;
+          p_error: string | null;
+        };
         Returns: boolean;
       };
       admin_giveaway_entry_counts: {

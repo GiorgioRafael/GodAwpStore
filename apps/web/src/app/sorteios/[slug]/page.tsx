@@ -120,7 +120,12 @@ export default async function GiveawayPage({
 
           <CardContent className="space-y-6 border-t border-border">
             <section>
-              <h2 className="flex items-center gap-2 text-sm font-semibold"><Trophy aria-hidden="true" className="size-4 text-gold" /> Pacote completo para 1 ganhador</h2>
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <Trophy aria-hidden="true" className="size-4 text-gold" />
+                {giveaway.winners.length > 1
+                  ? `Prêmios para ${formatNumber(giveaway.winners.length)} ganhadores`
+                  : "Pacote completo para 1 ganhador"}
+              </h2>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {giveaway.prizes.map((prize) => (
                   <div key={prize.product_id} className="rounded-xl border border-border bg-surface-muted px-4 py-3 text-sm">
@@ -146,12 +151,22 @@ export default async function GiveawayPage({
               {giveaway.rules_text ? <p className="mt-4 border-t border-border pt-4 whitespace-pre-line text-sm leading-6 text-muted-strong">{giveaway.rules_text}</p> : null}
             </section>
 
-            {giveaway.status === "completed" && giveaway.winner_discord_user_id ? (
-              <div className="rounded-2xl border border-gold/30 bg-gold/10 p-5 text-center">
+            {giveaway.status === "completed" && giveaway.winners.length ? (
+              <div className="rounded-2xl border border-gold/30 bg-gold/10 p-5">
                 <Trophy aria-hidden="true" className="mx-auto size-7 text-gold-bright" />
-                <p className="mt-2 text-sm text-muted">Ganhador do pacote</p>
-                <p className="mt-1 text-lg font-semibold">{giveaway.winner_display_name}</p>
-                <p className="mt-1 font-mono text-xs text-muted">{giveaway.winner_discord_user_id}</p>
+                <p className="mt-2 text-center text-sm text-muted">
+                  {giveaway.winners.length === 1 ? "Ganhador do pacote" : "Ganhadores"}
+                </p>
+                <ol className="mx-auto mt-3 max-w-md space-y-2">
+                  {giveaway.winners.map((winner) => (
+                    <li key={winner.id} className="flex items-center justify-between gap-3 rounded-xl border border-gold/20 bg-black/10 px-3 py-2">
+                      <span className="font-semibold">
+                        {winner.winner_position}. {winner.display_name}
+                      </span>
+                      <span className="font-mono text-xs text-muted">{winner.discord_user_id}</span>
+                    </li>
+                  ))}
+                </ol>
               </div>
             ) : null}
 

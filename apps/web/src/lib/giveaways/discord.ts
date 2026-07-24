@@ -28,6 +28,11 @@ export type GiveawayPrize = {
   quantity: number;
 };
 
+export type GiveawayAnnouncementWinner = {
+  discordUserId: string;
+  displayName: string;
+};
+
 export type GiveawayAnnouncementInput = {
   id: string;
   publicSlug: string;
@@ -43,6 +48,7 @@ export type GiveawayAnnouncementInput = {
   minimumAccountAgeDays: number;
   minimumStayMinutes: number;
   winnerDiscordUserId?: string | null;
+  winners?: GiveawayAnnouncementWinner[];
   failureReason?: string | null;
   prizes: GiveawayPrize[];
 };
@@ -93,22 +99,29 @@ export function giveawayAnnouncementPayload(
   const stay = input.minimumStayMinutes === 0
     ? "Validação após entrar"
     : `Permanecer ${formatDuration(input.minimumStayMinutes)} no servidor`;
-  const winnerLine = input.winnerDiscordUserId
-    ? `\n\n🏆 **Ganhador:** <@${input.winnerDiscordUserId}>`
+  const winners = normalizedWinners(input);
+  const winnerLine = winners.length
+    ? `\n\n🏆 **${winners.length === 1 ? "Ganhador" : "Ganhadores"}:**\n${winners
+        .map((winner, index) => `${index + 1}. <@${winner.discordUserId}>`)
+        .join("\n")}`
     : "";
   const failureLine = input.status === "failed" && input.failureReason
     ? `\n\n⚠️ ${sanitize(input.failureReason, 300)}`
     : "";
+  const prizeHeading = winners.length > 1
+    ? `Prêmios distribuídos entre ${formatQuantity(winners.length)} ganhadores`
+    : "Pacote completo para 1 ganhador";
+  const mentionedWinnerIds = winners.map((winner) => winner.discordUserId);
 
   const payload = {
-    allowed_mentions: { parse: [], users: input.winnerDiscordUserId ? [input.winnerDiscordUserId] : [] },
+    allowed_mentions: { parse: [], users: mentionedWinnerIds },
     embeds: [
       {
         color: status.color,
         title: `🎁 ${sanitize(input.title, 240)}`,
         description: limitText([
           sanitize(input.description, 900),
-          `\n**Pacote completo para 1 ganhador**\n${prizeLines.join("\n")}`,
+          `\n**${prizeHeading}**\n${prizeLines.join("\n")}`,
           `\n**Requisitos**\n• ${requirement}\n• ${accountAge}\n• ${stay}`,
           winnerLine,
           failureLine,
@@ -159,6 +172,7 @@ function giveawayViewerUrl(siteUrl: string, publicSlug: string) {
 
 export type GiveawayWinnerTicketInput = {
   giveawayId: string;
+  winnerId?: string;
   guildId: string;
   winnerDiscordUserId: string;
   winnerDisplayName: string;
@@ -183,7 +197,7 @@ export async function ensureGiveawayWinnerTicket(
     {},
     fetcher,
   );
-  const marker = giveawayTicketMarker(input.giveawayId);
+  const marker = giveawayTicketMarker(input.giveawayId, input.winnerId);
   const readyMarker = `${marker};welcome=1`;
   const overwrites = buildTicketPermissionOverwrites({
     guildId: input.guildId,
@@ -208,7 +222,10 @@ export async function ensureGiveawayWinnerTicket(
           ),
         },
         body: JSON.stringify({
-          name: winnerTicketChannelName(input.winnerDisplayName, input.giveawayId),
+          name: winnerTicketChannelName(
+            input.winnerDisplayName,
+            input.winnerId ?? input.giveawayId,
+          ),
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
@@ -314,7 +331,7 @@ export function giveawayWinnerTicketPayload(
   const embed = {
     color: 0xd4a64a,
     title: "🏆 Prêmio do sorteio",
-    description: `Parabéns! Você ganhou o pacote completo de **${sanitize(input.title, 200)}**.`,
+    description: `Parabéns! Você ganhou um prêmio de **${sanitize(input.title, 200)}**.`,
     fields: [
       ...prizeFields,
       {
@@ -365,11 +382,13 @@ type DiscordMessage = {
   embeds?: Array<{ footer?: { text?: string } }>;
 };
 
-function giveawayTicketMarker(giveawayId: string) {
-  return `gwstore:giveaway:${giveawayId}`;
+function giveawayTicketMarker(giveawayId: string, winnerId?: string) {
+  return winnerId
+    ? `gwstore:giveaway:${giveawayId}:winner:${winnerId}`
+    : `gwstore:giveaway:${giveawayId}`;
 }
 
-function winnerTicketChannelName(displayName: string, giveawayId: string) {
+function winnerTicketChannelName(displayName: string, uniqueId: string) {
   const name = displayName
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -377,7 +396,7 @@ function winnerTicketChannelName(displayName: string, giveawayId: string) {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 45) || "ganhador";
-  return `premio-${name}-${giveawayId.slice(0, 4)}`;
+  return `premio-${name}-${uniqueId.slice(0, 4)}`;
 }
 
 function validateAnnouncement(input: GiveawayAnnouncementInput) {
@@ -393,6 +412,9 @@ function validateAnnouncement(input: GiveawayAnnouncementInput) {
 
 function validateTicket(input: GiveawayWinnerTicketInput) {
   if (!UUID_PATTERN.test(input.giveawayId)) throw new Error("ID do sorteio inválido.");
+  if (input.winnerId && !UUID_PATTERN.test(input.winnerId)) {
+    throw new Error("ID do ganhador inválido.");
+  }
   if (!SNOWFLAKE_PATTERN.test(input.guildId)) throw new Error("Servidor do sorteio inválido.");
   if (!SNOWFLAKE_PATTERN.test(input.winnerDiscordUserId)) {
     throw new Error("Ganhador do sorteio inválido.");
@@ -403,6 +425,16 @@ function validateTicket(input: GiveawayWinnerTicketInput) {
   if (input.prizes.length < 1 || input.prizes.length > 20) {
     throw new Error("Pacote de prêmios inválido.");
   }
+}
+
+function normalizedWinners(input: GiveawayAnnouncementInput) {
+  const winners = input.winners?.filter(
+    (winner) => SNOWFLAKE_PATTERN.test(winner.discordUserId),
+  ) ?? [];
+  if (winners.length) return winners.slice(0, 100);
+  return input.winnerDiscordUserId && SNOWFLAKE_PATTERN.test(input.winnerDiscordUserId)
+    ? [{ discordUserId: input.winnerDiscordUserId, displayName: "" }]
+    : [];
 }
 
 function statusPresentation(status: Enums<"giveaway_status">) {

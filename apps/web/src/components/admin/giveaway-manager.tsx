@@ -65,6 +65,15 @@ export type GiveawayListItem = {
   publicationError: string | null;
   winnerDisplayName: string | null;
   winnerDiscordUserId: string | null;
+  winners: Array<{
+    id: string;
+    position: number;
+    displayName: string;
+    discordUserId: string;
+    ticketStatus: string;
+    ticketChannelId: string | null;
+    ticketError: string | null;
+  }>;
   discordTicketStatus: string;
   discordTicketChannelId: string | null;
   failureReason: string | null;
@@ -243,8 +252,28 @@ function GiveawayCard({ giveaway }: { giveaway: GiveawayListItem }) {
           <Metric icon={CalendarClock} label="Fim" value={formatDateTime(giveaway.endsAt)} />
         </div>
         <div className="rounded-xl border border-border bg-surface-muted p-3"><p className="text-xs font-semibold uppercase tracking-[.14em] text-muted">Pacote</p><ul className="mt-2 space-y-1 text-sm">{giveaway.prizes.map((prize) => <li key={prize.productId}><span className="font-semibold text-gold-bright">{formatNumber(prize.quantity)}×</span> {prize.productName}</li>)}</ul></div>
-        {giveaway.winnerDiscordUserId ? <div className="flex items-center gap-3 rounded-xl border border-gold/25 bg-gold/[0.06] p-3"><Trophy aria-hidden="true" className="size-5 text-gold" /><div><p className="text-xs text-muted">Ganhador</p><p className="text-sm font-semibold">{giveaway.winnerDisplayName} <span className="font-mono text-xs font-normal text-muted">({giveaway.winnerDiscordUserId})</span></p></div></div> : null}
-        {giveaway.discordTicketChannelId ? <p className="flex items-center gap-2 text-sm text-success"><Ticket aria-hidden="true" className="size-4" /> Ticket aberto: <span className="font-mono">{giveaway.discordTicketChannelId}</span></p> : giveaway.status === "completed" ? <p className="flex items-center gap-2 text-sm text-warning"><Ticket aria-hidden="true" className="size-4" /> Ticket: {giveaway.discordTicketStatus === "failed" ? "tentativa falhou; o cron tentará novamente" : "aguardando abertura"}</p> : null}
+        {giveaway.winners.length ? (
+          <div className="rounded-xl border border-gold/25 bg-gold/[0.06] p-3">
+            <p className="flex items-center gap-2 text-xs text-muted">
+              <Trophy aria-hidden="true" className="size-4 text-gold" />
+              {giveaway.winners.length === 1 ? "Ganhador" : `${giveaway.winners.length} ganhadores`}
+            </p>
+            <ol className="mt-2 space-y-2">
+              {giveaway.winners.map((winner) => (
+                <li key={winner.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="font-semibold">
+                    {winner.position}. {winner.displayName}
+                    <span className="ml-1 font-mono text-xs font-normal text-muted">({winner.discordUserId})</span>
+                  </span>
+                  <span className={winner.ticketStatus === "open" ? "text-xs text-success" : winner.ticketStatus === "failed" ? "text-xs text-danger" : "text-xs text-warning"}>
+                    {winner.ticketStatus === "open" ? `Ticket ${winner.ticketChannelId}` : winner.ticketStatus === "failed" ? "Ticket falhou; nova tentativa pendente" : "Ticket pendente"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : giveaway.winnerDiscordUserId ? <div className="flex items-center gap-3 rounded-xl border border-gold/25 bg-gold/[0.06] p-3"><Trophy aria-hidden="true" className="size-5 text-gold" /><div><p className="text-xs text-muted">Ganhador</p><p className="text-sm font-semibold">{giveaway.winnerDisplayName} <span className="font-mono text-xs font-normal text-muted">({giveaway.winnerDiscordUserId})</span></p></div></div> : null}
+        {!giveaway.winners.length && giveaway.discordTicketChannelId ? <p className="flex items-center gap-2 text-sm text-success"><Ticket aria-hidden="true" className="size-4" /> Ticket aberto: <span className="font-mono">{giveaway.discordTicketChannelId}</span></p> : !giveaway.winners.length && giveaway.status === "completed" ? <p className="flex items-center gap-2 text-sm text-warning"><Ticket aria-hidden="true" className="size-4" /> Ticket: {giveaway.discordTicketStatus === "failed" ? "tentativa falhou; o cron tentará novamente" : "aguardando abertura"}</p> : null}
         {giveaway.publicationError ? <p className="rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-xs leading-5 text-[#f3c878]">Anúncio pendente: {giveaway.publicationError}</p> : null}
         {giveaway.failureReason ? <p className="rounded-xl border border-danger/25 bg-danger/[0.06] p-3 text-xs leading-5 text-[#ffc0bd]">{giveaway.failureReason}</p> : null}
         <ActionFeedback state={cancelState.message ? cancelState : publishState} />

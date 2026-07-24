@@ -1,9 +1,11 @@
 import "server-only";
 
 const DISCORD_REQUEST_TIMEOUT_MS = 4_000;
-const DISCORD_MAX_RETRY_AFTER_MS = 1_500;
+const DISCORD_MAX_RETRY_AFTER_MS = 30_000;
+const DISCORD_MAX_RATE_LIMIT_RETRIES = 4;
 const DISCORD_UNKNOWN_CHANNEL_CODE = 10_003;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
+let discordBlockedUntil = 0;
 
 export class DiscordApiError extends Error {
   constructor(
@@ -26,6 +28,8 @@ export async function discordBotRequest(
   const token = process.env.DISCORD_BOT_TOKEN?.trim();
   if (!token) throw new Error("DISCORD_BOT_TOKEN não configurado.");
 
+  await waitForDiscordRateLimit();
+
   const headers = new Headers(init.headers);
   headers.set("Authorization", `Bot ${token}`);
   if (init.body && !headers.has("Content-Type")) {
@@ -39,16 +43,24 @@ export async function discordBotRequest(
     signal: init.signal ?? AbortSignal.timeout(DISCORD_REQUEST_TIMEOUT_MS),
   });
 
-  if (response.status === 429 && attempt === 0) {
+  if (response.status === 429 && attempt < DISCORD_MAX_RATE_LIMIT_RETRIES) {
     const payload: unknown = await response.clone().json().catch(() => null);
     const retryAfter = readRetryAfterMs(payload);
     if (retryAfter !== null && retryAfter <= DISCORD_MAX_RETRY_AFTER_MS) {
-      await new Promise((resolve) => setTimeout(resolve, retryAfter));
+      discordBlockedUntil = Math.max(discordBlockedUntil, Date.now() + retryAfter);
+      await waitForDiscordRateLimit();
       return discordBotRequest(path, init, fetcher, attempt + 1);
     }
   }
 
   return response;
+}
+
+async function waitForDiscordRateLimit() {
+  const delay = discordBlockedUntil - Date.now();
+  if (delay > 0) {
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
 }
 
 export async function discordBotJson<T>(
