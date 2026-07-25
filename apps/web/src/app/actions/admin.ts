@@ -144,7 +144,7 @@ async function synchronizeCatalogStorefront(savedMessage: string): Promise<Admin
     }
   } catch (syncError) {
     const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
-    console.error(`[admin:product-storefront-sync] ${message}`);
+    console.error(`[admin:catalog-storefront-sync] ${message}`);
     return {
       ok: true,
       message: `${savedMessage} A vitrine do Discord não pôde ser atualizada agora.`,
@@ -198,7 +198,7 @@ export async function saveGameAction(
   if (!data) return { ok: false, message: "Jogo não encontrado." };
   revalidatePath("/catalogo/jogos");
   revalidatePath("/dashboard");
-  return { ok: true, message: id ? "Jogo atualizado." : "Jogo criado." };
+  return synchronizeCatalogStorefront(id ? "Jogo atualizado." : "Jogo criado.");
 }
 
 export async function saveSubstoreAction(
@@ -262,7 +262,7 @@ export async function saveSubstoreAction(
   if (!data) return { ok: false, message: "Subloja não encontrada." };
   revalidatePath("/catalogo/sublojas");
   revalidatePath("/dashboard");
-  return { ok: true, message: id ? "Subloja atualizada." : "Subloja criada." };
+  return synchronizeCatalogStorefront(id ? "Subloja atualizada." : "Subloja criada.");
 }
 
 export async function saveProductAction(
@@ -867,7 +867,9 @@ export async function archiveRecordAction(
   revalidatePath("/catalogo/produtos");
   revalidatePath("/whitelist");
   revalidatePath("/dashboard");
-  return { ok: true, message: "Registro arquivado." };
+  return parsed.data.target === "whitelist"
+    ? { ok: true, message: "Registro arquivado." }
+    : synchronizeCatalogStorefront("Registro arquivado.");
 }
 
 export async function changeInventoryStatusAction(

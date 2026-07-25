@@ -54,6 +54,7 @@ vi.mock("@/lib/bot/message-customization-server", () => ({
 import {
   saveBotMessageCustomizationAction,
   saveProductOrderAction,
+  saveSubstoreAction,
   type AdminActionState,
 } from "./admin";
 
@@ -282,6 +283,59 @@ describe("action de ordenação dos produtos", () => {
     expect(result.ok).toBe(false);
     expect(result.message).toMatch(/lista de produtos mudou/i);
     expect(mocks.synchronizePublishedDiscordStorefronts).not.toHaveBeenCalled();
+  });
+});
+
+describe("action de sublojas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireAdmin.mockResolvedValue({
+      authUserId: "10000000-0000-4000-8000-000000000001",
+    });
+    mocks.synchronizePublishedDiscordStorefronts.mockResolvedValue({
+      published: 1,
+      failed: 0,
+      productEmojiFailures: 0,
+    });
+  });
+
+  it("ativa a subloja e sincroniza a vitrine já publicada", async () => {
+    const update = vi.fn();
+    const query = {
+      eq: vi.fn(),
+      select: vi.fn(),
+      maybeSingle: vi.fn(async () => ({
+        data: { id: "338e5b0d-90e3-48aa-8f8e-aa090d777c64" },
+        error: null,
+      })),
+    };
+    query.eq.mockReturnValue(query);
+    query.select.mockReturnValue(query);
+    update.mockReturnValue(query);
+    mocks.createServerSupabaseClient.mockResolvedValue({
+      from: vi.fn(() => ({ update })),
+    });
+
+    const formData = new FormData();
+    formData.set("id", "338e5b0d-90e3-48aa-8f8e-aa090d777c64");
+    formData.set("gameId", "02c90c5b-6ea7-4508-b9da-79f39c10f314");
+    formData.set("name", "Sheckles");
+    formData.set("slug", "sheckles");
+    formData.set("title", "Sheckles");
+    formData.set("description", "Moeda do jogo disponível para Grow a Garden 2.");
+    formData.set("color", "#D4AF37");
+    formData.set("status", "active");
+    formData.set("sortOrder", "40");
+
+    const result = await saveSubstoreAction(previousState, formData);
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ status: "active" }));
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/catalogo/sublojas");
+    expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      ok: true,
+      message: "Subloja atualizada. Vitrine do Discord sincronizada.",
+    });
   });
 });
 
