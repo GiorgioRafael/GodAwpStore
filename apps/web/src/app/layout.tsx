@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { STORE_NAME } from "@/lib/brand";
+import { STORE_LOGO_URL, STORE_NAME } from "@/lib/brand";
 
 import "./globals.css";
 
@@ -22,6 +22,13 @@ export const metadata: Metadata = {
   },
   description: `Painel administrativo seguro da ${STORE_NAME}.`,
   applicationName: `${STORE_NAME} Admin`,
+  icons: STORE_LOGO_URL
+    ? {
+        icon: STORE_LOGO_URL,
+        shortcut: STORE_LOGO_URL,
+        apple: STORE_LOGO_URL,
+      }
+    : undefined,
   robots: {
     index: false,
     follow: false,
