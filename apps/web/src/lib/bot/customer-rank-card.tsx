@@ -2,6 +2,8 @@
 
 import { Card, CardText, Divider, type ChatElement } from "chat";
 
+import { STORE_NAME_UPPER } from "@/lib/brand";
+
 import type { CustomerRankProgress } from "./customer-rank";
 
 export function customerRankCard(progress: CustomerRankProgress): ChatElement {
@@ -10,7 +12,7 @@ export function customerRankCard(progress: CustomerRankProgress): ChatElement {
 
   return (
     <Card
-      title="🏆 SEU RANKING • GWSTORE"
+      title={`🏆 SEU RANKING • ${STORE_NAME_UPPER}`}
       subtitle="O nível é calculado somente com pagamentos LivePix confirmados neste servidor."
     >
       <CardText>

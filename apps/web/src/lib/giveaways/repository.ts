@@ -1,5 +1,6 @@
 import "server-only";
 
+import { STORE_NAME } from "@/lib/brand";
 import { requireAdmin } from "@/lib/auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -188,7 +189,7 @@ export async function getPublicGiveaway(
 
   return {
     ...giveaway,
-    guildName: guildResult.data?.name ?? "GWStore",
+    guildName: guildResult.data?.name ?? STORE_NAME,
     prizes: prizeResult.data ?? [],
     winners: winnerResult.data ?? [],
     entry: entryResult.data

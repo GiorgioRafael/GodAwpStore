@@ -7,6 +7,7 @@ import {
   interpolateBotMessageLimited,
   type BotMessageCustomization,
 } from "./message-customization";
+import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
 import { loadBotRuntimeSettings } from "./message-customization-server";
 import {
   buildPaidTicketControlComponents,
@@ -149,7 +150,7 @@ async function ensurePaidOrderTicketInternal(
         method: "POST",
         headers: {
           ...headers,
-          "X-Audit-Log-Reason": `GWStore paid order ${input.orderId}`,
+          "X-Audit-Log-Reason": `${STORE_NAME} paid order ${input.orderId}`,
         },
         body: JSON.stringify({
           name: ticketChannelName(input.orderId),
@@ -170,7 +171,7 @@ async function ensurePaidOrderTicketInternal(
         method: "PATCH",
         headers: {
           ...headers,
-          "X-Audit-Log-Reason": `GWStore privacy repair ${input.orderId}`,
+          "X-Audit-Log-Reason": `${STORE_NAME} privacy repair ${input.orderId}`,
         },
         body: JSON.stringify({ permission_overwrites: overwrites }),
       },
@@ -212,7 +213,7 @@ async function ensurePaidOrderTicketInternal(
         method: "PATCH",
         headers: {
           ...headers,
-          "X-Audit-Log-Reason": `GWStore ticket ready ${input.orderId}`,
+          "X-Audit-Log-Reason": `${STORE_NAME} ticket ready ${input.orderId}`,
         },
         body: JSON.stringify({ topic: readyTopic }),
       },
@@ -396,7 +397,7 @@ function ticketChannelName(orderId: string) {
 }
 
 function messageNonce(orderId: string) {
-  return createHash("sha256").update(`gwstore:${orderId}`).digest("hex").slice(0, 25);
+  return createHash("sha256").update(`${STORE_SLUG}:${orderId}`).digest("hex").slice(0, 25);
 }
 
 function sanitizeDiscordText(value: string, maxLength: number) {

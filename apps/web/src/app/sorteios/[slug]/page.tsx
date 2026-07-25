@@ -17,10 +17,11 @@ import { LinkButton } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { giveawayEntryCookieName } from "@/lib/giveaways/oauth-state";
 import { getPublicGiveaway, getServerTimestamp } from "@/lib/giveaways/repository";
+import { STORE_NAME } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Sorteio",
-  description: "Participe de um sorteio oficial da GWStore.",
+  description: `Participe de um sorteio oficial da ${STORE_NAME}.`,
   robots: { index: false, follow: false },
 };
 export const dynamic = "force-dynamic";

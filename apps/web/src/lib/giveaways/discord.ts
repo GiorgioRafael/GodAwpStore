@@ -1,5 +1,6 @@
 import "server-only";
 
+import { STORE_NAME } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/env";
 import {
   assertConfiguredDiscordBotIdentity,
@@ -247,7 +248,7 @@ export function giveawayAnnouncementPayload(
               }]
             : []),
         ],
-        footer: { text: `GWStore Giveaway • ${input.id}` },
+        footer: { text: `${STORE_NAME} Giveaway • ${input.id}` },
       },
     ],
     components: input.status === "scheduled" || input.status === "active"
@@ -296,7 +297,7 @@ export function giveawayResultAnnouncementPayload(
       `\n**Prêmios**\n${prizeLines.join("\n")}`,
       "\nOs tickets privados de entrega serão abertos automaticamente.",
     ].join("\n"), EMBED_DESCRIPTION_LIMIT),
-    footer: { text: `GWStore Giveaway • ${input.id}` },
+    footer: { text: `${STORE_NAME} Giveaway • ${input.id}` },
   };
   assertDiscordEmbeds([embed]);
   return {
@@ -334,7 +335,7 @@ export function giveawayRerollAnnouncementPayload(
       `\n**${winners.length === 1 ? "Ganhador atual" : "Ganhadores atuais"}**\n${winnerLines.join("\n")}`,
       "\nOs novos tickets privados de entrega serão abertos automaticamente.",
     ].join("\n"), EMBED_DESCRIPTION_LIMIT),
-    footer: { text: `GWStore Giveaway • ${input.id}` },
+    footer: { text: `${STORE_NAME} Giveaway • ${input.id}` },
   };
   assertDiscordEmbeds([embed]);
   return {
@@ -404,7 +405,7 @@ export async function ensureGiveawayWinnerTicket(
         method: "POST",
         headers: {
           "X-Audit-Log-Reason": encodeURIComponent(
-            `GWStore giveaway winner ${input.giveawayId}`,
+            `${STORE_NAME} giveaway winner ${input.giveawayId}`,
           ),
         },
         body: JSON.stringify({
@@ -477,7 +478,7 @@ export async function deleteGiveawayWinnerTicketChannel(
       method: "DELETE",
       headers: {
         "X-Audit-Log-Reason": encodeURIComponent(
-          "GWStore giveaway winner rerolled",
+          `${STORE_NAME} giveaway winner rerolled`,
         ),
       },
     },
@@ -543,10 +544,10 @@ export function giveawayWinnerTicketPayload(
       ...prizeFields,
       {
         name: "Próximo passo",
-        value: "Aguarde a equipe da GWStore neste ticket para combinar a entrega.",
+        value: `Aguarde a equipe da ${STORE_NAME} neste ticket para combinar a entrega.`,
       },
     ],
-    footer: { text: `GWStore Giveaway • ${input.giveawayId}` },
+    footer: { text: `${STORE_NAME} Giveaway • ${input.giveawayId}` },
   };
   assertDiscordEmbeds([embed]);
   return {
@@ -570,7 +571,7 @@ async function hasGiveawayWelcomeMessage(
     {},
     fetcher,
   );
-  const expectedFooter = `GWStore Giveaway • ${giveawayId}`;
+  const expectedFooter = `${STORE_NAME} Giveaway • ${giveawayId}`;
   return messages.some((message) =>
     message.author?.id === botUserId
     && message.embeds?.some((embed) => embed.footer?.text === expectedFooter),

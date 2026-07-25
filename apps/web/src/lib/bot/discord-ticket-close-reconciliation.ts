@@ -1,5 +1,6 @@
 import "server-only";
 
+import { STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 import {
@@ -311,7 +312,7 @@ async function reconcileClaim(
       method: "DELETE",
       headers: {
         "X-Audit-Log-Reason": encodeURIComponent(
-          `GWStore ticket ${claim.orderId} resumed by reconciliation`,
+          `${STORE_NAME} ticket ${claim.orderId} resumed by reconciliation`,
         ),
       },
     },

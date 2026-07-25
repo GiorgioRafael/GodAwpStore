@@ -1,9 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { ChevronDown, MessageSquareText, Send } from "lucide-react";
 
-import gwStoreLogo from "@/app/icon.png";
+import { BrandMark } from "@/components/layout/brand-mark";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Select } from "@/components/ui/form-field";
@@ -14,6 +13,7 @@ import {
 } from "@/lib/bot/message-customization";
 import { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } from "@/lib/bot/ticket-close-admins";
 import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
+import { STORE_CATALOG_LABEL, STORE_NAME } from "@/lib/brand";
 
 export type DiscordPreviewScenario =
   | "storefront"
@@ -35,11 +35,11 @@ const PREVIEW_SCENARIOS: Array<{ value: DiscordPreviewScenario; label: string }>
 ];
 
 const PREVIEW_TOKENS: Record<string, string | number> = {
-  store_name: "GWStore",
+  store_name: STORE_NAME,
   page: 1,
   pages: 2,
   total_pages: 2,
-  game_name: "Grow a Garden 2",
+  game_name: STORE_CATALOG_LABEL,
   substore_name: "Itens especiais",
   substore_title: "Itens especiais",
   product_name: "Dragon's Breath",
@@ -111,17 +111,11 @@ export function DiscordMessagePreview({
         <div className="min-h-[31rem] rounded-xl border border-white/[0.06] bg-[#313338] p-4 shadow-[0_18px_40px_rgba(0,0,0,.28)] sm:p-5">
           <div className="flex items-start gap-3">
             <span className="relative mt-0.5 size-10 shrink-0 overflow-hidden rounded-full bg-black">
-              <Image
-                src={gwStoreLogo}
-                alt=""
-                fill
-                sizes="40px"
-                className="object-cover"
-              />
+              <BrandMark />
             </span>
             <div className="min-w-0 flex-1">
               <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-sm leading-none">
-                <span className="font-semibold text-[#f0b232]">GWStore</span>
+                <span className="font-semibold text-[#f0b232]">{STORE_NAME}</span>
                 <span className="rounded-[3px] bg-[#5865f2] px-1 py-0.5 text-[9px] font-bold uppercase text-white">
                   App
                 </span>

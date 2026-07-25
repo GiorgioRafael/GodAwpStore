@@ -1,5 +1,6 @@
 import "server-only";
 
+import { STORE_NAME } from "@/lib/brand";
 import { randomUUID } from "node:crypto";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -328,7 +329,7 @@ export async function completeDiscordTicketClose(
             method: "DELETE",
             headers: {
               "X-Audit-Log-Reason": encodeURIComponent(
-                `GWStore ticket ${activeClaim.orderId} closed by ${context.userId}`,
+                `${STORE_NAME} ticket ${activeClaim.orderId} closed by ${context.userId}`,
               ),
             },
           },

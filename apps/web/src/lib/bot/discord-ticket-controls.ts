@@ -1,5 +1,6 @@
 import "server-only";
 
+import { STORE_NAME } from "@/lib/brand";
 import type { BotRuntimeSettings } from "./message-customization-server";
 import type { BotMessageCustomization } from "./message-customization";
 import { interpolateBotMessageLimited } from "./message-customization";
@@ -173,7 +174,7 @@ export async function synchronizeOpenDiscordTicketControls(
         method: "PATCH",
         headers: {
           "X-Audit-Log-Reason": encodeURIComponent(
-            `GWStore ticket controls ${normalized.orderId}`,
+            `${STORE_NAME} ticket controls ${normalized.orderId}`,
           ),
         },
         body: JSON.stringify({ permission_overwrites: expectedOverwrites }),
@@ -274,7 +275,7 @@ export function ticketTopicMarker(orderId: string) {
 }
 
 export function welcomeMessageMarker(orderId: string) {
-  return `GWStore ticket · ${orderId}`;
+  return `${STORE_NAME} ticket · ${orderId}`;
 }
 
 export function assertTicketChannel(

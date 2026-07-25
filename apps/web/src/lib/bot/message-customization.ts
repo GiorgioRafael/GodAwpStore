@@ -1,4 +1,9 @@
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
+import {
+  STORE_CATALOG_LABEL,
+  STORE_NAME,
+  STORE_NAME_UPPER,
+} from "@/lib/brand";
 
 export const BOT_MESSAGE_CONFIG_VERSION = 1 as const;
 
@@ -117,17 +122,17 @@ export type BotMessageCustomization = {
 export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
   version: BOT_MESSAGE_CONFIG_VERSION,
   storefront: {
-    title: "🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️",
-    paginatedTitle: "🛍️✨ GWSTORE • PRODUTOS {page}/{pages} ✨🛍️",
-    subtitle: "🌱 Grow a Garden 2 • ⚡ Compra rápida, privada e segura",
-    welcome: "👋💜 **Bem-vindo(a) à GWStore!** 💜👋",
+    title: `🛍️✨ ${STORE_NAME_UPPER} • LOJA OFICIAL ✨🛍️`,
+    paginatedTitle: `🛍️✨ ${STORE_NAME_UPPER} • PRODUTOS {page}/{pages} ✨🛍️`,
+    subtitle: `🎮 ${STORE_CATALOG_LABEL} • ⚡ Compra rápida, privada e segura`,
+    welcome: `👋💜 **Bem-vindo(a) à ${STORE_NAME}!** 💜👋`,
     catalogText: "🎮 Monte seu carrinho com até 3 produtos e turbine sua conta! 🚀✨",
     privacyText: "🔒 Somente **você** verá os detalhes, o pedido e o link de pagamento. 🛡️",
     paymentText: "💠 Pagamento rápido e seguro via **Pix com LivePix**. ⚡✅",
     prompt: "👇🛒 **Escolha o primeiro produto; depois você poderá adicionar mais:**",
     selectLabel: "🛒 Catálogo de produtos",
     selectPlaceholder: "✨ Comece escolhendo 1 produto ✨",
-    emptyTitle: "🛍️✨ GWSTORE • LOJA OFICIAL ✨🛍️",
+    emptyTitle: `🛍️✨ ${STORE_NAME_UPPER} • LOJA OFICIAL ✨🛍️`,
     emptyText: "😴 Nosso catálogo está descansando e ainda não tem produtos ativos.",
     emptyHint: "🔔 Volte em breve para conferir as novidades! 💜",
   },
@@ -159,7 +164,7 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
   order: {
     createdTitle: "✅🎉 PEDIDO CRIADO COM SUCESSO! 🎉✅",
     duplicateTitle: "♻️✅ PEDIDO JÁ REGISTRADO ✅♻️",
-    subtitle: "💜 GWStore • Pagamento seguro com LivePix",
+    subtitle: `💜 ${STORE_NAME} • Pagamento seguro com LivePix`,
     productLabel: "🛍️ **Produto escolhido:**",
     unitPriceLabel: "🏷️ **Preço unitário:**",
     subtotalLabel: "🧾 **Subtotal:**",
@@ -171,10 +176,10 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
     paymentButtonLabel: "💠 PAGAR AGORA COM PIX ⚡",
     ticketText: "🎫🔔 Após a confirmação, criaremos automaticamente seu **ticket privado**.",
     privacyText: "👤🤝 Somente você e os administradores terão acesso ao atendimento.",
-    protectedText: "🔒✨ Compra protegida do início ao fim pela **GWStore**.",
+    protectedText: `🔒✨ Compra protegida do início ao fim pela **${STORE_NAME}**.`,
   },
   help: {
-    title: "🆘✨ AJUDA • GWSTORE ✨🆘",
+    title: `🆘✨ AJUDA • ${STORE_NAME_UPPER} ✨🆘`,
     subtitle: "💜 Comprar é rápido, privado e seguro!",
     body: [
       "1️⃣ Vá até o canal da loja e abra a **lista de produtos**. 🛍️✨",
@@ -191,11 +196,11 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
   },
   error: {
     title: "❌🚨 OPS! NÃO FOI POSSÍVEL CONTINUAR 🚨❌",
-    subtitle: "💜 A equipe GWStore está aqui para ajudar",
+    subtitle: `💜 A equipe ${STORE_NAME} está aqui para ajudar`,
     retryText: "🔄 Tente abrir a loja novamente com **/loja**. 🛍️✨",
     invalidRequest: "🧩 A solicitação de compra é inválida. Abra a loja novamente com **/loja**. 🛍️",
     invalidQuantity: "🔢 Informe uma quantidade inteira entre **1 e {maximum_quantity}**.",
-    guildNotAuthorized: "⛔🏰 Este servidor ainda não está autorizado a vender pela GWStore.",
+    guildNotAuthorized: `⛔🏰 Este servidor ainda não está autorizado a vender pela ${STORE_NAME}.`,
     productUnavailable: "🔎🎁 Esse produto não está mais disponível no catálogo.",
     outOfStock: "😔📦 Esse produto ficou sem estoque. Escolha outro item na **/loja**! ✨",
     insufficientStock:

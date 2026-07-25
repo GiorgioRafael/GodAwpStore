@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+
+import { STORE_NAME } from "@/lib/brand";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,11 +17,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "GWStore Admin",
-    template: "%s · GWStore",
+    default: `${STORE_NAME} Admin`,
+    template: `%s · ${STORE_NAME}`,
   },
-  description: "Painel administrativo seguro da GWStore.",
-  applicationName: "GWStore Admin",
+  description: `Painel administrativo seguro da ${STORE_NAME}.`,
+  applicationName: `${STORE_NAME} Admin`,
   robots: {
     index: false,
     follow: false,

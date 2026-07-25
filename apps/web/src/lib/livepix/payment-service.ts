@@ -2,6 +2,7 @@ import "server-only";
 
 import type { LivePixCheckout, LivePixPayment } from "./client";
 import { LIVEPIX_MINIMUM_BRL_CENTS } from "./limits";
+import { STORE_NAME } from "@/lib/brand";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -198,13 +199,13 @@ function readOrigin(value: string) {
   try {
     url = new URL(value);
   } catch {
-    throw new Error("URL pública da GWStore inválida.");
+    throw new Error(`URL pública da ${STORE_NAME} inválida.`);
   }
   if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("URL pública da GWStore inválida.");
+    throw new Error(`URL pública da ${STORE_NAME} inválida.`);
   }
   if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
-    throw new Error("URL pública da GWStore deve usar HTTPS em produção.");
+    throw new Error(`URL pública da ${STORE_NAME} deve usar HTTPS em produção.`);
   }
   return url.origin;
 }
