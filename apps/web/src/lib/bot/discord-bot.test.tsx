@@ -314,6 +314,15 @@ describe("Discord catalog cards", () => {
     );
   });
 
+  it("mantém o banner da loja mesmo quando o catálogo está vazio", () => {
+    const bannerUrl =
+      "https://thstoreadm.vercel.app/brands/thstore-storefront-banner.png";
+    vi.stubEnv("DISCORD_STOREFRONT_BANNER_URL", bannerUrl);
+    expect(toCardElement(catalogCards([])[0])).toMatchObject({
+      imageUrl: bannerUrl,
+    });
+  });
+
   it("mostra produto selecionado com texto visual e compra via Pix", () => {
     const card = selectedProductCard({
       game: { id: "game", name: "Grow a Garden 2", substores: [] },

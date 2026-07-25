@@ -404,6 +404,7 @@ export function catalogCards(
       <Card
         key="empty-catalog"
         title={interpolateBotMessageLimited(message.emptyTitle, {}, 256)}
+        imageUrl={discordStorefrontBannerUrl() ?? undefined}
       >
         {message.emptyText ? <CardText>{message.emptyText}</CardText> : null}
         {message.emptyHint ? <CardText>{message.emptyHint}</CardText> : null}
