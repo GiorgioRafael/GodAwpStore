@@ -98,6 +98,11 @@ export type ExistingPurchase = {
   discountBps: number;
   discountAmountCents: number;
   discountReason: CustomerDiscountReason;
+  upsellProductId: string | null;
+  upsellDiscountBps: number;
+  upsellDiscountAmountCents: number;
+  leadRecoveryDiscountBps: number;
+  leadRecoveryDiscountAmountCents: number;
   status: string;
 };
 
@@ -106,6 +111,30 @@ export type PurchaseCreation = {
   status: "awaiting_payment";
   created: boolean;
   outOfStock: boolean;
+};
+
+export type UpsellOffer = {
+  id: string;
+  productId: string;
+  productName: string;
+  unitPriceCents: number;
+  discountedUnitPriceCents: number;
+  discountBps: number;
+  expiresAt: string;
+};
+
+export type UpsellOfferCreation = {
+  offer: UpsellOffer | null;
+  created: boolean;
+};
+
+export type UpsellFinalization = {
+  orderId: string | null;
+  sourceInteractionId: string;
+  created: boolean;
+  outOfStock: boolean;
+  expired: boolean;
+  decisionConflict: boolean;
 };
 
 export interface BotCommerceRepository {
@@ -130,10 +159,11 @@ export interface BotCommerceRepository {
     totalPriceCents: number;
     discountBps: number;
     discountAmountCents: number;
-    discountReason: CustomerDiscountReason;
+    discountReason: Exclude<CustomerDiscountReason, "upsell" | "lead_recovery">;
     commissionBps: number;
   }): Promise<OrderCreation>;
   findPurchaseByInteraction(interactionId: string): Promise<ExistingPurchase | null>;
+  findPurchaseById(orderId: string): Promise<ExistingPurchase | null>;
   findPurchasableProducts(productIds: string[]): Promise<PurchasableProduct[]>;
   countAvailableStocks(productIds: string[]): Promise<Map<string, number>>;
   createAwaitingPaymentPurchase(input: {
@@ -143,9 +173,26 @@ export interface BotCommerceRepository {
     buyerDiscordId: string;
     items: CartItemInput[];
     discountBps: number;
-    discountReason: CustomerDiscountReason;
+    discountReason: Exclude<CustomerDiscountReason, "upsell" | "lead_recovery">;
     commissionBps: number;
   }): Promise<PurchaseCreation>;
+  createUpsellOffer(input: {
+    interactionId: string;
+    guildId: string;
+    whitelistEntryId: string;
+    buyerDiscordId: string;
+    items: CartItemInput[];
+    baseDiscountBps: number;
+    baseDiscountReason: Exclude<CustomerDiscountReason, "upsell" | "lead_recovery">;
+    commissionBps: number;
+  }): Promise<UpsellOfferCreation>;
+  finalizeUpsellOffer(input: {
+    offerId: string;
+    discordGuildId: string;
+    buyerDiscordId: string;
+    accepted: boolean;
+    decisionInteractionId: string;
+  }): Promise<UpsellFinalization>;
 }
 
 export type PurchaseResult =
@@ -187,6 +234,11 @@ export type CartPurchaseResult =
       discountBps: number;
       discountAmountCents: number;
       discountReason: CustomerDiscountReason;
+      upsellProductId: string | null;
+      upsellDiscountBps: number;
+      upsellDiscountAmountCents: number;
+      leadRecoveryDiscountBps: number;
+      leadRecoveryDiscountAmountCents: number;
     }
   | { kind: "total_below_minimum"; minimumTotalCents: number }
   | {
@@ -201,5 +253,10 @@ export type CartPurchaseResult =
         | "guild_not_authorized"
         | "product_unavailable"
         | "out_of_stock"
-        | "interaction_conflict";
+        | "interaction_conflict"
+        | "offer_expired";
     };
+
+export type UpsellPreparationResult =
+  | { kind: "offered"; offer: UpsellOffer }
+  | { kind: "not_offered" };

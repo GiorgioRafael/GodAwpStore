@@ -69,6 +69,7 @@ function repository(overrides: Partial<BotCommerceRepository> = {}) {
       outOfStock: false,
     })),
     findPurchaseByInteraction: vi.fn(async () => null),
+    findPurchaseById: vi.fn(async () => null),
     findPurchasableProducts: vi.fn(async (productIds) =>
       [product, secondProduct].filter((item) => productIds.includes(item.id)),
     ),
@@ -80,6 +81,15 @@ function repository(overrides: Partial<BotCommerceRepository> = {}) {
       status: "awaiting_payment" as const,
       created: true,
       outOfStock: false,
+    })),
+    createUpsellOffer: vi.fn(async () => ({ offer: null, created: false })),
+    finalizeUpsellOffer: vi.fn(async () => ({
+      orderId: null,
+      sourceInteractionId: input.interactionId,
+      created: false,
+      outOfStock: false,
+      expired: false,
+      decisionConflict: false,
     })),
   };
   return { ...base, ...overrides };
@@ -518,5 +528,172 @@ describe("BotCommerceService", () => {
     if (result.kind === "created") {
       expect(result.items.reduce((sum, item) => sum + item.totalPriceCents, 0)).toBe(4_751);
     }
+  });
+
+  it("prepara o upsell usando carrinho, desconto e identidade calculados no servidor", async () => {
+    const offer = {
+      id: "11111111-1111-4111-8111-111111111111",
+      productId: secondProduct.id,
+      productName: secondProduct.name,
+      unitPriceCents: 300,
+      discountedUnitPriceCents: 285,
+      discountBps: 500,
+      expiresAt: "2026-07-24T21:05:00.000Z",
+    };
+    const repo = repository({
+      createUpsellOffer: vi.fn(async () => ({ offer, created: true })),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.prepareUpsell({
+        interactionId: input.interactionId,
+        buyerDiscordId: input.buyerDiscordId,
+        guild,
+        isServerBooster: false,
+        items: [
+          { productId: product.id, quantity: 2 },
+          { productId: secondProduct.id, quantity: 3 },
+        ],
+      }),
+    ).resolves.toEqual({ kind: "offered", offer });
+    expect(repo.createUpsellOffer).toHaveBeenCalledWith({
+      interactionId: input.interactionId,
+      guildId: "guild-row",
+      whitelistEntryId: "whitelist-row",
+      buyerDiscordId: input.buyerDiscordId,
+      items: [
+        { productId: product.id, quantity: 2 },
+        { productId: secondProduct.id, quantity: 3 },
+      ],
+      baseDiscountBps: 0,
+      baseDiscountReason: null,
+      commissionBps: 1_000,
+    });
+  });
+
+  it("rejeita em profundidade uma oferta acima do teto de 5%", async () => {
+    const repo = repository({
+      createUpsellOffer: vi.fn(async () => ({
+        created: true,
+        offer: {
+          id: "11111111-1111-4111-8111-111111111111",
+          productId: secondProduct.id,
+          productName: secondProduct.name,
+          unitPriceCents: 300,
+          discountedUnitPriceCents: 282,
+          discountBps: 600,
+          expiresAt: "2026-07-24T21:05:00.000Z",
+        },
+      })),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.prepareUpsell({
+        interactionId: input.interactionId,
+        buyerDiscordId: input.buyerDiscordId,
+        guild,
+        isServerBooster: false,
+        items: [{ productId: product.id, quantity: 1 }],
+      }),
+    ).resolves.toEqual({ kind: "not_offered" });
+  });
+
+  it("finaliza a decisão idempotente e devolve o pedido completo", async () => {
+    const existingPurchase = {
+      id: "22222222-2222-4222-8222-222222222222",
+      buyerDiscordId: input.buyerDiscordId,
+      guildId: "guild-row",
+      items: [{
+        productId: product.id,
+        productName: product.name,
+        quantity: 2,
+        unitPriceCents: 200,
+        subtotalPriceCents: 400,
+        totalPriceCents: 390,
+        discountAmountCents: 10,
+      }],
+      subtotalPriceCents: 400,
+      salePriceCents: 390,
+      discountBps: 0,
+      discountAmountCents: 10,
+      discountReason: "upsell" as const,
+      upsellProductId: product.id,
+      upsellDiscountBps: 500,
+      upsellDiscountAmountCents: 10,
+      leadRecoveryDiscountBps: 0,
+      leadRecoveryDiscountAmountCents: 0,
+      status: "awaiting_payment",
+    };
+    const repo = repository({
+      finalizeUpsellOffer: vi.fn(async () => ({
+        orderId: existingPurchase.id,
+        sourceInteractionId: input.interactionId,
+        created: true,
+        outOfStock: false,
+        expired: false,
+        decisionConflict: false,
+      })),
+      findPurchaseById: vi.fn(async () => existingPurchase),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.finalizeUpsell({
+        offerId: "11111111-1111-4111-8111-111111111111",
+        interactionId: "623456789012345678",
+        buyerDiscordId: input.buyerDiscordId,
+        discordGuildId: guild.discordGuildId,
+        accepted: true,
+      }),
+    ).resolves.toMatchObject({
+      kind: "created",
+      orderId: existingPurchase.id,
+      totalPriceCents: 390,
+      upsellDiscountBps: 500,
+      upsellDiscountAmountCents: 10,
+      leadRecoveryDiscountBps: 0,
+      leadRecoveryDiscountAmountCents: 0,
+    });
+  });
+
+  it("não cria checkout quando a oferta expirou ou a decisão conflita", async () => {
+    const expiredRepo = repository({
+      finalizeUpsellOffer: vi.fn(async () => ({
+        orderId: null,
+        sourceInteractionId: input.interactionId,
+        created: false,
+        outOfStock: false,
+        expired: true,
+        decisionConflict: false,
+      })),
+    });
+    const conflictRepo = repository({
+      finalizeUpsellOffer: vi.fn(async () => ({
+        orderId: null,
+        sourceInteractionId: input.interactionId,
+        created: false,
+        outOfStock: false,
+        expired: false,
+        decisionConflict: true,
+      })),
+    });
+    const request = {
+      offerId: "11111111-1111-4111-8111-111111111111",
+      interactionId: "623456789012345678",
+      buyerDiscordId: input.buyerDiscordId,
+      discordGuildId: guild.discordGuildId,
+      accepted: false,
+    };
+
+    await expect(
+      new BotCommerceService(expiredRepo).finalizeUpsell(request),
+    ).resolves.toEqual({ kind: "offer_expired" });
+    await expect(
+      new BotCommerceService(conflictRepo).finalizeUpsell(request),
+    ).resolves.toEqual({ kind: "interaction_conflict" });
+    expect(expiredRepo.findPurchaseById).not.toHaveBeenCalled();
+    expect(conflictRepo.findPurchaseById).not.toHaveBeenCalled();
   });
 });

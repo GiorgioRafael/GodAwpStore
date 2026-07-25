@@ -144,6 +144,29 @@ export const whitelistEntrySchema = whitelistEntryInputSchema.extend({
 export const platformSettingsSchema = z.object({
   currency: z.literal(CURRENCY).default(CURRENCY),
   globalCommissionBps: commissionBpsSchema,
+  upsellEnabled: z.boolean().default(true),
+  upsellDiscountBps: z
+    .number()
+    .int()
+    .min(1, "O desconto do upsell deve ser maior que zero.")
+    .max(500, "O desconto máximo do upsell é 5%.")
+    .default(500),
+  upsellStrategy: z
+    .enum(["automatic", "best_seller", "same_product"])
+    .default("automatic"),
+  leadRecoveryEnabled: z.boolean().default(true),
+  leadRecoveryDiscountBps: z
+    .number()
+    .int()
+    .min(1, "O desconto da recuperação deve ser maior que zero.")
+    .max(500, "O desconto máximo da recuperação é 5%.")
+    .default(500),
+  leadRecoveryDelayMinutes: z
+    .number()
+    .int()
+    .min(0, "O atraso da recuperação não pode ser negativo.")
+    .max(1_440, "O atraso máximo da recuperação é 24 horas.")
+    .default(15),
   updatedAt: isoDateTimeSchema.optional(),
 });
 

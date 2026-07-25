@@ -798,6 +798,7 @@ select 'GodAwpStore transactional integration checks passed' as result;
 \ir payment_workflow_verification.sql
 \ir order_game_nickname_verification.sql
 \ir order_cart_verification.sql
+\ir upsell_verification.sql
 \ir ticket_notification_verification.sql
 \ir ticket_close_verification.sql
 \ir giveaway_verification.sql

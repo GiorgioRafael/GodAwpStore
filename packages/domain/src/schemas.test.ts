@@ -136,9 +136,27 @@ describe("schemas de configuração", () => {
     expect(platformSettingsSchema.parse({ globalCommissionBps: 3_000 })).toEqual({
       currency: "BRL",
       globalCommissionBps: 3_000,
+      upsellEnabled: true,
+      upsellDiscountBps: 500,
+      upsellStrategy: "automatic",
+      leadRecoveryEnabled: true,
+      leadRecoveryDiscountBps: 500,
+      leadRecoveryDelayMinutes: 15,
     });
     expect(
       platformSettingsSchema.safeParse({ currency: "USD", globalCommissionBps: 3_000 }).success,
+    ).toBe(false);
+    expect(
+      platformSettingsSchema.safeParse({
+        globalCommissionBps: 3_000,
+        upsellDiscountBps: 501,
+      }).success,
+    ).toBe(false);
+    expect(
+      platformSettingsSchema.safeParse({
+        globalCommissionBps: 3_000,
+        leadRecoveryDiscountBps: 501,
+      }).success,
     ).toBe(false);
   });
 });

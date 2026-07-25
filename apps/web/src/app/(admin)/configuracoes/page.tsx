@@ -75,6 +75,27 @@ export default async function SettingsPage() {
   );
   const parsedCommission = Number(settings?.global_commission_bps ?? 3_000);
   const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 3_000;
+  const parsedUpsellDiscount = Number(settings?.upsell_discount_bps ?? 500);
+  const upsellDiscountBps = Number.isInteger(parsedUpsellDiscount)
+    ? Math.min(Math.max(parsedUpsellDiscount, 1), 500)
+    : 500;
+  const upsellStrategy =
+    settings?.upsell_strategy === "best_seller" ||
+    settings?.upsell_strategy === "same_product"
+      ? settings.upsell_strategy
+      : "automatic";
+  const parsedLeadRecoveryDiscount = Number(
+    settings?.lead_recovery_discount_bps ?? 500,
+  );
+  const leadRecoveryDiscountBps = Number.isInteger(parsedLeadRecoveryDiscount)
+    ? Math.min(Math.max(parsedLeadRecoveryDiscount, 1), 500)
+    : 500;
+  const parsedLeadRecoveryDelay = Number(
+    settings?.lead_recovery_delay_minutes ?? 15,
+  );
+  const leadRecoveryDelayMinutes = Number.isInteger(parsedLeadRecoveryDelay)
+    ? Math.min(Math.max(parsedLeadRecoveryDelay, 0), 1_440)
+    : 15;
   const updatedAt = settings?.updated_at ?? null;
 
   return (
@@ -92,6 +113,12 @@ export default async function SettingsPage() {
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,.95fr)]">
         <PlatformSettingsForm
           globalCommissionBps={globalCommissionBps}
+          upsellEnabled={settings?.upsell_enabled ?? true}
+          upsellDiscountBps={upsellDiscountBps}
+          upsellStrategy={upsellStrategy}
+          leadRecoveryEnabled={settings?.lead_recovery_enabled ?? true}
+          leadRecoveryDiscountBps={leadRecoveryDiscountBps}
+          leadRecoveryDelayMinutes={leadRecoveryDelayMinutes}
           updatedAt={updatedAt}
         />
 

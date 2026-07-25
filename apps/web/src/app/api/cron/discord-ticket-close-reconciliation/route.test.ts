@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   reconcileDiscordTicketCloseClaims: vi.fn(),
   reconcileGiveaways: vi.fn(),
+  reconcileLeadRecoveryOffers: vi.fn(),
 }));
 
 vi.mock("@/lib/bot/discord-ticket-close-reconciliation", () => ({
@@ -11,6 +12,10 @@ vi.mock("@/lib/bot/discord-ticket-close-reconciliation", () => ({
 
 vi.mock("@/lib/giveaways/reconciliation", () => ({
   reconcileGiveaways: mocks.reconcileGiveaways,
+}));
+
+vi.mock("@/lib/bot/lead-recovery", () => ({
+  reconcileLeadRecoveryOffers: mocks.reconcileLeadRecoveryOffers,
 }));
 
 import { GET } from "./route";
@@ -37,10 +42,17 @@ const giveawayResult = {
   failures: 0,
 };
 
+const leadRecoveryResult = {
+  claimed: 2,
+  sent: 1,
+  failed: 1,
+};
+
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-secret-value");
   mocks.reconcileDiscordTicketCloseClaims.mockResolvedValue(result);
   mocks.reconcileGiveaways.mockResolvedValue(giveawayResult);
+  mocks.reconcileLeadRecoveryOffers.mockResolvedValue(leadRecoveryResult);
 });
 
 afterEach(() => {
@@ -64,6 +76,7 @@ describe("Discord ticket close reconciliation cron", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(mocks.reconcileDiscordTicketCloseClaims).not.toHaveBeenCalled();
       expect(mocks.reconcileGiveaways).not.toHaveBeenCalled();
+      expect(mocks.reconcileLeadRecoveryOffers).not.toHaveBeenCalled();
     },
   );
 
@@ -81,9 +94,11 @@ describe("Discord ticket close reconciliation cron", () => {
       ok: true,
       tickets: result,
       giveaways: giveawayResult,
+      leadRecovery: leadRecoveryResult,
     });
     expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
     expect(mocks.reconcileGiveaways).toHaveBeenCalledOnce();
+    expect(mocks.reconcileLeadRecoveryOffers).toHaveBeenCalledOnce();
   });
 
   it("retorna 503 sem expor detalhes internos quando o job falha", async () => {

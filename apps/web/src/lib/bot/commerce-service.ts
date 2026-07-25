@@ -6,6 +6,7 @@ import type {
   DiscordGuildIdentity,
   PurchaseItem,
   PurchaseResult,
+  UpsellPreparationResult,
 } from "./types";
 import {
   calculateOrderTotalCents,
@@ -222,6 +223,11 @@ export class BotCommerceService {
         discountBps: existing.discountBps,
         discountAmountCents: existing.discountAmountCents,
         discountReason: existing.discountReason,
+        upsellProductId: existing.upsellProductId,
+        upsellDiscountBps: existing.upsellDiscountBps,
+        upsellDiscountAmountCents: existing.upsellDiscountAmountCents,
+        leadRecoveryDiscountBps: existing.leadRecoveryDiscountBps,
+        leadRecoveryDiscountAmountCents: existing.leadRecoveryDiscountAmountCents,
       };
     }
 
@@ -307,6 +313,132 @@ export class BotCommerceService {
       discountBps: pricing.discountBps,
       discountAmountCents: pricing.discountAmountCents,
       discountReason: pricing.discountReason,
+      upsellProductId: null,
+      upsellDiscountBps: 0,
+      upsellDiscountAmountCents: 0,
+      leadRecoveryDiscountBps: 0,
+      leadRecoveryDiscountAmountCents: 0,
+    };
+  }
+
+  async prepareUpsell(input: {
+    interactionId: string;
+    buyerDiscordId: string;
+    items: CartItemInput[];
+    isServerBooster: boolean;
+    guild: DiscordGuildIdentity;
+  }): Promise<UpsellPreparationResult> {
+    if (!isValidCartInput(input)) {
+      return { kind: "not_offered" };
+    }
+
+    const productIds = input.items.map((item) => item.productId);
+    const [existing, guild, products] = await Promise.all([
+      this.repository.findPurchaseByInteraction(input.interactionId),
+      this.repository.ensureGuild(input.guild),
+      this.repository.findPurchasableProducts(productIds),
+    ]);
+    if (existing || !guild.whitelistEntryId || products.length !== productIds.length) {
+      return { kind: "not_offered" };
+    }
+
+    const productById = new Map(products.map((product) => [product.id, product]));
+    let subtotalPriceCents = 0;
+    for (const item of input.items) {
+      const product = productById.get(item.productId);
+      const itemSubtotal = product
+        ? calculateOrderTotalCents(product.minimumPriceCents, item.quantity)
+        : null;
+      if (itemSubtotal === null) return { kind: "not_offered" };
+      subtotalPriceCents += itemSubtotal;
+      if (!Number.isSafeInteger(subtotalPriceCents)) {
+        return { kind: "not_offered" };
+      }
+    }
+
+    const rank = await this.repository.getCustomerRankProgress(
+      guild.id,
+      input.buyerDiscordId,
+    );
+    const pricing = applyBestCustomerDiscount(
+      subtotalPriceCents,
+      guild.boosterDiscount,
+      input.isServerBooster,
+      rank,
+    );
+    if (!pricing || pricing.totalPriceCents < LIVEPIX_MINIMUM_BRL_CENTS) {
+      return { kind: "not_offered" };
+    }
+
+    const commissionBps = await this.repository.getCommissionBps(
+      guild.whitelistEntryId,
+    );
+    const result = await this.repository.createUpsellOffer({
+      interactionId: input.interactionId,
+      guildId: guild.id,
+      whitelistEntryId: guild.whitelistEntryId,
+      buyerDiscordId: input.buyerDiscordId,
+      items: input.items,
+      baseDiscountBps: pricing.discountBps,
+      baseDiscountReason: pricing.discountReason,
+      commissionBps,
+    });
+
+    return result.offer && isValidUpsellOffer(result.offer)
+      ? { kind: "offered", offer: result.offer }
+      : { kind: "not_offered" };
+  }
+
+  async finalizeUpsell(input: {
+    offerId: string;
+    interactionId: string;
+    buyerDiscordId: string;
+    discordGuildId: string;
+    accepted: boolean;
+  }): Promise<CartPurchaseResult> {
+    if (
+      !UUID_PATTERN.test(input.offerId) ||
+      !SNOWFLAKE_PATTERN.test(input.interactionId) ||
+      !SNOWFLAKE_PATTERN.test(input.buyerDiscordId) ||
+      !SNOWFLAKE_PATTERN.test(input.discordGuildId)
+    ) {
+      return { kind: "invalid_request" };
+    }
+
+    const finalization = await this.repository.finalizeUpsellOffer({
+      offerId: input.offerId,
+      discordGuildId: input.discordGuildId,
+      buyerDiscordId: input.buyerDiscordId,
+      accepted: input.accepted,
+      decisionInteractionId: input.interactionId,
+    });
+    if (finalization.decisionConflict) {
+      return { kind: "interaction_conflict" };
+    }
+    if (finalization.expired) {
+      return { kind: "offer_expired" };
+    }
+    if (finalization.outOfStock || !finalization.orderId) {
+      return { kind: "out_of_stock" };
+    }
+
+    const purchase = await this.repository.findPurchaseById(finalization.orderId);
+    if (!purchase) return { kind: "invalid_request" };
+
+    return {
+      kind: finalization.created ? "created" : "duplicate",
+      orderId: purchase.id,
+      items: purchase.items,
+      subtotalPriceCents: purchase.subtotalPriceCents,
+      totalPriceCents: purchase.salePriceCents,
+      discountBps: purchase.discountBps,
+      discountAmountCents: purchase.discountAmountCents,
+      discountReason: purchase.discountReason,
+      upsellProductId: purchase.upsellProductId,
+      upsellDiscountBps: purchase.upsellDiscountBps,
+      upsellDiscountAmountCents: purchase.upsellDiscountAmountCents,
+      leadRecoveryDiscountBps: purchase.leadRecoveryDiscountBps,
+      leadRecoveryDiscountAmountCents: purchase.leadRecoveryDiscountAmountCents,
     };
   }
 }
@@ -353,5 +485,60 @@ function isValidGuild(identity: DiscordGuildIdentity) {
     SNOWFLAKE_PATTERN.test(identity.discordGuildId) &&
     SNOWFLAKE_PATTERN.test(identity.ownerDiscordId) &&
     identity.name.trim().length > 0
+  );
+}
+
+function isValidCartInput(input: {
+  interactionId: string;
+  buyerDiscordId: string;
+  items: CartItemInput[];
+  guild: DiscordGuildIdentity;
+}) {
+  return (
+    SNOWFLAKE_PATTERN.test(input.interactionId) &&
+    SNOWFLAKE_PATTERN.test(input.buyerDiscordId) &&
+    isValidGuild(input.guild) &&
+    input.items.length >= 1 &&
+    input.items.length <= MAX_CART_ITEMS &&
+    input.items.every(
+      (item) =>
+        UUID_PATTERN.test(item.productId) &&
+        Number.isInteger(item.quantity) &&
+        item.quantity >= 1,
+    ) &&
+    new Set(input.items.map((item) => item.productId)).size === input.items.length
+  );
+}
+
+function isValidUpsellOffer(offer: {
+  id: string;
+  productId: string;
+  productName: string;
+  unitPriceCents: number;
+  discountedUnitPriceCents: number;
+  discountBps: number;
+  expiresAt: string;
+}) {
+  if (
+    !Number.isSafeInteger(offer.unitPriceCents) ||
+    offer.unitPriceCents <= 0 ||
+    !Number.isInteger(offer.discountBps) ||
+    offer.discountBps < 1 ||
+    offer.discountBps > 500
+  ) {
+    return false;
+  }
+  const expectedDiscount = Number(
+    (BigInt(offer.unitPriceCents) * BigInt(offer.discountBps)) / 10_000n,
+  );
+  return (
+    UUID_PATTERN.test(offer.id) &&
+    UUID_PATTERN.test(offer.productId) &&
+    offer.productName.trim().length > 0 &&
+    Number.isSafeInteger(offer.discountedUnitPriceCents) &&
+    offer.discountedUnitPriceCents > 0 &&
+    offer.discountedUnitPriceCents === offer.unitPriceCents - expectedDiscount &&
+    expectedDiscount > 0 &&
+    Number.isFinite(Date.parse(offer.expiresAt))
   );
 }

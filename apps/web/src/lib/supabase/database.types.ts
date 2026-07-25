@@ -66,6 +66,12 @@ type PlatformSettingsRow = {
   bot_message_config: Json;
   ticket_notification_discord_user_ids: string[];
   ticket_close_admin_discord_user_ids: string[];
+  upsell_enabled: boolean;
+  upsell_discount_bps: number;
+  upsell_strategy: string;
+  lead_recovery_enabled: boolean;
+  lead_recovery_discount_bps: number;
+  lead_recovery_delay_minutes: number;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
@@ -394,6 +400,16 @@ type OrderRow = {
   discount_bps: number;
   discount_amount_cents: number;
   discount_reason: string | null;
+  upsell_product_id: string | null;
+  upsell_quantity: number;
+  upsell_subtotal_price_cents: number;
+  upsell_discount_bps: number;
+  upsell_discount_amount_cents: number;
+  upsell_offer_id: string | null;
+  lead_recovery_source_order_id: string | null;
+  lead_recovery_discount_bps: number;
+  lead_recovery_discount_amount_cents: number;
+  lead_recovery_offer_id: string | null;
   commission_bps: number;
   payment_reference: string | null;
   payment_provider: string;
@@ -443,6 +459,69 @@ type OrderInventoryUnitRow = {
   inventory_unit_id: string;
   position: number;
   created_at: string;
+};
+
+type UpsellOfferRow = {
+  id: string;
+  source_interaction_id: string;
+  guild_id: string;
+  seller_whitelist_entry_id: string;
+  buyer_discord_id: string;
+  base_items: Json;
+  base_discount_bps: number;
+  base_discount_reason: string | null;
+  commission_bps: number;
+  offered_product_id: string;
+  offered_product_name: string;
+  offered_unit_price_cents: number;
+  discount_bps: number;
+  discount_amount_cents: number;
+  discounted_unit_price_cents: number;
+  strategy: string;
+  status: string;
+  decision_interaction_id: string | null;
+  order_id: string | null;
+  expires_at: string;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type LeadRecoveryOfferRow = {
+  id: string;
+  source_order_id: string;
+  guild_id: string;
+  seller_whitelist_entry_id: string;
+  buyer_discord_id: string;
+  items: Json;
+  original_subtotal_price_cents: number;
+  original_sale_price_cents: number;
+  original_discount_bps: number;
+  original_discount_reason: string | null;
+  original_upsell_product_id: string | null;
+  original_upsell_quantity: number;
+  original_upsell_subtotal_price_cents: number;
+  original_upsell_discount_bps: number;
+  original_upsell_discount_amount_cents: number;
+  commission_bps: number;
+  discount_bps: number;
+  discount_amount_cents: number;
+  recovered_sale_price_cents: number;
+  status: string;
+  delivery_claim_token: string | null;
+  delivery_claimed_at: string | null;
+  delivery_attempts: number;
+  next_delivery_attempt_at: string;
+  dm_channel_id: string | null;
+  dm_message_id: string | null;
+  sent_at: string | null;
+  decision_interaction_id: string | null;
+  recovered_order_id: string | null;
+  expires_at: string;
+  resolved_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type PaymentWebhookEventRow = {
@@ -948,6 +1027,118 @@ export type Database = {
             "inventory_units",
             ["id"]
           >,
+          Relationship<
+            "orders_upsell_product_id_fkey",
+            ["upsell_product_id"],
+            "products",
+            ["id"]
+          >,
+          Relationship<
+            "orders_upsell_offer_id_fkey",
+            ["upsell_offer_id"],
+            "upsell_offers",
+            ["id"]
+          >,
+          Relationship<
+            "orders_lead_recovery_source_order_id_fkey",
+            ["lead_recovery_source_order_id"],
+            "orders",
+            ["id"]
+          >,
+          Relationship<
+            "orders_lead_recovery_offer_id_fkey",
+            ["lead_recovery_offer_id"],
+            "lead_recovery_offers",
+            ["id"]
+          >,
+        ];
+      };
+      lead_recovery_offers: {
+        Row: LeadRecoveryOfferRow;
+        Insert: InsertRow<
+          LeadRecoveryOfferRow,
+          | "source_order_id"
+          | "guild_id"
+          | "seller_whitelist_entry_id"
+          | "buyer_discord_id"
+          | "items"
+          | "original_subtotal_price_cents"
+          | "original_sale_price_cents"
+          | "original_discount_bps"
+          | "commission_bps"
+          | "discount_bps"
+          | "discount_amount_cents"
+          | "recovered_sale_price_cents"
+        >;
+        Update: UpdateRow<LeadRecoveryOfferRow>;
+        Relationships: [
+          Relationship<
+            "lead_recovery_offers_source_order_id_fkey",
+            ["source_order_id"],
+            "orders",
+            ["id"]
+          >,
+          Relationship<
+            "lead_recovery_offers_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
+          Relationship<
+            "lead_recovery_offers_seller_whitelist_entry_id_fkey",
+            ["seller_whitelist_entry_id"],
+            "whitelist_entries",
+            ["id"]
+          >,
+          Relationship<
+            "lead_recovery_offers_original_upsell_product_id_fkey",
+            ["original_upsell_product_id"],
+            "products",
+            ["id"]
+          >,
+          Relationship<
+            "lead_recovery_offers_recovered_order_id_fkey",
+            ["recovered_order_id"],
+            "orders",
+            ["id"]
+          >,
+        ];
+      };
+      upsell_offers: {
+        Row: UpsellOfferRow;
+        Insert: InsertRow<
+          UpsellOfferRow,
+          | "source_interaction_id"
+          | "guild_id"
+          | "seller_whitelist_entry_id"
+          | "buyer_discord_id"
+          | "base_items"
+          | "base_discount_bps"
+          | "commission_bps"
+          | "offered_product_id"
+          | "offered_product_name"
+          | "offered_unit_price_cents"
+          | "discount_bps"
+          | "discount_amount_cents"
+          | "discounted_unit_price_cents"
+          | "strategy"
+        >;
+        Update: UpdateRow<UpsellOfferRow>;
+        Relationships: [
+          Relationship<"upsell_offers_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
+          Relationship<
+            "upsell_offers_seller_whitelist_entry_id_fkey",
+            ["seller_whitelist_entry_id"],
+            "whitelist_entries",
+            ["id"]
+          >,
+          Relationship<
+            "upsell_offers_offered_product_id_fkey",
+            ["offered_product_id"],
+            "products",
+            ["id"]
+          >,
+          Relationship<"upsell_offers_order_id_fkey", ["order_id"], "orders", ["id"]>,
         ];
       };
       order_items: {
@@ -1768,6 +1959,93 @@ export type Database = {
           checkout_order_id: string | null;
           was_created: boolean;
           out_of_stock: boolean;
+        }[];
+      };
+      create_bot_upsell_offer: {
+        Args: {
+          p_interaction_id: string;
+          p_guild_id: string;
+          p_whitelist_entry_id: string;
+          p_buyer_discord_id: string;
+          p_items: Json;
+          p_base_discount_bps: number;
+          p_base_discount_reason: string | null;
+          p_commission_bps: number;
+        };
+        Returns: {
+          offer_id: string | null;
+          was_created: boolean;
+          offered: boolean;
+          offered_product_id: string | null;
+          offered_product_name: string | null;
+          offered_unit_price_cents: number | null;
+          discounted_unit_price_cents: number | null;
+          discount_bps: number | null;
+          expires_at: string | null;
+        }[];
+      };
+      finalize_bot_upsell_offer: {
+        Args: {
+          p_offer_id: string;
+          p_discord_guild_id: string;
+          p_buyer_discord_id: string;
+          p_accept: boolean;
+          p_decision_interaction_id: string;
+        };
+        Returns: {
+          checkout_order_id: string | null;
+          source_interaction_id: string;
+          was_created: boolean;
+          out_of_stock: boolean;
+          offer_expired: boolean;
+          decision_conflict: boolean;
+        }[];
+      };
+      claim_lead_recovery_offers: {
+        Args: { p_claim_token: string; p_batch_size?: number };
+        Returns: {
+          offer_id: string;
+          source_order_id: string;
+          buyer_discord_id: string;
+          items: Json;
+          original_sale_price_cents: number;
+          recovered_sale_price_cents: number;
+          discount_bps: number;
+          expires_at: string;
+        }[];
+      };
+      complete_lead_recovery_delivery: {
+        Args: {
+          p_offer_id: string;
+          p_claim_token: string;
+          p_dm_channel_id: string;
+          p_dm_message_id: string;
+        };
+        Returns: boolean;
+      };
+      fail_lead_recovery_delivery: {
+        Args: {
+          p_offer_id: string;
+          p_claim_token: string;
+          p_error: string | null;
+        };
+        Returns: boolean;
+      };
+      finalize_lead_recovery_offer: {
+        Args: {
+          p_offer_id: string;
+          p_buyer_discord_id: string;
+          p_accept: boolean;
+          p_decision_interaction_id: string;
+        };
+        Returns: {
+          checkout_order_id: string | null;
+          was_created: boolean;
+          declined: boolean;
+          out_of_stock: boolean;
+          offer_expired: boolean;
+          offer_invalidated: boolean;
+          decision_conflict: boolean;
         }[];
       };
       create_ranked_bot_cart_with_reservation: {

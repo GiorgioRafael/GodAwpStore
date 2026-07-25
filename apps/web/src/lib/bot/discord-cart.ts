@@ -13,6 +13,7 @@ import type { DiscordCartSelection } from "./discord-cart-selection";
 import { decodeDiscordCartSelection } from "./discord-cart-selection";
 import {
   cartPurchaseResultCard,
+  upsellOfferCard,
   updateDiscordEphemeralResponse,
 } from "./discord-bot";
 import {
@@ -256,14 +257,36 @@ export async function completeDiscordCartPurchase(
       return false;
     }
 
-    const result = await new BotCommerceService(
+    const service = new BotCommerceService(
       new SupabaseBotCommerceRepository(),
-    ).purchaseCart({
+    );
+    const guild = await fetchDiscordGuildIdentity(context.guildId);
+    let upsell: Awaited<ReturnType<typeof service.prepareUpsell>> = {
+      kind: "not_offered",
+    };
+    try {
+      upsell = await service.prepareUpsell({
+        interactionId: context.interactionId,
+        buyerDiscordId: context.userId,
+        items,
+        isServerBooster: context.isServerBooster,
+        guild,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "erro desconhecido";
+      console.error(`[discord-cart:upsell] ${message}`);
+    }
+    if (upsell.kind === "offered") {
+      await updateDiscordEphemeralResponse(raw, upsellOfferCard(upsell.offer));
+      return false;
+    }
+
+    const result = await service.purchaseCart({
       interactionId: context.interactionId,
       buyerDiscordId: context.userId,
       items,
       isServerBooster: context.isServerBooster,
-      guild: await fetchDiscordGuildIdentity(context.guildId),
+      guild,
     });
     stockChanged = result.kind === "created";
     const checkoutUrl =

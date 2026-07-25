@@ -5,7 +5,12 @@ import {
   MAXIMUM_ORDER_QUANTITY,
 } from "@/lib/livepix/limits";
 
-export type CustomerDiscountReason = "server_booster" | "customer_rank" | null;
+export type CustomerDiscountReason =
+  | "server_booster"
+  | "customer_rank"
+  | "upsell"
+  | "lead_recovery"
+  | null;
 
 export type CustomerRankLevel = {
   code: string;
@@ -31,7 +36,7 @@ export type AppliedCustomerDiscount = {
   totalPriceCents: number;
   discountBps: number;
   discountAmountCents: number;
-  discountReason: CustomerDiscountReason;
+  discountReason: Exclude<CustomerDiscountReason, "upsell" | "lead_recovery">;
 };
 
 export function applyBestCustomerDiscount(

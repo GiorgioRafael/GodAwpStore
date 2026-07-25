@@ -14,6 +14,14 @@ import {
   parseNativeDiscordCartInteraction,
 } from "@/lib/bot/discord-cart";
 import {
+  completeDiscordUpsellDecision,
+  parseNativeDiscordUpsellInteraction,
+} from "@/lib/bot/discord-upsell";
+import {
+  completeDiscordLeadRecoveryDecision,
+  parseNativeDiscordLeadRecoveryInteraction,
+} from "@/lib/bot/lead-recovery";
+import {
   completeDiscordGameNicknameSubmission,
   createNativeDiscordGameNicknameResponse,
   parseNativeDiscordGameNicknameInteraction,
@@ -64,7 +72,12 @@ export async function POST(request: Request) {
       }
 
       if (
-        (native.scope === "ticket_close" || native.scope === "ticket_delivery") &&
+        (
+          native.scope === "ticket_close" ||
+          native.scope === "ticket_delivery" ||
+          native.scope === "upsell" ||
+          native.scope === "lead_recovery"
+        ) &&
         !isFreshDestructiveInteractionTimestamp(timestamp)
       ) {
         return new Response("Stale interaction", { status: 401 });
@@ -146,6 +159,53 @@ export async function POST(request: Request) {
           } catch (error) {
             const message = error instanceof Error ? error.message : "erro desconhecido";
             console.error(`[discord-giveaway:participation] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "upsell") {
+        after(async () => {
+          try {
+            const stockChanged = await completeDiscordUpsellDecision(
+              native.raw,
+              await loadBotMessageCustomization(),
+            );
+            if (stockChanged) {
+              const storefronts = await synchronizePublishedDiscordStorefronts();
+              if (storefronts.failed > 0) {
+                console.error(
+                  `[discord-upsell] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
+                );
+              }
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-upsell] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "lead_recovery") {
+        after(async () => {
+          try {
+            const stockChanged = await completeDiscordLeadRecoveryDecision(
+              native.raw,
+              await loadBotMessageCustomization(),
+            );
+            if (stockChanged) {
+              const storefronts = await synchronizePublishedDiscordStorefronts();
+              if (storefronts.failed > 0) {
+                console.error(
+                  `[lead-recovery] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
+                );
+              }
+            }
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[lead-recovery] ${message}`);
           }
         });
         return Response.json(native.interaction.response);
@@ -286,6 +346,21 @@ async function readNativeDiscordInteraction(request: Request) {
       raw,
       scope: "giveaway_participation" as const,
       interaction: giveawayParticipation,
+    };
+  }
+
+  const upsell = parseNativeDiscordUpsellInteraction(raw);
+  if (upsell) {
+    return { body, raw, scope: "upsell" as const, interaction: upsell };
+  }
+
+  const leadRecovery = parseNativeDiscordLeadRecoveryInteraction(raw);
+  if (leadRecovery) {
+    return {
+      body,
+      raw,
+      scope: "lead_recovery" as const,
+      interaction: leadRecovery,
     };
   }
 

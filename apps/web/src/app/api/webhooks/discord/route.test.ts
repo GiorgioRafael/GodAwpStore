@@ -233,6 +233,99 @@ describe("Discord native quantity interactions", () => {
   });
 });
 
+describe("Discord upsell interactions", () => {
+  it("aceita apenas decisão assinada e recente", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv(
+      "DISCORD_PUBLIC_KEY",
+      publicDer.subarray(publicDer.length - 32).toString("hex"),
+    );
+    const offerId = "11111111-1111-4111-8111-111111111111";
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      guild_id: "323456789012345678",
+      member: { user: { id: "423456789012345678" } },
+      data: {
+        component_type: 2,
+        custom_id: `gwstore_upsell_accept\n${offerId}`,
+      },
+    });
+    const request = (timestamp: string) =>
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": sign(
+            null,
+            Buffer.from(timestamp + body),
+            privateKey,
+          ).toString("hex"),
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      });
+
+    const currentTimestamp = String(Math.floor(Date.now() / 1_000));
+    const response = await POST(request(currentTimestamp));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ type: 6 });
+
+    const staleTimestamp = String(Math.floor((Date.now() - 10 * 60_000) / 1_000));
+    const stale = await POST(request(staleTimestamp));
+    expect(stale.status).toBe(401);
+  });
+});
+
+describe("Discord lead recovery interactions", () => {
+  it("aceita a decisão privada somente com assinatura recente", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv(
+      "DISCORD_PUBLIC_KEY",
+      publicDer.subarray(publicDer.length - 32).toString("hex"),
+    );
+    const offerId = "11111111-1111-4111-8111-111111111111";
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      user: { id: "423456789012345678" },
+      data: {
+        component_type: 2,
+        custom_id: `gwstore_lead_recovery_accept\n${offerId}`,
+      },
+    });
+    const request = (timestamp: string) =>
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": sign(
+            null,
+            Buffer.from(timestamp + body),
+            privateKey,
+          ).toString("hex"),
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      });
+
+    const currentTimestamp = String(Math.floor(Date.now() / 1_000));
+    const response = await POST(request(currentTimestamp));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ type: 6 });
+
+    const staleTimestamp = String(
+      Math.floor((Date.now() - 10 * 60_000) / 1_000),
+    );
+    const stale = await POST(request(staleTimestamp));
+    expect(stale.status).toBe(401);
+  });
+});
+
 describe("Discord native ticket close interactions", () => {
   it("verifica a assinatura e devolve confirmacao efemera ao fechador autorizado", async () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");

@@ -1,5 +1,6 @@
 import { reconcileDiscordTicketCloseClaims } from "@/lib/bot/discord-ticket-close-reconciliation";
 import { reconcileGiveaways } from "@/lib/giveaways/reconciliation";
+import { reconcileLeadRecoveryOffers } from "@/lib/bot/lead-recovery";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,12 +16,13 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [tickets, giveaways] = await Promise.all([
+    const [tickets, giveaways, leadRecovery] = await Promise.all([
       reconcileDiscordTicketCloseClaims(),
       reconcileGiveaways(),
+      reconcileLeadRecoveryOffers(),
     ]);
     return Response.json(
-      { ok: true, tickets, giveaways },
+      { ok: true, tickets, giveaways, leadRecovery },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

@@ -473,11 +473,19 @@ export async function savePlatformSettingsAction(
   const parsed = platformSettingsSchema.safeParse({
     currency: "BRL",
     globalCommissionBps: percentageToBps(text(formData, "globalCommissionPercent")),
+    upsellEnabled: formData.get("upsellEnabled") === "on",
+    upsellDiscountBps: percentageToBps(text(formData, "upsellDiscountPercent")),
+    upsellStrategy: text(formData, "upsellStrategy"),
+    leadRecoveryEnabled: formData.get("leadRecoveryEnabled") === "on",
+    leadRecoveryDiscountBps: percentageToBps(
+      text(formData, "leadRecoveryDiscountPercent"),
+    ),
+    leadRecoveryDelayMinutes: integer(formData, "leadRecoveryDelayMinutes"),
   });
   if (!parsed.success) {
     return {
       ok: false,
-      message: "Informe uma comissão entre 0 e 100%.",
+      message: "Revise a comissão, o upsell e a recuperação de carrinhos.",
       fieldErrors: errorsFromZod(parsed.error),
     };
   }
@@ -488,6 +496,12 @@ export async function savePlatformSettingsAction(
     .update({
       currency_code: "BRL",
       global_commission_bps: parsed.data.globalCommissionBps,
+      upsell_enabled: parsed.data.upsellEnabled,
+      upsell_discount_bps: parsed.data.upsellDiscountBps,
+      upsell_strategy: parsed.data.upsellStrategy,
+      lead_recovery_enabled: parsed.data.leadRecoveryEnabled,
+      lead_recovery_discount_bps: parsed.data.leadRecoveryDiscountBps,
+      lead_recovery_delay_minutes: parsed.data.leadRecoveryDelayMinutes,
       display_timezone: "America/Sao_Paulo",
       updated_by: identity.authUserId,
     })

@@ -135,7 +135,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
   async findPurchaseByInteraction(interactionId: string): Promise<ExistingPurchase | null> {
     const { data: lead, error: leadError } = await this.client
       .from("orders")
-      .select("id,buyer_discord_id,guild_id,subtotal_price_cents,sale_price_cents,discount_bps,discount_amount_cents,discount_reason,status")
+      .select("id,buyer_discord_id,guild_id,subtotal_price_cents,sale_price_cents,discount_bps,discount_amount_cents,discount_reason,upsell_product_id,upsell_discount_bps,upsell_discount_amount_cents,lead_recovery_discount_bps,lead_recovery_discount_amount_cents,status")
       .eq("payment_reference", interactionReference(interactionId))
       .maybeSingle();
     assertQuery(leadError, "compra existente");
@@ -182,6 +182,65 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         0,
       ),
       discountReason: readDiscountReason(lead.discount_reason),
+      upsellProductId: lead.upsell_product_id,
+      upsellDiscountBps: safeInteger(lead.upsell_discount_bps),
+      upsellDiscountAmountCents: safeInteger(lead.upsell_discount_amount_cents),
+      leadRecoveryDiscountBps: safeInteger(lead.lead_recovery_discount_bps),
+      leadRecoveryDiscountAmountCents: safeInteger(
+        lead.lead_recovery_discount_amount_cents,
+      ),
+      status: lead.status,
+    };
+  }
+
+  async findPurchaseById(orderId: string): Promise<ExistingPurchase | null> {
+    const { data: lead, error: leadError } = await this.client
+      .from("orders")
+      .select("id,buyer_discord_id,guild_id,subtotal_price_cents,sale_price_cents,discount_bps,discount_amount_cents,discount_reason,upsell_product_id,upsell_discount_bps,upsell_discount_amount_cents,lead_recovery_discount_bps,lead_recovery_discount_amount_cents,status")
+      .eq("id", orderId)
+      .maybeSingle();
+    assertQuery(leadError, "compra por ID");
+    if (!lead) return null;
+
+    const { data: rows, error: rowsError } = await this.client
+      .from("order_items")
+      .select("product_id,quantity,unit_price_cents,subtotal_price_cents,sale_price_cents,discount_amount_cents,position")
+      .eq("order_id", lead.id)
+      .order("position");
+    assertQuery(rowsError, "itens da compra por ID");
+
+    const productIds = (rows ?? []).map((row) => row.product_id);
+    const { data: products, error: productsError } = productIds.length
+      ? await this.client.from("products").select("id,name").in("id", productIds)
+      : { data: [], error: null };
+    assertQuery(productsError, "produtos da compra por ID");
+    const names = new Map((products ?? []).map((product) => [product.id, product.name]));
+
+    return {
+      id: lead.id,
+      buyerDiscordId: lead.buyer_discord_id,
+      guildId: lead.guild_id,
+      items: (rows ?? []).map((row) => ({
+        productId: row.product_id,
+        productName: names.get(row.product_id) ?? "Produto",
+        quantity: safeInteger(row.quantity),
+        unitPriceCents: safeInteger(row.unit_price_cents),
+        subtotalPriceCents: safeInteger(row.subtotal_price_cents),
+        totalPriceCents: safeInteger(row.sale_price_cents),
+        discountAmountCents: safeInteger(row.discount_amount_cents),
+      })),
+      subtotalPriceCents: safeInteger(lead.subtotal_price_cents),
+      salePriceCents: safeInteger(lead.sale_price_cents),
+      discountBps: safeInteger(lead.discount_bps),
+      discountAmountCents: safeInteger(lead.discount_amount_cents),
+      discountReason: readDiscountReason(lead.discount_reason),
+      upsellProductId: lead.upsell_product_id,
+      upsellDiscountBps: safeInteger(lead.upsell_discount_bps),
+      upsellDiscountAmountCents: safeInteger(lead.upsell_discount_amount_cents),
+      leadRecoveryDiscountBps: safeInteger(lead.lead_recovery_discount_bps),
+      leadRecoveryDiscountAmountCents: safeInteger(
+        lead.lead_recovery_discount_amount_cents,
+      ),
       status: lead.status,
     };
   }
@@ -406,6 +465,85 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       outOfStock: data.out_of_stock,
     };
   }
+
+  async createUpsellOffer(input: {
+    interactionId: string;
+    guildId: string;
+    whitelistEntryId: string;
+    buyerDiscordId: string;
+    items: CartItemInput[];
+    baseDiscountBps: number;
+    baseDiscountReason: "server_booster" | "customer_rank" | null;
+    commissionBps: number;
+  }) {
+    const { data, error } = await this.client
+      .rpc("create_bot_upsell_offer", {
+        p_interaction_id: input.interactionId,
+        p_guild_id: input.guildId,
+        p_whitelist_entry_id: input.whitelistEntryId,
+        p_buyer_discord_id: input.buyerDiscordId,
+        p_items: input.items.map((item) => ({
+          product_id: item.productId,
+          quantity: item.quantity,
+        })),
+        p_base_discount_bps: input.baseDiscountBps,
+        p_base_discount_reason: input.baseDiscountReason,
+        p_commission_bps: input.commissionBps,
+      })
+      .single();
+    assertQuery(error, "oferta de upsell");
+    return {
+      created: data.was_created,
+      offer:
+        data.offered &&
+        data.offer_id &&
+        data.offered_product_id &&
+        data.offered_product_name &&
+        data.offered_unit_price_cents !== null &&
+        data.discounted_unit_price_cents !== null &&
+        data.discount_bps !== null &&
+        data.expires_at
+          ? {
+              id: data.offer_id,
+              productId: data.offered_product_id,
+              productName: data.offered_product_name,
+              unitPriceCents: safeInteger(data.offered_unit_price_cents),
+              discountedUnitPriceCents: safeInteger(
+                data.discounted_unit_price_cents,
+              ),
+              discountBps: safeInteger(data.discount_bps),
+              expiresAt: data.expires_at,
+            }
+          : null,
+    };
+  }
+
+  async finalizeUpsellOffer(input: {
+    offerId: string;
+    discordGuildId: string;
+    buyerDiscordId: string;
+    accepted: boolean;
+    decisionInteractionId: string;
+  }) {
+    const { data, error } = await this.client
+      .rpc("finalize_bot_upsell_offer", {
+        p_offer_id: input.offerId,
+        p_discord_guild_id: input.discordGuildId,
+        p_buyer_discord_id: input.buyerDiscordId,
+        p_accept: input.accepted,
+        p_decision_interaction_id: input.decisionInteractionId,
+      })
+      .single();
+    assertQuery(error, "finalização do upsell");
+    return {
+      orderId: data.checkout_order_id,
+      sourceInteractionId: data.source_interaction_id,
+      created: data.was_created,
+      outOfStock: data.out_of_stock,
+      expired: data.offer_expired,
+      decisionConflict: data.decision_conflict,
+    };
+  }
 }
 
 function requireClient() {
@@ -431,5 +569,10 @@ function clampCommission(value: number) {
 }
 
 function readDiscountReason(value: string | null) {
-  return value === "server_booster" || value === "customer_rank" ? value : null;
+  return value === "server_booster" ||
+    value === "customer_rank" ||
+    value === "upsell" ||
+    value === "lead_recovery"
+    ? value
+    : null;
 }

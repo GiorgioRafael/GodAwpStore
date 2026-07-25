@@ -62,6 +62,7 @@ import type {
   BotCommerceRepository,
   CartPurchaseResult,
   PurchaseResult,
+  UpsellOffer,
 } from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
@@ -337,13 +338,33 @@ export async function completeDiscordQuantityPurchase(
       );
     } else {
       const service = new BotCommerceService(new SupabaseBotCommerceRepository());
+      const guild = await fetchDiscordGuildIdentity(context.guildId);
+      let upsell: Awaited<ReturnType<typeof service.prepareUpsell>> = {
+        kind: "not_offered",
+      };
+      try {
+        upsell = await service.prepareUpsell({
+          interactionId: context.interactionId,
+          buyerDiscordId: context.userId,
+          items: [{ productId, quantity }],
+          isServerBooster: context.isServerBooster,
+          guild,
+        });
+      } catch (error) {
+        logBotError("upsell", error);
+      }
+      if (upsell.kind === "offered") {
+        await updateDiscordEphemeralResponse(raw, upsellOfferCard(upsell.offer));
+        return false;
+      }
+
       const result = await service.purchase({
         interactionId: context.interactionId,
         buyerDiscordId: context.userId,
         productId,
         quantity,
         isServerBooster: context.isServerBooster,
-        guild: await fetchDiscordGuildIdentity(context.guildId),
+        guild,
       });
       stockChanged = result.kind === "created";
       const checkoutUrl =
@@ -736,6 +757,10 @@ export function cartPurchaseResultCard(
 ) {
   const message = customization.order;
   if (result.kind === "created" || result.kind === "duplicate") {
+    const baseDiscountAmountCents =
+      result.discountAmountCents
+      - result.upsellDiscountAmountCents
+      - result.leadRecoveryDiscountAmountCents;
     return (
       <Card
         title={
@@ -758,12 +783,22 @@ export function cartPurchaseResultCard(
           <CardText>
             {interpolateBotMessage(message.discountLabel, {
               discount_percent: formatPercentage(result.discountBps),
-            })} -{formatBrl(result.discountAmountCents)}
+            })} -{formatBrl(baseDiscountAmountCents)}
           </CardText>
         ) : null}
         {result.discountReason === "customer_rank" ? (
           <CardText>
-            🏆 **Desconto do seu ranking ({formatPercentage(result.discountBps)}):** -{formatBrl(result.discountAmountCents)}
+            🏆 **Desconto do seu ranking ({formatPercentage(result.discountBps)}):** -{formatBrl(baseDiscountAmountCents)}
+          </CardText>
+        ) : null}
+        {result.upsellDiscountAmountCents > 0 ? (
+          <CardText>
+            ✨ **Desconto do item extra ({formatPercentage(result.upsellDiscountBps)}):** -{formatBrl(result.upsellDiscountAmountCents)}
+          </CardText>
+        ) : null}
+        {result.leadRecoveryDiscountAmountCents > 0 ? (
+          <CardText>
+            💜 **Desconto de recuperação ({formatPercentage(result.leadRecoveryDiscountBps)}):** -{formatBrl(result.leadRecoveryDiscountAmountCents)}
           </CardText>
         ) : null}
         {message.totalLabel ? (
@@ -813,8 +848,40 @@ export function cartPurchaseResultCard(
     product_unavailable: customization.error.productUnavailable,
     out_of_stock: customization.error.outOfStock,
     interaction_conflict: customization.error.interactionConflict,
+    offer_expired:
+      "Esta oferta expirou ou o produto mudou. Abra a loja novamente para montar um novo pedido.",
   }[result.kind];
   return errorCard(errorMessage, customization);
+}
+
+export function upsellOfferCard(offer: UpsellOffer): ChatElement {
+  const savingsCents = offer.unitPriceCents - offer.discountedUnitPriceCents;
+  return (
+    <Card
+      title="✨ Oferta rápida antes do Pix"
+      subtitle="Válida por 5 minutos e limitada a uma unidade extra."
+    >
+      <CardText>
+        Leve mais **1x {offer.productName}** com **{formatPercentage(offer.discountBps)} de desconto**.
+      </CardText>
+      <CardText>
+        De ~~{formatBrl(offer.unitPriceCents)}~~ por **{formatBrl(offer.discountedUnitPriceCents)}**
+      </CardText>
+      <CardText>Você economiza **{formatBrl(savingsCents)}** nesta unidade.</CardText>
+      <Divider />
+      <CardText>
+        O estoque e o preço serão confirmados no servidor quando você escolher. Seu carrinho ainda não foi cobrado.
+      </CardText>
+      <Actions>
+        <Button id="gwstore_upsell_accept" value={offer.id} style="primary">
+          Adicionar oferta
+        </Button>
+        <Button id="gwstore_upsell_decline" value={offer.id} style="default">
+          Continuar sem oferta
+        </Button>
+      </Actions>
+    </Card>
+  );
 }
 
 export function configureDiscordProductEntrySelect<T>(
