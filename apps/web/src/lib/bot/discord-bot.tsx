@@ -212,6 +212,7 @@ class GWStoreDiscordAdapter extends DiscordAdapter {
     const productOptionEmojis = collectDiscordProductOptionEmojis(message);
     const result = super.buildMessagePayload(message, options);
     configureDiscordProductEntrySelect(result.payload, productOptionEmojis);
+    configureDiscordStorefrontBanner(result.payload);
     return result;
   }
 }
@@ -416,7 +417,9 @@ export function catalogCards(
     );
   }
 
-  const storefrontImageUrl = discordImageUrl(catalog[0]?.substores[0]?.imageUrl);
+  const storefrontImageUrl =
+    discordStorefrontBannerUrl() ??
+    discordImageUrl(catalog[0]?.substores[0]?.imageUrl);
   return [
     <Card
       key="catalog"
@@ -910,6 +913,27 @@ export function configureDiscordProductEntrySelect<T>(
   return payload;
 }
 
+export function configureDiscordStorefrontBanner<T>(payload: T): T {
+  const bannerUrl = discordStorefrontBannerUrl();
+  if (!bannerUrl || !isObject(payload) || !Array.isArray(payload.components)) {
+    return payload;
+  }
+
+  for (const container of payload.components) {
+    if (!isObject(container) || !Array.isArray(container.components)) continue;
+    const bannerIndex = container.components.findIndex((component) =>
+      isDiscordMediaGalleryForUrl(component, bannerUrl),
+    );
+    if (bannerIndex < 0) continue;
+    if (bannerIndex > 0) {
+      const [banner] = container.components.splice(bannerIndex, 1);
+      container.components.unshift(banner);
+    }
+    break;
+  }
+  return payload;
+}
+
 export function collectDiscordProductOptionEmojis(value: unknown) {
   const emojis = new Map<string, DiscordProductEmoji>();
   visitRawChatElements(value, (element) => {
@@ -1010,6 +1034,22 @@ function discordImageUrl(value: string | null | undefined) {
   } catch {
     return null;
   }
+}
+
+function discordStorefrontBannerUrl() {
+  return discordImageUrl(process.env.DISCORD_STOREFRONT_BANNER_URL?.trim());
+}
+
+function isDiscordMediaGalleryForUrl(value: unknown, expectedUrl: string) {
+  if (!isObject(value) || value.type !== 12 || !Array.isArray(value.items)) {
+    return false;
+  }
+  return value.items.some(
+    (item) =>
+      isObject(item) &&
+      isObject(item.media) &&
+      item.media.url === expectedUrl,
+  );
 }
 
 function productEmoji(productName: string) {

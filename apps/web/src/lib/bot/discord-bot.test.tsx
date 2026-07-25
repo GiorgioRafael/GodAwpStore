@@ -9,6 +9,7 @@ vi.mock("server-only", () => ({}));
 let catalogCards: typeof import("./discord-bot").catalogCards;
 let collectDiscordProductOptionEmojis: typeof import("./discord-bot").collectDiscordProductOptionEmojis;
 let configureDiscordProductEntrySelect: typeof import("./discord-bot").configureDiscordProductEntrySelect;
+let configureDiscordStorefrontBanner: typeof import("./discord-bot").configureDiscordStorefrontBanner;
 let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
@@ -22,6 +23,7 @@ beforeAll(async () => {
     catalogCards,
     collectDiscordProductOptionEmojis,
     configureDiscordProductEntrySelect,
+    configureDiscordStorefrontBanner,
     createNativeDiscordQuantityResponse,
     getDiscordBot,
     postDiscordEphemeral,
@@ -126,6 +128,62 @@ describe("Discord catalog cards", () => {
     expect(JSON.stringify(payload)).toContain(
       '"emoji":{"id":"423456789012345678","name":"gw_9a845b407c4e_a1b2c3d4","animated":false}',
     );
+  });
+
+  it("coloca o banner configurado acima do título e do seletor", () => {
+    const bannerUrl =
+      "https://thstoreadm.vercel.app/brands/thstore-storefront-banner.png";
+    vi.stubEnv("DISCORD_STOREFRONT_BANNER_URL", bannerUrl);
+
+    const [card] = catalogCards([
+      {
+        id: "game",
+        name: "Blox Fruits",
+        substores: [
+          {
+            id: "fruits",
+            name: "Fruits",
+            title: "Fruits",
+            description: "",
+            colorHex: "#2563EB",
+            imageUrl: "https://example.com/old-storefront.png",
+            products: [
+              {
+                id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+                name: "Dragon",
+                description: null,
+                imageUrl: null,
+                priceCents: 500,
+                availableStock: 1,
+                sortOrder: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    const normalized = toCardElement(card);
+    expect(normalized).toMatchObject({ imageUrl: bannerUrl });
+    if (!normalized) throw new Error("Cartão de catálogo inválido.");
+
+    const payload = configureDiscordStorefrontBanner(
+      cardToDiscordPayload(normalized, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      }),
+    ) as {
+      components: Array<{
+        components: Array<{
+          type: number;
+          items?: Array<{ media?: { url?: string } }>;
+        }>;
+      }>;
+    };
+    expect(payload.components[0]?.components[0]).toMatchObject({
+      type: 12,
+      items: [{ media: { url: bannerUrl } }],
+    });
+    expect(JSON.stringify(payload)).not.toContain("old-storefront.png");
   });
 
   it("respeita a ordem global salva mesmo entre sublojas diferentes", () => {
