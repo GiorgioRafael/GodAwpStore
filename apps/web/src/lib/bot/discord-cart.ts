@@ -21,7 +21,10 @@ import {
   type BotMessageCustomization,
 } from "./message-customization";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
-import { MAXIMUM_CART_ITEMS } from "./types";
+import {
+  MAXIMUM_CART_ITEMS,
+  type CartQuantityPreparationResult,
+} from "./types";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const DISCORD_MESSAGE_COMPONENT = 3;
@@ -203,7 +206,10 @@ export function createNativeDiscordCartReviewResponse(
   };
 }
 
-export function createNativeDiscordCartResponse(selections: DiscordCartSelection[]) {
+export function createNativeDiscordCartResponse(
+  selections: DiscordCartSelection[],
+  preparation?: CartQuantityPreparationResult,
+) {
   const productIds = selections.map((selection) => selection.productId);
   if (
     productIds.length < 1 ||
@@ -213,6 +219,28 @@ export function createNativeDiscordCartResponse(selections: DiscordCartSelection
   ) {
     return discordEphemeralText("Seleção de produtos inválida. Abra a loja e tente novamente.");
   }
+  if (preparation && preparation.kind !== "ready") {
+    return discordEphemeralText(
+      preparation.kind === "out_of_stock" ||
+        preparation.kind === "minimum_unavailable"
+        ? "Não há estoque suficiente para atingir o mínimo de R$ 1,00 após os descontos."
+        : "Não foi possível calcular as quantidades agora. Abra a loja e tente novamente.",
+    );
+  }
+
+  const preparedQuantityByProduct = new Map(
+    preparation?.kind === "ready"
+      ? preparation.items.map((item) => [item.productId, item.quantity])
+      : [],
+  );
+  if (
+    preparation?.kind === "ready" &&
+    productIds.some((productId) => !preparedQuantityByProduct.has(productId))
+  ) {
+    return discordEphemeralText(
+      "Não foi possível calcular as quantidades agora. Abra a loja e tente novamente.",
+    );
+  }
 
   return {
     type: DISCORD_MODAL_RESPONSE,
@@ -220,19 +248,27 @@ export function createNativeDiscordCartResponse(selections: DiscordCartSelection
       custom_id: encodeCartProductIds(productIds),
       title: `Quantidades (${productIds.length}/${productIds.length})`,
       components: selections.map((selection, index) => {
+        const minimumQuantity =
+          preparedQuantityByProduct.get(selection.productId) ?? 1;
+        const productName = selection.productName ?? `Produto ${index + 1}`;
         return {
           type: 1,
           components: [
             {
               type: 4,
               custom_id: `quantity_${index}`,
-              label: truncate(selection.productName ?? `Produto ${index + 1}`, 45),
+              label: truncate(
+                minimumQuantity > 1
+                  ? `${productName} (mín. ${minimumQuantity})`
+                  : productName,
+                45,
+              ),
               style: 1,
               min_length: 1,
               max_length: String(MAXIMUM_ORDER_QUANTITY).length,
               required: true,
-              value: "1",
-              placeholder: `1 até ${MAXIMUM_ORDER_QUANTITY}`,
+              value: String(minimumQuantity),
+              placeholder: `${minimumQuantity} sugerido • máximo ${MAXIMUM_ORDER_QUANTITY}`,
             },
           ],
         };

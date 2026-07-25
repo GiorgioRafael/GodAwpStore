@@ -500,6 +500,69 @@ describe("BotCommerceService", () => {
     expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
   });
 
+  it("preenche o carrinho com o mínimo que continua válido após o desconto", async () => {
+    const bronze = {
+      ...noRank,
+      totalSpentCents: 500,
+      currentRank: noRank.nextRank,
+      nextRank: null,
+      amountToNextRankCents: 0,
+    };
+    const oneRealProduct = { ...product, minimumPriceCents: 100 };
+    const repo = repository({
+      findPurchasableProducts: vi.fn(async () => [oneRealProduct]),
+      countAvailableStocks: vi.fn(async () => new Map([[product.id, 10]])),
+      getCustomerRankProgress: vi.fn(async () => bronze),
+    });
+    const service = new BotCommerceService(repo);
+
+    await expect(
+      service.prepareCartQuantities({
+        buyerDiscordId: input.buyerDiscordId,
+        productIds: [product.id],
+        guild,
+        isServerBooster: false,
+      }),
+    ).resolves.toEqual({
+      kind: "ready",
+      items: [{
+        productId: product.id,
+        productName: product.name,
+        quantity: 2,
+        availableStock: 10,
+      }],
+      totalPriceCents: 198,
+    });
+  });
+
+  it("avisa quando o estoque não alcança R$ 1 após o desconto", async () => {
+    const diamond = {
+      ...noRank,
+      currentRank: {
+        ...noRank.nextRank!,
+        code: "diamond_i",
+        name: "Diamond I",
+        minimumSpendCents: 150_000,
+        discountBps: 1_000,
+      },
+    };
+    const oneRealProduct = { ...product, minimumPriceCents: 100 };
+    const repo = repository({
+      findPurchasableProducts: vi.fn(async () => [oneRealProduct]),
+      countAvailableStocks: vi.fn(async () => new Map([[product.id, 1]])),
+      getCustomerRankProgress: vi.fn(async () => diamond),
+    });
+
+    await expect(
+      new BotCommerceService(repo).prepareCartQuantities({
+        buyerDiscordId: input.buyerDiscordId,
+        productIds: [product.id],
+        guild,
+        isServerBooster: false,
+      }),
+    ).resolves.toEqual({ kind: "minimum_unavailable" });
+  });
+
   it("distribui o desconto de booster sem alterar o total do carrinho", async () => {
     const expensiveProducts = [
       { ...product, minimumPriceCents: 2_500 },

@@ -5,6 +5,18 @@ import { encodeDiscordCartSelection } from "@/lib/bot/discord-cart-selection";
 const ticketDeliveryMocks = vi.hoisted(() => ({
   completeDiscordTicketDelivery: vi.fn(async () => ({ status: "sent" as const })),
 }));
+const quantityPreparationMocks = vi.hoisted(() => ({
+  prepareDiscordCartQuantities: vi.fn(async (_raw: unknown, productIds: string[]) => ({
+    kind: "ready" as const,
+    items: productIds.map((productId) => ({
+      productId,
+      productName: "Produto",
+      quantity: 10,
+      availableStock: 100,
+    })),
+    totalPriceCents: 100,
+  })),
+}));
 
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ after: vi.fn() }));
@@ -57,6 +69,10 @@ vi.mock("@/lib/bot/supabase-repository", () => ({
 vi.mock("@/lib/bot/discord-ticket-delivery", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/bot/discord-ticket-delivery")>()),
   completeDiscordTicketDelivery: ticketDeliveryMocks.completeDiscordTicketDelivery,
+}));
+vi.mock("@/lib/bot/discord-quantity-preparation", () => ({
+  prepareDiscordCartQuantities:
+    quantityPreparationMocks.prepareDiscordCartQuantities,
 }));
 
 import { POST } from "./route";
@@ -132,7 +148,12 @@ describe("Discord native quantity interactions", () => {
       data: {
         title: "Quantidades (1/1)",
         components: [
-          { components: [{ custom_id: "quantity_0", label: "Super Watering" }] },
+          {
+            components: [{
+              custom_id: "quantity_0",
+              label: "Super Watering (mín. 10)",
+            }],
+          },
         ],
       },
     });

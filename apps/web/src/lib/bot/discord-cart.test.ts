@@ -198,6 +198,38 @@ describe("carrinho nativo do Discord", () => {
     ).toEqual({ kind: "submit", response: { type: 5, data: { flags: 64 } } });
   });
 
+  it("abre o carrinho com quantidades válidas depois do desconto", () => {
+    const response = createNativeDiscordCartResponse(selections, {
+      kind: "ready",
+      items: selections.map((selection, index) => ({
+        productId: selection.productId,
+        productName: selection.productName ?? "Produto",
+        quantity: index === 0 ? 2 : 1,
+        availableStock: 10,
+      })),
+      totalPriceCents: 198,
+    });
+
+    expect(response).toMatchObject({
+      type: 9,
+      data: {
+        components: [
+          {
+            components: [
+              expect.objectContaining({
+                label: "Super Watering (mín. 2)",
+                value: "2",
+                placeholder: "2 sugerido • máximo 10000",
+              }),
+            ],
+          },
+          { components: [{ value: "1" }] },
+          { components: [{ value: "1" }] },
+        ],
+      },
+    });
+  });
+
   it("mantém compatibilidade com vitrines antigas sem consultar o banco", () => {
     const interaction = parseNativeDiscordCartInteraction({
       type: 3,

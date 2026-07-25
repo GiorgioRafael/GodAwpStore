@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_BOOSTER_DISCOUNT_CONFIGURATION } from "./booster-discount";
 import {
   applyBestCustomerDiscount,
+  minimumLivePixCartQuantitiesWithCustomerDiscount,
   minimumLivePixQuantityWithCustomerDiscount,
   type CustomerRankProgress,
 } from "./customer-rank";
@@ -66,5 +67,41 @@ describe("customer rank pricing", () => {
         rank: progress,
       }),
     ).toEqual({ quantity: 3, totalPriceCents: 135 });
+  });
+
+  it("calcula as quantidades iniciais do carrinho sobre o total já descontado", () => {
+    expect(
+      minimumLivePixCartQuantitiesWithCustomerDiscount({
+        lines: [
+          { unitPriceCents: 100, availableStock: 10 },
+        ],
+        boosterConfiguration: DEFAULT_BOOSTER_DISCOUNT_CONFIGURATION,
+        isServerBooster: false,
+        rank: progress,
+      }),
+    ).toEqual({ quantities: [2], totalPriceCents: 180 });
+
+    expect(
+      minimumLivePixCartQuantitiesWithCustomerDiscount({
+        lines: [
+          { unitPriceCents: 40, availableStock: 10 },
+          { unitPriceCents: 50, availableStock: 10 },
+        ],
+        boosterConfiguration: DEFAULT_BOOSTER_DISCOUNT_CONFIGURATION,
+        isServerBooster: false,
+        rank: progress,
+      }),
+    ).toEqual({ quantities: [1, 2], totalPriceCents: 126 });
+  });
+
+  it("não sugere uma quantidade acima do estoque disponível", () => {
+    expect(
+      minimumLivePixCartQuantitiesWithCustomerDiscount({
+        lines: [{ unitPriceCents: 100, availableStock: 1 }],
+        boosterConfiguration: DEFAULT_BOOSTER_DISCOUNT_CONFIGURATION,
+        isServerBooster: false,
+        rank: progress,
+      }),
+    ).toBeNull();
   });
 });

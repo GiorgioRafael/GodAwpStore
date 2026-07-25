@@ -112,6 +112,70 @@ export function minimumLivePixQuantityWithCustomerDiscount(input: {
   return null;
 }
 
+export function minimumLivePixCartQuantitiesWithCustomerDiscount(input: {
+  lines: Array<{
+    unitPriceCents: number;
+    availableStock: number;
+  }>;
+  boosterConfiguration: BoosterDiscountConfiguration;
+  isServerBooster: boolean;
+  rank: CustomerRankProgress;
+}) {
+  if (
+    input.lines.length < 1 ||
+    input.lines.some(
+      (line) =>
+        !Number.isSafeInteger(line.unitPriceCents) ||
+        line.unitPriceCents < 1 ||
+        !Number.isSafeInteger(line.availableStock) ||
+        line.availableStock < 1,
+    )
+  ) {
+    return null;
+  }
+
+  const quantities = input.lines.map(() => 1);
+  const maximumQuantities = input.lines.map((line) =>
+    Math.min(line.availableStock, MAXIMUM_ORDER_QUANTITY),
+  );
+
+  while (true) {
+    const subtotalPriceCents = input.lines.reduce(
+      (sum, line, index) => sum + line.unitPriceCents * (quantities[index] ?? 0),
+      0,
+    );
+    if (!Number.isSafeInteger(subtotalPriceCents)) return null;
+
+    const pricing = applyBestCustomerDiscount(
+      subtotalPriceCents,
+      input.boosterConfiguration,
+      input.isServerBooster,
+      input.rank,
+    );
+    if (!pricing) return null;
+    if (pricing.totalPriceCents >= LIVEPIX_MINIMUM_BRL_CENTS) {
+      return {
+        quantities,
+        totalPriceCents: pricing.totalPriceCents,
+      };
+    }
+
+    let nextLineIndex = -1;
+    for (let index = 0; index < input.lines.length; index += 1) {
+      if ((quantities[index] ?? 0) >= (maximumQuantities[index] ?? 0)) continue;
+      if (
+        nextLineIndex === -1 ||
+        input.lines[index]!.unitPriceCents >
+          input.lines[nextLineIndex]!.unitPriceCents
+      ) {
+        nextLineIndex = index;
+      }
+    }
+    if (nextLineIndex === -1) return null;
+    quantities[nextLineIndex] = (quantities[nextLineIndex] ?? 0) + 1;
+  }
+}
+
 function calculateDiscountAmount(subtotalPriceCents: number, discountBps: number) {
   if (
     !Number.isSafeInteger(subtotalPriceCents) ||

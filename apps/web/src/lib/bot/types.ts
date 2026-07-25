@@ -257,6 +257,26 @@ export type CartPurchaseResult =
         | "offer_expired";
     };
 
+export type CartQuantityPreparationResult =
+  | {
+      kind: "ready";
+      items: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        availableStock: number;
+      }>;
+      totalPriceCents: number;
+    }
+  | {
+      kind:
+        | "invalid_request"
+        | "guild_not_authorized"
+        | "product_unavailable"
+        | "out_of_stock"
+        | "minimum_unavailable";
+    };
+
 export type UpsellPreparationResult =
   | { kind: "offered"; offer: UpsellOffer }
   | { kind: "not_offered" };

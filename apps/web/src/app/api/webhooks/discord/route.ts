@@ -13,6 +13,7 @@ import {
   createNativeDiscordCartResponse,
   parseNativeDiscordCartInteraction,
 } from "@/lib/bot/discord-cart";
+import { prepareDiscordCartQuantities } from "@/lib/bot/discord-quantity-preparation";
 import {
   completeDiscordUpsellDecision,
   parseNativeDiscordUpsellInteraction,
@@ -223,8 +224,15 @@ export async function POST(request: Request) {
         }
 
         if (native.interaction.kind === "open") {
+          const preparation = await prepareDiscordCartQuantities(
+            native.raw,
+            native.interaction.selections.map((selection) => selection.productId),
+          );
           return Response.json(
-            createNativeDiscordCartResponse(native.interaction.selections),
+            createNativeDiscordCartResponse(
+              native.interaction.selections,
+              preparation,
+            ),
           );
         }
 
@@ -252,11 +260,16 @@ export async function POST(request: Request) {
 
       if (native.interaction.kind === "open") {
         const customization = loadBotMessageCustomization();
+        const preparation = await prepareDiscordCartQuantities(
+          native.raw,
+          [native.interaction.productId],
+        );
         return Response.json(
           await createNativeDiscordQuantityResponse(
             native.interaction.productId,
             undefined,
             customization,
+            preparation,
           ),
         );
       } else {

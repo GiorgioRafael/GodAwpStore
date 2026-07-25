@@ -61,6 +61,7 @@ import type {
   BotCatalogSubstore,
   BotCommerceRepository,
   CartPurchaseResult,
+  CartQuantityPreparationResult,
   PurchaseResult,
   UpsellOffer,
 } from "./types";
@@ -262,18 +263,44 @@ export async function createNativeDiscordQuantityResponse(
     new SupabaseBotCommerceRepository(),
   customization: BotMessageCustomization | Promise<BotMessageCustomization> =
     DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  preparation?: CartQuantityPreparationResult,
 ) {
-  const [product, availableStock, resolvedCustomization] = await Promise.all([
-    repository.findPurchasableProduct(productId),
-    repository.countAvailableStock(productId),
-    customization,
-  ]);
-  customization = resolvedCustomization;
+  customization = await customization;
+  if (preparation && preparation.kind !== "ready") {
+    return discordEphemeralText(
+      preparation.kind === "out_of_stock" ||
+        preparation.kind === "minimum_unavailable"
+        ? "Não há estoque suficiente para atingir o mínimo de R$ 1,00 após os descontos."
+        : customization.quantity.unavailableText,
+    );
+  }
+  const preparedItem =
+    preparation?.kind === "ready"
+      ? preparation.items.find((item) => item.productId === productId)
+      : null;
+  if (preparation?.kind === "ready" && !preparedItem) {
+    return discordEphemeralText(customization.quantity.unavailableText);
+  }
+
+  const [product, availableStock] = preparedItem
+    ? [
+        {
+          id: preparedItem.productId,
+          name: preparedItem.productName,
+          minimumPriceCents: 1,
+        },
+        preparedItem.availableStock,
+      ] as const
+    : await Promise.all([
+        repository.findPurchasableProduct(productId),
+        repository.countAvailableStock(productId),
+      ]);
   if (!product) {
     return discordEphemeralText(customization.quantity.unavailableText);
   }
 
-  const minimumQuantity = minimumLivePixQuantity(product.minimumPriceCents);
+  const minimumQuantity =
+    preparedItem?.quantity ?? minimumLivePixQuantity(product.minimumPriceCents);
   if (!minimumQuantity) {
     return discordEphemeralText(customization.quantity.invalidPriceText);
   }

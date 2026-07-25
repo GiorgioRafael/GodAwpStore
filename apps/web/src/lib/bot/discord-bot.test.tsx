@@ -396,6 +396,48 @@ describe("Discord catalog cards", () => {
     });
   });
 
+  it("preenche o formulário com o mínimo válido após o desconto do usuário", async () => {
+    const productId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+    const response = await createNativeDiscordQuantityResponse(
+      productId,
+      {
+        findPurchasableProduct: vi.fn(async () => ({
+          id: productId,
+          name: "Dragon Breath",
+          minimumPriceCents: 100,
+        })),
+        countAvailableStock: vi.fn(async () => 10),
+      },
+      undefined,
+      {
+        kind: "ready",
+        items: [{
+          productId,
+          productName: "Dragon Breath",
+          quantity: 2,
+          availableStock: 10,
+        }],
+        totalPriceCents: 198,
+      },
+    );
+
+    expect(response).toMatchObject({
+      type: 9,
+      data: {
+        components: [
+          {
+            components: [
+              expect.objectContaining({
+                label: "Quantidade (mínimo 2)",
+                value: "2",
+              }),
+            ],
+          },
+        ],
+      },
+    });
+  });
+
   it("adia a resposta do envio da quantidade como mensagem privada", () => {
     expect(
       parseNativeDiscordQuantityInteraction({

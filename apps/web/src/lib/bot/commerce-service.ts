@@ -3,6 +3,7 @@ import type {
   BotCommerceRepository,
   CartItemInput,
   CartPurchaseResult,
+  CartQuantityPreparationResult,
   DiscordGuildIdentity,
   PurchaseItem,
   PurchaseResult,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/livepix/limits";
 import {
   applyBestCustomerDiscount,
+  minimumLivePixCartQuantitiesWithCustomerDiscount,
   minimumLivePixQuantityWithCustomerDiscount,
 } from "./customer-rank";
 import { MAXIMUM_CART_ITEMS as MAX_CART_ITEMS } from "./types";
@@ -318,6 +320,77 @@ export class BotCommerceService {
       upsellDiscountAmountCents: 0,
       leadRecoveryDiscountBps: 0,
       leadRecoveryDiscountAmountCents: 0,
+    };
+  }
+
+  async prepareCartQuantities(input: {
+    buyerDiscordId: string;
+    productIds: string[];
+    isServerBooster: boolean;
+    guild: DiscordGuildIdentity;
+  }): Promise<CartQuantityPreparationResult> {
+    if (
+      !SNOWFLAKE_PATTERN.test(input.buyerDiscordId) ||
+      !isValidGuild(input.guild) ||
+      input.productIds.length < 1 ||
+      input.productIds.length > MAX_CART_ITEMS ||
+      input.productIds.some((productId) => !UUID_PATTERN.test(productId)) ||
+      new Set(input.productIds).size !== input.productIds.length
+    ) {
+      return { kind: "invalid_request" };
+    }
+
+    const [registeredGuild, products, stockByProduct] = await Promise.all([
+      this.repository.ensureGuild(input.guild),
+      this.repository.findPurchasableProducts(input.productIds),
+      this.repository.countAvailableStocks(input.productIds),
+    ]);
+    if (!registeredGuild.whitelistEntryId) {
+      return { kind: "guild_not_authorized" };
+    }
+    if (products.length !== input.productIds.length) {
+      return { kind: "product_unavailable" };
+    }
+
+    const productById = new Map(products.map((product) => [product.id, product]));
+    const orderedProducts = input.productIds.map((productId) => productById.get(productId));
+    if (orderedProducts.some((product) => !product)) {
+      return { kind: "product_unavailable" };
+    }
+
+    const availableStocks = input.productIds.map(
+      (productId) => stockByProduct.get(productId) ?? 0,
+    );
+    if (availableStocks.some((availableStock) => availableStock < 1)) {
+      return { kind: "out_of_stock" };
+    }
+
+    const rank = await this.repository.getCustomerRankProgress(
+      registeredGuild.id,
+      input.buyerDiscordId,
+    );
+    const minimum = minimumLivePixCartQuantitiesWithCustomerDiscount({
+      lines: orderedProducts.map((product, index) => ({
+        unitPriceCents: product!.minimumPriceCents,
+        availableStock: availableStocks[index]!,
+      })),
+      boosterConfiguration: registeredGuild.boosterDiscount,
+      isServerBooster: input.isServerBooster,
+      rank,
+    });
+    if (!minimum) {
+      return { kind: "minimum_unavailable" };
+    }
+
+    return {
+      kind: "ready",
+      items: orderedProducts.map((product, index) => ({
+        productId: product!.id,
+        productName: product!.name,
+        quantity: minimum.quantities[index]!,
+        availableStock: availableStocks[index]!,
+      })),
+      totalPriceCents: minimum.totalPriceCents,
     };
   }
 
