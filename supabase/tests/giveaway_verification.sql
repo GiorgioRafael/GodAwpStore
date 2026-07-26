@@ -525,6 +525,16 @@ begin
   ) is not true then
     raise exception 'Prize package was not divided evenly between winner tickets';
   end if;
+  if (
+    select winner.ticket_status = 'open'
+      and winner.ticket_channel_id = '770000000000000003'
+    from public.giveaway_winners as winner
+    join public.giveaways as giveaway on giveaway.id = winner.giveaway_id
+    where giveaway.public_slug = 'giveawaytest0001'
+      and winner.winner_position = 1
+  ) is not true then
+    raise exception 'Legacy giveaway ticket state was not reconciled';
+  end if;
 end
 $$;
 
