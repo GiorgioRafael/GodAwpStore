@@ -402,6 +402,23 @@ select * from public.admin_create_giveaway_v3(
   ))
 );
 
+do $$
+begin
+  if (
+    select count(*)
+    from public.audit_events
+    where action = 'giveaway.create'
+      and entity_id = (
+        select id
+        from public.giveaways
+        where public_slug = 'giveawaymulti001'
+      )
+  ) <> 1 then
+    raise exception 'Multi-winner giveaway creation audit was not preserved';
+  end if;
+end
+$$;
+
 reset role;
 set local role service_role;
 
