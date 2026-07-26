@@ -1,7 +1,8 @@
 -- Run after migrations with a privileged local connection:
 --   psql "$DATABASE_URL" --set ON_ERROR_STOP=1 --file supabase/tests/roulette_demo_verification.sql
--- Verifies that the roulette can only be spun through a paid LivePix charge and
--- that the administrator bypass stays out of reach of browser sessions.
+-- Verifies the roulette coin economy: coins are bought through LivePix, a spin
+-- costs exactly one coin, prizes can be sold back for the configured share, and
+-- the administrator bypass stays out of reach of browser sessions.
 
 do $$
 declare
@@ -12,7 +13,9 @@ begin
     'roulette_demo_inventory',
     'roulette_demo_spins',
     'roulette_prize_products',
-    'roulette_spin_charges'
+    'roulette_coin_balances',
+    'roulette_coin_purchases',
+    'roulette_coin_entries'
   ] loop
     if to_regclass('public.' || required_table) is null then
       raise exception 'Missing roulette table: %', required_table;
@@ -30,15 +33,17 @@ begin
 
   foreach required_function in array array[
     'get_roulette_prizes()',
-    'start_roulette_spin_charge(text)',
-    'get_roulette_spin_charge(uuid)',
-    'claim_roulette_spin_checkout(uuid, uuid)',
-    'register_roulette_spin_checkout(uuid, uuid, text, text)',
-    'release_roulette_spin_checkout_claim(uuid, uuid)',
-    'claim_roulette_spin_provider_check(uuid, integer)',
-    'confirm_roulette_spin_payment(text, text, text, integer, text, timestamptz, text)',
-    'spin_paid_roulette(text, uuid)',
-    'spin_roulette_as_admin(uuid, text)'
+    'get_roulette_coin_balance()',
+    'start_roulette_coin_purchase(text, integer)',
+    'get_roulette_coin_purchase(uuid)',
+    'claim_roulette_coin_checkout(uuid, uuid)',
+    'register_roulette_coin_checkout(uuid, uuid, text, text)',
+    'release_roulette_coin_checkout_claim(uuid, uuid)',
+    'claim_roulette_coin_provider_check(uuid, integer)',
+    'confirm_roulette_coin_purchase(text, text, text, integer, text, timestamptz, text)',
+    'spin_roulette(text)',
+    'spin_roulette_as_admin(uuid, text)',
+    'sell_roulette_prize(text)'
   ] loop
     if to_regprocedure('public.' || required_function) is null then
       raise exception 'Missing roulette function: %', required_function;
@@ -49,9 +54,13 @@ $$;
 
 do $$
 begin
-  -- The free spin entry point must not survive: it would bypass the charge.
-  if to_regprocedure('public.spin_demo_roulette(text)') is not null then
-    raise exception 'The free spin_demo_roulette entry point must be dropped';
+  -- The pay-per-spin model is gone: no entry point may spin without a coin.
+  if to_regprocedure('public.spin_demo_roulette(text)') is not null
+    or to_regprocedure('public.spin_paid_roulette(text, uuid)') is not null then
+    raise exception 'A legacy roulette spin entry point survived the coin migration';
+  end if;
+  if to_regclass('public.roulette_spin_charges') is not null then
+    raise exception 'The per-spin charge table survived the coin migration';
   end if;
 
   if has_function_privilege(
@@ -64,65 +73,48 @@ begin
 
   if has_function_privilege(
     'authenticated',
-    'public.confirm_roulette_spin_payment(text, text, text, integer, text, timestamptz, text)',
+    'public.confirm_roulette_coin_purchase(text, text, text, integer, text, timestamptz, text)',
     'EXECUTE'
   ) then
-    raise exception 'authenticated must not confirm its own roulette payment';
+    raise exception 'authenticated must not credit its own coins';
   end if;
 
   if has_function_privilege(
     'authenticated',
-    'public.claim_roulette_spin_checkout(uuid, uuid)',
+    'public.claim_roulette_coin_checkout(uuid, uuid)',
     'EXECUTE'
-  ) then
-    raise exception 'authenticated must not claim the LivePix checkout directly';
-  end if;
-
-  if has_function_privilege(
+  ) or has_function_privilege(
     'authenticated',
-    'public.register_roulette_spin_checkout(uuid, uuid, text, text)',
+    'public.register_roulette_coin_checkout(uuid, uuid, text, text)',
     'EXECUTE'
   ) then
-    raise exception 'authenticated must not register a forged LivePix checkout';
+    raise exception 'authenticated must not forge a LivePix checkout';
   end if;
 
-  if has_table_privilege('authenticated', 'public.roulette_spin_charges', 'SELECT')
-    or has_table_privilege('authenticated', 'public.roulette_spin_charges', 'UPDATE')
-    or has_table_privilege('authenticated', 'public.roulette_spin_charges', 'INSERT') then
-    raise exception 'authenticated must reach spin charges only through the RPCs';
+  if has_table_privilege('authenticated', 'public.roulette_coin_balances', 'SELECT')
+    or has_table_privilege('authenticated', 'public.roulette_coin_balances', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.roulette_coin_purchases', 'INSERT')
+    or has_table_privilege('authenticated', 'public.roulette_coin_entries', 'INSERT') then
+    raise exception 'authenticated must reach the coin ledger only through the RPCs';
   end if;
 
-  if has_table_privilege('authenticated', 'public.roulette_prize_products', 'UPDATE')
-    or has_table_privilege('anon', 'public.roulette_prize_products', 'SELECT') then
-    raise exception 'The roulette prize mapping must stay server-only';
+  if not has_function_privilege('authenticated', 'public.spin_roulette(text)', 'EXECUTE')
+    or not has_function_privilege('authenticated', 'public.sell_roulette_prize(text)', 'EXECUTE')
+    or not has_function_privilege(
+      'authenticated',
+      'public.start_roulette_coin_purchase(text, integer)',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'authenticated',
+      'public.get_roulette_coin_balance()',
+      'EXECUTE'
+    ) then
+    raise exception 'A player must be able to buy coins, spin and sell prizes';
   end if;
 
-  if not has_function_privilege(
-    'authenticated',
-    'public.spin_paid_roulette(text, uuid)',
-    'EXECUTE'
-  ) then
-    raise exception 'A player must be able to spend a paid roulette charge';
-  end if;
-
-  if not has_function_privilege(
-    'authenticated',
-    'public.start_roulette_spin_charge(text)',
-    'EXECUTE'
-  ) then
-    raise exception 'A player must be able to open the roulette charge';
-  end if;
-
-  if not has_function_privilege(
-    'authenticated',
-    'public.get_roulette_prizes()',
-    'EXECUTE'
-  ) then
-    raise exception 'A player must be able to read the five wheel slots';
-  end if;
-
-  if has_function_privilege('anon', 'public.start_roulette_spin_charge(text)', 'EXECUTE')
-    or has_function_privilege('anon', 'public.spin_paid_roulette(text, uuid)', 'EXECUTE') then
+  if has_function_privilege('anon', 'public.spin_roulette(text)', 'EXECUTE')
+    or has_function_privilege('anon', 'public.sell_roulette_prize(text)', 'EXECUTE') then
     raise exception 'The roulette must stay closed to anonymous visitors';
   end if;
 end
@@ -131,27 +123,19 @@ $$;
 do $$
 declare
   v_slots integer;
-  v_products integer;
 begin
   select count(*) into v_slots from public.roulette_prize_products;
-  select count(*) into v_products
-  from public.products
-  where status = 'active' and archived_at is null;
-
-  -- The temporary testing setup fills the wheel from the live catalog.
   if v_slots > 5 then
     raise exception 'The roulette cannot hold more than five slots, found %', v_slots;
-  end if;
-  if v_products > 0 and v_slots = 0 then
-    raise exception 'The roulette slots were not seeded from the catalog';
   end if;
 
   if exists (
     select 1
     from public.roulette_prize_products as slot
     where slot.prize_key not in ('premio_1', 'premio_2', 'premio_3', 'premio_4', 'premio_5')
+      or slot.draw_weight < 1
   ) then
-    raise exception 'A roulette slot points at a key the wheel cannot draw';
+    raise exception 'A roulette slot has an invalid key or weight';
   end if;
 
   if exists (
@@ -165,10 +149,8 @@ begin
 end
 $$;
 
--- Structural checks alone let a spin that always raises 42702 reach production,
--- so the whole lifecycle is exercised here: open the charge, refuse the spin
--- while it is unpaid, settle it like the LivePix webhook does, spend it exactly
--- once, and take the free administrator path.
+-- Structural checks alone let a spin that always raised 42702 reach production,
+-- so the whole economy is exercised below against real rows.
 
 begin;
 
@@ -203,6 +185,51 @@ insert into auth.users (
     now()
   );
 
+insert into public.admin_profiles (
+  auth_user_id, discord_user_id, display_name, is_active, authorization_expires_at
+) values (
+  '9a000000-0000-4000-8000-000000000002',
+  '900000000000000002',
+  'Roulette Verification Admin',
+  true,
+  now() + interval '10 minutes'
+);
+
+insert into public.games (id, name, slug, status, created_by) values (
+  '9c000000-0000-4000-8000-000000000001',
+  'Roulette Verification Game',
+  'roulette-verification-game',
+  'active',
+  '9a000000-0000-4000-8000-000000000002'
+);
+insert into public.substores (id, game_id, name, slug, title, status, created_by) values (
+  '9c000000-0000-4000-8000-000000000002',
+  '9c000000-0000-4000-8000-000000000001',
+  'Roulette Verification Store',
+  'roulette-verification-store',
+  'Roulette Verification Store',
+  'active',
+  '9a000000-0000-4000-8000-000000000002'
+);
+insert into public.products (
+  id, substore_id, name, slug, minimum_price_cents, stock_quantity, status, created_by
+) values (
+  '9c000000-0000-4000-8000-000000000003',
+  '9c000000-0000-4000-8000-000000000002',
+  'Roulette Verification Prize',
+  'roulette-verification-prize',
+  400,
+  10,
+  'active',
+  '9a000000-0000-4000-8000-000000000002'
+);
+
+-- Pin the wheel to a single prize worth 4,00 coins so every assertion below is
+-- exact instead of depending on the seeded catalog draw.
+delete from public.roulette_prize_products;
+insert into public.roulette_prize_products (prize_key, product_id, draw_weight)
+values ('premio_1', '9c000000-0000-4000-8000-000000000003', 1);
+
 select set_config(
   'request.jwt.claims',
   '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
@@ -211,26 +238,40 @@ select set_config(
 set local role authenticated;
 
 select set_config(
-  'roulette.charge_id',
-  (select charge_id::text from public.start_roulette_spin_charge('900000000000000001')),
+  'roulette.purchase_id',
+  (
+    select purchase_id::text
+    from public.start_roulette_coin_purchase('900000000000000001', 2)
+  ),
   true
 );
 
 do $$
+declare
+  v_prize record;
 begin
-  if current_setting('roulette.charge_id', true) is null then
-    raise exception 'The player could not open a roulette charge';
+  if current_setting('roulette.purchase_id', true) is null then
+    raise exception 'The player could not open a coin purchase';
+  end if;
+
+  -- The wheel shows the catalog price and the configured sale share.
+  select * into v_prize from public.get_roulette_prizes();
+  if v_prize.slot_value_cents <> 400 then
+    raise exception 'Expected a 400 cent prize, found %', v_prize.slot_value_cents;
+  end if;
+  if v_prize.slot_sale_value_cents <> 200 then
+    raise exception 'Expected a 200 cent sale value, found %', v_prize.slot_sale_value_cents;
+  end if;
+
+  if public.get_roulette_coin_balance() <> 0 then
+    raise exception 'A new player must start with no coins';
   end if;
 
   begin
-    perform *
-    from public.spin_paid_roulette(
-      '900000000000000001',
-      current_setting('roulette.charge_id')::uuid
-    );
-    raise exception 'An unpaid roulette charge produced a spin';
+    perform * from public.spin_roulette('900000000000000001');
+    raise exception 'A player spun the roulette without coins';
   exception
-    when sqlstate 'P0006' then null;
+    when sqlstate 'P0007' then null;
   end;
 
   begin
@@ -251,50 +292,56 @@ select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 set local role service_role;
 
 select *
-from public.claim_roulette_spin_checkout(
-  current_setting('roulette.charge_id')::uuid,
+from public.claim_roulette_coin_checkout(
+  current_setting('roulette.purchase_id')::uuid,
   '9b000000-0000-4000-8000-000000000001'
 );
 
 select *
-from public.register_roulette_spin_checkout(
-  current_setting('roulette.charge_id')::uuid,
+from public.register_roulette_coin_checkout(
+  current_setting('roulette.purchase_id')::uuid,
   '9b000000-0000-4000-8000-000000000001',
-  'roulette-verification-reference',
-  'https://checkout.livepix.gg/roulette-verification'
+  'roulette-coin-verification',
+  'https://checkout.livepix.gg/roulette-coin-verification'
 );
 
 do $$
 declare
-  v_confirmation record;
+  v_credit record;
 begin
-  select * into v_confirmation
-  from public.confirm_roulette_spin_payment(
-    'roulette-verification-payment',
-    'roulette-verification-proof',
-    'roulette-verification-reference',
-    100,
+  select * into v_credit
+  from public.confirm_roulette_coin_purchase(
+    'roulette-coin-payment',
+    'roulette-coin-proof',
+    'roulette-coin-verification',
+    200,
     'BRL',
     now(),
     repeat('a', 64)
   );
-  if v_confirmation.charge_status <> 'paid' or not v_confirmation.first_confirmation then
-    raise exception 'The LivePix confirmation did not pay the roulette charge';
+  if v_credit.confirmed_status <> 'credited' or not v_credit.first_confirmation then
+    raise exception 'The LivePix confirmation did not credit the coins';
+  end if;
+  if v_credit.coin_balance_cents <> 200 then
+    raise exception 'Expected a 200 cent balance, found %', v_credit.coin_balance_cents;
   end if;
 
-  -- A webhook redelivery must not pay twice.
-  select * into v_confirmation
-  from public.confirm_roulette_spin_payment(
-    'roulette-verification-payment',
-    'roulette-verification-proof',
-    'roulette-verification-reference',
-    100,
+  -- A webhook redelivery must not credit twice.
+  select * into v_credit
+  from public.confirm_roulette_coin_purchase(
+    'roulette-coin-payment',
+    'roulette-coin-proof',
+    'roulette-coin-verification',
+    200,
     'BRL',
     now(),
     repeat('a', 64)
   );
-  if v_confirmation.first_confirmation then
-    raise exception 'A replayed LivePix webhook confirmed the same spin twice';
+  if v_credit.first_confirmation then
+    raise exception 'A replayed LivePix webhook credited the same coins twice';
+  end if;
+  if v_credit.coin_balance_cents <> 200 then
+    raise exception 'A replayed webhook changed the balance to %', v_credit.coin_balance_cents;
   end if;
 end
 $$;
@@ -310,28 +357,43 @@ set local role authenticated;
 do $$
 declare
   v_spin record;
+  v_sale record;
 begin
-  select * into v_spin
-  from public.spin_paid_roulette(
-    '900000000000000001',
-    current_setting('roulette.charge_id')::uuid
-  );
-  if v_spin.recorded_spin_id is null or v_spin.won_prize_key is null then
-    raise exception 'The paid roulette spin returned no prize';
+  select * into v_spin from public.spin_roulette('900000000000000001');
+  if v_spin.won_prize_key <> 'premio_1' then
+    raise exception 'The pinned wheel returned %', v_spin.won_prize_key;
   end if;
-  if v_spin.inventory_quantity <> 1 then
-    raise exception 'The first paid spin should leave one item, found %', v_spin.inventory_quantity;
+  if v_spin.won_inventory_quantity <> 1 then
+    raise exception 'The first spin should leave one item, found %', v_spin.won_inventory_quantity;
+  end if;
+  if v_spin.coin_balance_cents <> 100 then
+    raise exception 'A spin must cost exactly one coin, balance is %', v_spin.coin_balance_cents;
+  end if;
+
+  -- The same account cannot fire a second spin while the wheel is animating.
+  begin
+    perform * from public.spin_roulette('900000000000000001');
+    raise exception 'A double click produced two spins';
+  exception
+    when sqlstate 'P0001' then null;
+  end;
+
+  select * into v_sale from public.sell_roulette_prize('premio_1');
+  if v_sale.credited_amount_cents <> 200 then
+    raise exception 'Selling must return half the value, credited %', v_sale.credited_amount_cents;
+  end if;
+  if v_sale.remaining_quantity <> 0 then
+    raise exception 'The sold item should leave the inventory, found %', v_sale.remaining_quantity;
+  end if;
+  if v_sale.coin_balance_cents <> 300 then
+    raise exception 'Expected a 300 cent balance after the sale, found %', v_sale.coin_balance_cents;
   end if;
 
   begin
-    perform *
-    from public.spin_paid_roulette(
-      '900000000000000001',
-      current_setting('roulette.charge_id')::uuid
-    );
-    raise exception 'A consumed roulette charge produced a second spin';
+    perform * from public.sell_roulette_prize('premio_1');
+    raise exception 'A prize was sold twice';
   exception
-    when sqlstate 'P0005' then null;
+    when sqlstate 'P0008' then null;
   end;
 end
 $$;
@@ -349,13 +411,12 @@ begin
     '9a000000-0000-4000-8000-000000000002',
     '900000000000000002'
   );
-  if v_spin.recorded_spin_id is null or v_spin.won_prize_key is null then
-    raise exception 'The administrator spin returned no prize';
+  if v_spin.won_prize_key <> 'premio_1' then
+    raise exception 'The administrator spin returned %', v_spin.won_prize_key;
   end if;
-  if v_spin.inventory_quantity <> 1 then
-    raise exception
-      'The first administrator spin should leave one item, found %',
-      v_spin.inventory_quantity;
+  if v_spin.coin_balance_cents <> 0 then
+    raise exception 'The administrator spin must not create coins, balance is %',
+      v_spin.coin_balance_cents;
   end if;
 end
 $$;
@@ -366,27 +427,36 @@ select set_config('request.jwt.claims', '', true);
 do $$
 begin
   if (
-    select charge.status
-    from public.roulette_spin_charges as charge
-    where charge.id = current_setting('roulette.charge_id')::uuid
-  ) <> 'consumed' then
-    raise exception 'The paid roulette charge was not consumed by the spin';
+    select balance_cents
+    from public.roulette_coin_balances
+    where auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  ) <> 300 then
+    raise exception 'The player balance does not match the ledger path';
   end if;
 
-  -- The administrator path is free: it must never open a charge.
-  if (select count(*) from public.roulette_spin_charges) <> 1 then
-    raise exception 'The administrator spin opened a roulette charge';
+  -- purchase +200, spin -100, sale +200.
+  if (
+    select count(*)
+    from public.roulette_coin_entries
+    where auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  ) <> 3 then
+    raise exception 'The coin ledger did not record every movement';
   end if;
 
   if (
-    select count(*)
-    from public.roulette_demo_spins
-    where auth_user_id in (
-      '9a000000-0000-4000-8000-000000000001',
-      '9a000000-0000-4000-8000-000000000002'
-    )
-  ) <> 2 then
-    raise exception 'The roulette did not record exactly one spin per player';
+    select sum(amount_cents)
+    from public.roulette_coin_entries
+    where auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  ) <> 300 then
+    raise exception 'The coin ledger does not add up to the balance';
+  end if;
+
+  if exists (
+    select 1
+    from public.roulette_coin_purchases
+    where auth_user_id = '9a000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'The administrator spin opened a coin purchase';
   end if;
 end
 $$;

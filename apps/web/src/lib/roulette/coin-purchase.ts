@@ -9,10 +9,10 @@ const UUID_PATTERN =
 /** Seconds the polling fallback must wait before pulling LivePix again. */
 export const ROULETTE_PROVIDER_CHECK_INTERVAL_SECONDS = 5;
 
-export type RouletteSpinChargeStatus = "awaiting_payment" | "paid" | "consumed" | "expired";
+export type RouletteCoinPurchaseStatus = "awaiting_payment" | "credited" | "expired";
 
 export type StoredRouletteCheckout = {
-  chargeId: string;
+  purchaseId: string;
   providerReference: string;
   checkoutUrl: string;
 };
@@ -23,23 +23,24 @@ export type RouletteCheckoutClaim = {
   checkout: StoredRouletteCheckout | null;
 };
 
-export type RouletteSpinPaymentConfirmation = {
-  chargeId: string;
-  status: RouletteSpinChargeStatus;
-  paidAmountCents: number;
+export type RouletteCoinCredit = {
+  purchaseId: string;
+  status: RouletteCoinPurchaseStatus;
+  creditedAmountCents: number;
+  coinBalanceCents: number;
   firstConfirmation: boolean;
 };
 
-export interface RouletteSpinPaymentRepository {
+export interface RouletteCoinPurchaseRepository {
   findCheckoutByReference(providerReference: string): Promise<StoredRouletteCheckout | null>;
-  findCheckoutByCharge(chargeId: string): Promise<StoredRouletteCheckout | null>;
-  claimCheckout(chargeId: string, claimToken: string): Promise<RouletteCheckoutClaim>;
+  findCheckoutByPurchase(purchaseId: string): Promise<StoredRouletteCheckout | null>;
+  claimCheckout(purchaseId: string, claimToken: string): Promise<RouletteCheckoutClaim>;
   registerCheckout(
     input: StoredRouletteCheckout & { claimToken: string },
   ): Promise<StoredRouletteCheckout>;
-  releaseCheckoutClaim(chargeId: string, claimToken: string): Promise<void>;
-  claimProviderCheck(chargeId: string, minimumIntervalSeconds: number): Promise<boolean>;
-  confirmPayment(input: {
+  releaseCheckoutClaim(purchaseId: string, claimToken: string): Promise<void>;
+  claimProviderCheck(purchaseId: string, minimumIntervalSeconds: number): Promise<boolean>;
+  creditPurchase(input: {
     providerPaymentId: string;
     providerProof: string;
     providerReference: string;
@@ -47,7 +48,7 @@ export interface RouletteSpinPaymentRepository {
     currency: string;
     providerCreatedAt: string;
     reconciliationSha256: string;
-  }): Promise<RouletteSpinPaymentConfirmation>;
+  }): Promise<RouletteCoinCredit>;
 }
 
 type PaymentClient = {
@@ -56,30 +57,32 @@ type PaymentClient = {
 };
 
 /**
- * LivePix checkout for the R$ 1,00 roulette spin. It reuses the store payment
- * provider and the same reconciliation digest as the commerce orders, but keeps
- * a dedicated ledger so a spin never touches stock, tickets or balances.
+ * LivePix checkout that buys roulette coins at R$ 1,00 each. It reuses the store
+ * payment provider and the same reconciliation digest as the commerce orders,
+ * but keeps a dedicated ledger so coins never touch stock, balances or tickets.
  */
-export class RouletteSpinPaymentService {
+export class RouletteCoinPurchaseService {
   constructor(
-    private readonly repository: RouletteSpinPaymentRepository,
+    private readonly repository: RouletteCoinPurchaseRepository,
     private readonly client: PaymentClient,
   ) {}
 
-  async createCheckout(chargeId: string, siteUrl: string): Promise<StoredRouletteCheckout> {
-    assertUuid(chargeId);
+  async createCheckout(purchaseId: string, siteUrl: string): Promise<StoredRouletteCheckout> {
+    assertUuid(purchaseId);
 
     const claimToken = crypto.randomUUID();
-    const claim = await this.repository.claimCheckout(chargeId, claimToken);
+    const claim = await this.repository.claimCheckout(purchaseId, claimToken);
     if (claim.checkout) return claim.checkout;
     if (!claim.claimed) {
-      throw new Error("O Pix deste giro já está sendo preparado. Tente novamente em instantes.");
+      throw new Error(
+        "O Pix destas moedas já está sendo preparado. Tente novamente em instantes.",
+      );
     }
     if (
       !Number.isSafeInteger(claim.amountCents) ||
       claim.amountCents < LIVEPIX_MINIMUM_BRL_CENTS
     ) {
-      throw new Error("O valor do giro não é aceito pela LivePix.");
+      throw new Error("O valor da compra não é aceito pela LivePix.");
     }
 
     const origin = readOrigin(siteUrl);
@@ -87,26 +90,26 @@ export class RouletteSpinPaymentService {
     try {
       checkout = await this.client.createPayment({
         amountCents: claim.amountCents,
-        redirectUrl: `${origin}/roleta?giro=${encodeURIComponent(chargeId)}`,
+        redirectUrl: `${origin}/roleta?compra=${encodeURIComponent(purchaseId)}`,
       });
     } catch (error) {
-      await this.repository.releaseCheckoutClaim(chargeId, claimToken).catch(() => undefined);
+      await this.repository.releaseCheckoutClaim(purchaseId, claimToken).catch(() => undefined);
       throw error;
     }
 
     return this.repository.registerCheckout({
-      chargeId,
+      purchaseId,
       claimToken,
       providerReference: checkout.reference,
       checkoutUrl: checkout.checkoutUrl,
     });
   }
 
-  /** Confirms a spin charge from a LivePix webhook notification. */
+  /** Credits the coins of a purchase from a LivePix webhook notification. */
   async reconcilePayment(input: {
     providerPaymentId: string;
     providerReference: string;
-  }): Promise<RouletteSpinPaymentConfirmation | null> {
+  }): Promise<RouletteCoinCredit | null> {
     const checkout = await this.repository.findCheckoutByReference(input.providerReference);
     if (!checkout) return null;
 
@@ -115,25 +118,23 @@ export class RouletteSpinPaymentService {
       payment.id !== input.providerPaymentId ||
       payment.reference !== checkout.providerReference
     ) {
-      throw new Error("O pagamento LivePix não corresponde ao giro registrado.");
+      throw new Error("O pagamento LivePix não corresponde à compra registrada.");
     }
 
-    return this.confirm(payment);
+    return this.credit(payment);
   }
 
   /**
-   * Polling fallback used while the browser waits on the wheel. A delayed or
-   * missing webhook must not strand a spin the player already paid for.
+   * Polling fallback used while the browser waits for the coins. A delayed or
+   * missing webhook must not strand coins the player already paid for.
    */
-  async pullPendingPayment(
-    chargeId: string,
-  ): Promise<RouletteSpinPaymentConfirmation | null> {
-    assertUuid(chargeId);
-    const checkout = await this.repository.findCheckoutByCharge(chargeId);
+  async pullPendingPayment(purchaseId: string): Promise<RouletteCoinCredit | null> {
+    assertUuid(purchaseId);
+    const checkout = await this.repository.findCheckoutByPurchase(purchaseId);
     if (!checkout) return null;
 
     const due = await this.repository.claimProviderCheck(
-      chargeId,
+      purchaseId,
       ROULETTE_PROVIDER_CHECK_INTERVAL_SECONDS,
     );
     if (!due) return null;
@@ -142,18 +143,18 @@ export class RouletteSpinPaymentService {
     try {
       payment = await this.client.getPaymentByReference(checkout.providerReference);
     } catch {
-      // An unpaid charge has no payment yet, which the provider reports as a
+      // An unpaid purchase has no payment yet, which the provider reports as a
       // missing record. Keep polling instead of surfacing a failure.
       return null;
     }
     if (payment.reference !== checkout.providerReference) return null;
 
-    return this.confirm(payment);
+    return this.credit(payment);
   }
 
-  private confirm(payment: LivePixPayment) {
+  private credit(payment: LivePixPayment) {
     return reconciliationDigest(payment).then((reconciliationSha256) =>
-      this.repository.confirmPayment({
+      this.repository.creditPurchase({
         providerPaymentId: payment.id,
         providerProof: payment.proof,
         providerReference: payment.reference,
@@ -167,7 +168,7 @@ export class RouletteSpinPaymentService {
 }
 
 function assertUuid(value: string) {
-  if (!UUID_PATTERN.test(value)) throw new Error("ID do giro inválido.");
+  if (!UUID_PATTERN.test(value)) throw new Error("ID da compra inválido.");
 }
 
 function readOrigin(value: string) {

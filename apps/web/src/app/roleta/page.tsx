@@ -74,8 +74,8 @@ export default async function RoulettePage({
                 className="mt-0.5 size-4 shrink-0 text-emerald-400"
               />
               <p className="text-xs leading-5 text-[#8f7b98]">
-                Cada giro custa R$ 1,00 via Pix. Os prêmios ficam no seu inventário e ainda
-                não têm resgate automático.
+                Cada moeda custa R$ 1,00 no Pix e vale um giro. Os prêmios ficam no seu
+                inventário e podem ser vendidos de volta por moedas.
               </p>
             </div>
           </section>
@@ -84,16 +84,19 @@ export default async function RoulettePage({
     );
   }
 
-  const [inventoryResult, prizeResult, adminSession] = await Promise.all([
+  const [inventoryResult, prizeResult, balanceResult, adminSession] = await Promise.all([
     supabase!.rpc("get_demo_roulette_inventory"),
     supabase!.rpc("get_roulette_prizes"),
+    supabase!.rpc("get_roulette_coin_balance"),
     getAdminSession().catch(() => null),
   ]);
   const inventory = normalizeDemoRouletteInventory(inventoryResult.data ?? []);
   const prizes = buildRouletteWheelPrizes(
     normalizeRoulettePrizeProducts(prizeResult.data ?? []),
   );
-  const pendingChargeId = await readPendingCharge(supabase!, readChargeId(query.giro));
+  const balanceCents =
+    typeof balanceResult.data === "number" && balanceResult.data >= 0 ? balanceResult.data : 0;
+  const pendingPurchaseId = await readPendingPurchase(supabase!, readPurchaseId(query.compra));
 
   return (
     <>
@@ -102,38 +105,38 @@ export default async function RoulettePage({
           displayName: identity.displayName,
           avatarUrl: identity.avatarUrl,
         }}
+        balanceCents={balanceCents}
       />
       <RouletteExperience
         prizes={prizes}
         initialInventory={inventory}
+        initialBalanceCents={balanceCents}
         available={!inventoryResult.error}
         isAdmin={adminSession?.status === "authorized"}
-        initialChargeId={pendingChargeId}
+        initialPurchaseId={pendingPurchaseId}
       />
     </>
   );
 }
 
-function readChargeId(value: string | string[] | undefined) {
+function readPurchaseId(value: string | string[] | undefined) {
   const candidate = Array.isArray(value) ? value[0] : value;
   return candidate && UUID_PATTERN.test(candidate) ? candidate : null;
 }
 
 /**
- * The LivePix return lands on `/roleta?giro=…`. Only a charge that is still
- * waiting or already paid resumes the wheel; a stale link is ignored so the
- * player is not greeted by an error.
+ * The LivePix return lands on `/roleta?compra=…`. Only a purchase still waiting
+ * for payment keeps the browser polling; a stale link is ignored so the player
+ * is not greeted by an error.
  */
-async function readPendingCharge(
+async function readPendingPurchase(
   supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
-  chargeId: string | null,
+  purchaseId: string | null,
 ) {
-  if (!chargeId) return null;
-  const { data } = await supabase.rpc("get_roulette_spin_charge", {
-    p_charge_id: chargeId,
+  if (!purchaseId) return null;
+  const { data } = await supabase.rpc("get_roulette_coin_purchase", {
+    p_purchase_id: purchaseId,
   });
-  const charge = data?.[0];
-  return charge?.charge_status === "awaiting_payment" || charge?.charge_status === "paid"
-    ? charge.charge_id
-    : null;
+  const purchase = data?.[0];
+  return purchase?.purchase_status === "awaiting_payment" ? purchase.purchase_id : null;
 }

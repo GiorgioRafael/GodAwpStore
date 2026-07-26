@@ -1,17 +1,20 @@
-import { LogOut } from "lucide-react";
+import { Coins, LogOut } from "lucide-react";
 import Link from "next/link";
 
 import { logoutRoulette } from "@/app/roleta/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { STORE_NAME } from "@/lib/brand";
+import { formatCoins } from "@/lib/roulette/demo";
 
 export function RouletteHeader({
   user,
+  balanceCents,
 }: {
   user?: {
     displayName: string;
     avatarUrl: string | null;
   };
+  balanceCents?: number;
 }) {
   return (
     <header className="relative z-20 border-b border-fuchsia-300/15 bg-[#070509]/90 backdrop-blur-xl">
@@ -48,6 +51,16 @@ export function RouletteHeader({
         <div className="ml-auto">
           {user ? (
             <div className="flex items-center gap-3">
+              {typeof balanceCents === "number" ? (
+                <span
+                  data-testid="roulette-balance"
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-amber-300/35 bg-amber-400/10 px-3 text-sm font-bold text-amber-200"
+                  aria-label={`Saldo: ${formatCoins(balanceCents)} moedas`}
+                >
+                  <Coins aria-hidden="true" className="size-4" />
+                  {formatCoins(balanceCents)}
+                </span>
+              ) : null}
               <span className="hidden max-w-40 truncate text-sm font-semibold text-white md:inline">
                 {user.displayName}
               </span>

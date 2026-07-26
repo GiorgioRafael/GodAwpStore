@@ -50,6 +50,9 @@ export type RoulettePrizeProduct = {
   productId: string;
   name: string;
   imageUrl: string | null;
+  valueCents: number;
+  saleValueCents: number;
+  drawChanceBps: number;
 };
 
 /** A wheel slot ready to render: slot styling plus the resolved catalog item. */
@@ -58,9 +61,29 @@ export type RouletteWheelPrize = DemoRoulettePrize & {
   displayName: string;
   wheelLabel: string;
   imageUrl: string | null;
+  valueCents: number;
+  saleValueCents: number;
+  drawChanceBps: number;
 };
 
 const MAXIMUM_WHEEL_LABEL_LENGTH = 14;
+
+/** One coin is R$ 1,00. Balances and prize values are kept in coin cents. */
+export const COIN_CENTS = 100;
+export const SPIN_COST_CENTS = COIN_CENTS;
+export const MAXIMUM_COIN_PURCHASE = 100;
+
+export function formatCoins(cents: number) {
+  const safe = Number.isFinite(cents) ? cents : 0;
+  return (safe / COIN_CENTS).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+export function coinsFromCents(cents: number) {
+  return Math.floor((Number.isFinite(cents) ? cents : 0) / COIN_CENTS);
+}
 
 export function isDemoRoulettePrizeKey(value: unknown): value is DemoRoulettePrizeKey {
   return DEMO_ROULETTE_PRIZES.some((prize) => prize.key === value);
@@ -72,28 +95,38 @@ export function demoRoulettePrize(prizeKey: DemoRoulettePrizeKey) {
 
 export function normalizeRoulettePrizeProducts(
   rows: Array<{
-    prize_key: string;
-    product_id: string;
-    product_name: string;
-    product_image_url: string | null;
+    slot_prize_key: string;
+    slot_product_id: string;
+    slot_product_name: string;
+    slot_product_image_url: string | null;
+    slot_value_cents: number;
+    slot_sale_value_cents: number;
+    slot_draw_chance_bps: number;
   }>,
 ): RoulettePrizeProduct[] {
   const byKey = new Map<DemoRoulettePrizeKey, RoulettePrizeProduct>();
   for (const row of rows) {
-    if (!isDemoRoulettePrizeKey(row.prize_key)) continue;
-    const name = typeof row.product_name === "string" ? row.product_name.trim() : "";
-    if (!row.product_id || !name) continue;
-    byKey.set(row.prize_key, {
-      prizeKey: row.prize_key,
-      productId: row.product_id,
+    if (!isDemoRoulettePrizeKey(row.slot_prize_key)) continue;
+    const name = typeof row.slot_product_name === "string" ? row.slot_product_name.trim() : "";
+    if (!row.slot_product_id || !name) continue;
+    byKey.set(row.slot_prize_key, {
+      prizeKey: row.slot_prize_key,
+      productId: row.slot_product_id,
       name,
-      imageUrl: normalizeImageUrl(row.product_image_url),
+      imageUrl: normalizeImageUrl(row.slot_product_image_url),
+      valueCents: safeCents(row.slot_value_cents),
+      saleValueCents: safeCents(row.slot_sale_value_cents),
+      drawChanceBps: safeCents(row.slot_draw_chance_bps),
     });
   }
   return DEMO_ROULETTE_PRIZES.flatMap((prize) => {
     const product = byKey.get(prize.key);
     return product ? [product] : [];
   });
+}
+
+function safeCents(value: number) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 /**
@@ -113,6 +146,9 @@ export function buildRouletteWheelPrizes(
       displayName,
       wheelLabel: truncateWheelLabel(displayName),
       imageUrl: product?.imageUrl ?? null,
+      valueCents: product?.valueCents ?? 0,
+      saleValueCents: product?.saleValueCents ?? 0,
+      drawChanceBps: product?.drawChanceBps ?? 0,
     };
   });
 }
@@ -120,13 +156,17 @@ export function buildRouletteWheelPrizes(
 export function rouletteWheelPrize(
   prizes: RouletteWheelPrize[],
   prizeKey: DemoRoulettePrizeKey,
-) {
+): RouletteWheelPrize {
+  const slot = demoRoulettePrize(prizeKey);
   return prizes.find((prize) => prize.key === prizeKey) ?? {
-    ...demoRoulettePrize(prizeKey),
+    ...slot,
     productId: null,
-    displayName: demoRoulettePrize(prizeKey).name,
-    wheelLabel: demoRoulettePrize(prizeKey).shortName,
+    displayName: slot.name,
+    wheelLabel: slot.shortName,
     imageUrl: null,
+    valueCents: 0,
+    saleValueCents: 0,
+    drawChanceBps: 0,
   };
 }
 

@@ -6,12 +6,13 @@ import { extractDiscordIdentity, type AdminIdentity } from "@/lib/auth-identity"
 import { getAdminSession } from "@/lib/auth";
 import { STORE_SLUG } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/env";
+import type { RouletteCoinPurchaseStatus } from "@/lib/roulette/coin-purchase";
 import {
   isDemoRoulettePrizeKey,
+  MAXIMUM_COIN_PURCHASE,
   type DemoRoulettePrizeKey,
 } from "@/lib/roulette/demo";
-import { getRouletteSpinPaymentService } from "@/lib/roulette/runtime";
-import type { RouletteSpinChargeStatus } from "@/lib/roulette/spin-payment";
+import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -23,103 +24,135 @@ export type SpinRouletteResult =
       ok: true;
       prizeKey: DemoRoulettePrizeKey;
       inventoryQuantity: number;
+      balanceCents: number;
       spinId: string;
     }
   | { ok: false; message: string };
 
-export type RouletteSpinChargeResult =
+export type SellRoulettePrizeResult =
   | {
       ok: true;
-      chargeId: string;
-      status: RouletteSpinChargeStatus;
+      prizeKey: DemoRoulettePrizeKey;
+      remainingQuantity: number;
+      creditedCents: number;
+      balanceCents: number;
+    }
+  | { ok: false; message: string };
+
+export type RouletteCoinPurchaseResult =
+  | {
+      ok: true;
+      purchaseId: string;
+      status: RouletteCoinPurchaseStatus;
       checkoutUrl: string | null;
       amountCents: number;
     }
   | { ok: false; message: string };
 
-export type RouletteSpinChargeStatusResult =
-  | { ok: true; chargeId: string; status: RouletteSpinChargeStatus }
+export type RouletteCoinPurchaseStatusResult =
+  | {
+      ok: true;
+      purchaseId: string;
+      status: RouletteCoinPurchaseStatus;
+      balanceCents: number;
+    }
   | { ok: false; message: string };
 
 /**
- * Opens (or reuses) the R$ 1,00 LivePix charge that authorizes one spin. A
- * charge that was already paid and never spun comes back untouched so nobody
- * pays twice for the same wheel.
+ * Opens (or reuses) the LivePix charge that buys `coinQuantity` coins at
+ * R$ 1,00 each.
  */
-export async function startRouletteSpinPayment(): Promise<RouletteSpinChargeResult> {
+export async function startRouletteCoinPurchase(
+  coinQuantity: number,
+): Promise<RouletteCoinPurchaseResult> {
+  if (
+    !Number.isSafeInteger(coinQuantity) ||
+    coinQuantity < 1 ||
+    coinQuantity > MAXIMUM_COIN_PURCHASE
+  ) {
+    return {
+      ok: false,
+      message: `Escolha de 1 a ${MAXIMUM_COIN_PURCHASE} moedas.`,
+    };
+  }
+
   const session = await readRouletteSession();
   if ("message" in session) return { ok: false, message: session.message };
   const { supabase, identity } = session;
 
-  const { data, error } = await supabase.rpc("start_roulette_spin_charge", {
+  const { data, error } = await supabase.rpc("start_roulette_coin_purchase", {
     p_discord_user_id: identity.discordId,
+    p_coin_quantity: coinQuantity,
   });
-  const charge = data?.[0];
-  if (error || !charge) {
-    console.error(`[roleta:charge] ${error?.message ?? "cobrança não criada"}`);
-    return { ok: false, message: "Não foi possível abrir o Pix do giro. Tente novamente." };
+  const purchase = data?.[0];
+  if (error || !purchase) {
+    console.error(`[roleta:compra] ${error?.message ?? "cobrança não criada"}`);
+    return { ok: false, message: "Não foi possível abrir o Pix das moedas. Tente novamente." };
   }
-  if (charge.charge_status === "paid") {
-    return {
-      ok: true,
-      chargeId: charge.charge_id,
-      status: "paid",
-      checkoutUrl: charge.checkout_url,
-      amountCents: charge.amount_cents,
-    };
-  }
-  if (charge.charge_status !== "awaiting_payment") {
-    return { ok: false, message: "Este giro não está mais disponível. Recarregue a página." };
+  if (purchase.purchase_status !== "awaiting_payment") {
+    return { ok: false, message: "Esta compra não está mais disponível. Recarregue a página." };
   }
 
   try {
-    const checkout = await getRouletteSpinPaymentService().createCheckout(
-      charge.charge_id,
+    const checkout = await getRouletteCoinPurchaseService().createCheckout(
+      purchase.purchase_id,
       getSiteUrl(),
     );
     return {
       ok: true,
-      chargeId: charge.charge_id,
+      purchaseId: purchase.purchase_id,
       status: "awaiting_payment",
       checkoutUrl: checkout.checkoutUrl,
-      amountCents: charge.amount_cents,
+      amountCents: purchase.purchase_amount_cents,
     };
   } catch (error) {
-    console.error(`[roleta:checkout] ${error instanceof Error ? error.message : "erro desconhecido"}`);
-    return { ok: false, message: "O Pix do giro não pôde ser gerado agora. Tente novamente." };
+    console.error(
+      `[roleta:checkout] ${error instanceof Error ? error.message : "erro desconhecido"}`,
+    );
+    return { ok: false, message: "O Pix das moedas não pôde ser gerado agora. Tente novamente." };
   }
 }
 
 /**
- * Reports whether the spin was already paid. The LivePix webhook is the primary
+ * Reports whether the coins already landed. The LivePix webhook is the primary
  * confirmation; this also pulls the provider directly, rate limited in the
- * database, so a delayed webhook never strands a paid spin.
+ * database, so a delayed webhook never strands a paid purchase.
  */
-export async function getRouletteSpinPaymentStatus(
-  chargeId: string,
-): Promise<RouletteSpinChargeStatusResult> {
-  if (!UUID_PATTERN.test(chargeId)) {
-    return { ok: false, message: "Giro inválido." };
+export async function getRouletteCoinPurchaseStatus(
+  purchaseId: string,
+): Promise<RouletteCoinPurchaseStatusResult> {
+  if (!UUID_PATTERN.test(purchaseId)) {
+    return { ok: false, message: "Compra inválida." };
   }
   const session = await readRouletteSession();
   if ("message" in session) return { ok: false, message: session.message };
   const { supabase } = session;
 
-  const { data, error } = await supabase.rpc("get_roulette_spin_charge", {
-    p_charge_id: chargeId,
+  const { data, error } = await supabase.rpc("get_roulette_coin_purchase", {
+    p_purchase_id: purchaseId,
   });
-  const charge = data?.[0];
-  if (error || !charge) {
-    return { ok: false, message: "Giro não encontrado. Abra um novo Pix." };
+  const purchase = data?.[0];
+  if (error || !purchase) {
+    return { ok: false, message: "Compra não encontrada. Abra um novo Pix." };
   }
-  if (charge.charge_status !== "awaiting_payment") {
-    return { ok: true, chargeId: charge.charge_id, status: charge.charge_status };
+  if (purchase.purchase_status !== "awaiting_payment") {
+    return {
+      ok: true,
+      purchaseId: purchase.purchase_id,
+      status: purchase.purchase_status,
+      balanceCents: await readCoinBalance(supabase),
+    };
   }
 
   try {
-    const confirmation = await getRouletteSpinPaymentService().pullPendingPayment(chargeId);
-    if (confirmation) {
-      return { ok: true, chargeId: confirmation.chargeId, status: confirmation.status };
+    const credit = await getRouletteCoinPurchaseService().pullPendingPayment(purchaseId);
+    if (credit) {
+      return {
+        ok: true,
+        purchaseId: credit.purchaseId,
+        status: credit.status,
+        balanceCents: credit.coinBalanceCents,
+      };
     }
   } catch (error) {
     // The webhook still owns the authoritative confirmation; a failed pull only
@@ -127,20 +160,24 @@ export async function getRouletteSpinPaymentStatus(
     console.error(`[roleta:pull] ${error instanceof Error ? error.message : "erro desconhecido"}`);
   }
 
-  return { ok: true, chargeId: charge.charge_id, status: "awaiting_payment" };
+  return {
+    ok: true,
+    purchaseId: purchase.purchase_id,
+    status: "awaiting_payment",
+    balanceCents: await readCoinBalance(supabase),
+  };
 }
 
 /**
- * Spins the wheel. Regular players consume the paid charge; administrators
- * listed in ADMIN_DISCORD_IDS spin for free for internal testing.
+ * Spins the wheel. Regular players spend one coin; administrators listed in
+ * ADMIN_DISCORD_IDS spin for free for internal testing.
  */
-export async function spinRoulette(chargeId: string | null): Promise<SpinRouletteResult> {
+export async function spinRoulette(): Promise<SpinRouletteResult> {
   const session = await readRouletteSession();
   if ("message" in session) return { ok: false, message: session.message };
   const { supabase, identity } = session;
 
-  const admin = await isRouletteAdmin();
-  if (admin) {
+  if (await isRouletteAdmin()) {
     const adminClient = createAdminSupabaseClient();
     if (!adminClient) {
       return { ok: false, message: "A roleta ainda não está configurada neste ambiente." };
@@ -152,15 +189,44 @@ export async function spinRoulette(chargeId: string | null): Promise<SpinRoulett
     return readSpinResult(data?.[0], error);
   }
 
-  if (!chargeId || !UUID_PATTERN.test(chargeId)) {
-    return { ok: false, message: "Pague R$ 1,00 para liberar o giro." };
-  }
-
-  const { data, error } = await supabase.rpc("spin_paid_roulette", {
+  const { data, error } = await supabase.rpc("spin_roulette", {
     p_discord_user_id: identity.discordId,
-    p_charge_id: chargeId,
   });
   return readSpinResult(data?.[0], error);
+}
+
+/** Sells one unit of an inventory prize back for coins. */
+export async function sellRoulettePrize(
+  prizeKey: string,
+): Promise<SellRoulettePrizeResult> {
+  if (!isDemoRoulettePrizeKey(prizeKey)) {
+    return { ok: false, message: "Prêmio inválido." };
+  }
+  const session = await readRouletteSession();
+  if ("message" in session) return { ok: false, message: session.message };
+
+  const { data, error } = await session.supabase.rpc("sell_roulette_prize", {
+    p_prize_key: prizeKey,
+  });
+  const sale = data?.[0];
+  if (error?.code === "P0008") {
+    return { ok: false, message: "Você não tem mais esse item no inventário." };
+  }
+  if (error?.code === "P0010" || error?.code === "P0011") {
+    return { ok: false, message: "Este item não tem valor de recompra no momento." };
+  }
+  if (error || !sale || !isDemoRoulettePrizeKey(sale.sold_prize_key)) {
+    if (error) console.error(`[roleta:venda] ${error.code ?? "sem código"} ${error.message}`);
+    return { ok: false, message: "Não foi possível vender o item. Tente novamente." };
+  }
+
+  return {
+    ok: true,
+    prizeKey: sale.sold_prize_key,
+    remainingQuantity: safeCount(sale.remaining_quantity),
+    creditedCents: safeCount(sale.credited_amount_cents),
+    balanceCents: safeCount(sale.coin_balance_cents),
+  };
 }
 
 export async function logoutRoulette() {
@@ -169,8 +235,10 @@ export async function logoutRoulette() {
   redirect("/roleta");
 }
 
+type SessionClient = NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>;
+
 type RouletteSession = {
-  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>;
+  supabase: SessionClient;
   identity: AdminIdentity;
 };
 
@@ -192,6 +260,11 @@ async function readRouletteSession(): Promise<RouletteSession | { message: strin
   return { supabase, identity };
 }
 
+async function readCoinBalance(supabase: SessionClient) {
+  const { data } = await supabase.rpc("get_roulette_coin_balance");
+  return safeCount(data);
+}
+
 async function isRouletteAdmin() {
   try {
     return (await getAdminSession()).status === "authorized";
@@ -202,28 +275,30 @@ async function isRouletteAdmin() {
 
 function readSpinResult(
   result:
-    | { recorded_spin_id: string; won_prize_key: string; inventory_quantity: number }
+    | {
+        recorded_spin_id: string;
+        won_prize_key: string;
+        won_inventory_quantity: number;
+        coin_balance_cents: number;
+      }
     | undefined,
   error: { code?: string; message: string } | null,
 ): SpinRouletteResult {
   if (error?.code === "P0001") {
     return { ok: false, message: "Aguarde a roleta terminar antes de girar novamente." };
   }
-  if (error?.code === "P0005") {
-    return { ok: false, message: "Este giro já foi usado. Pague novamente para girar." };
+  if (error?.code === "P0007") {
+    return { ok: false, message: "Moedas insuficientes. Compre moedas ou venda um item." };
   }
-  if (error?.code === "P0006") {
-    return { ok: false, message: "O pagamento ainda não foi confirmado pela LivePix." };
-  }
-  if (error?.code === "P0002") {
-    return { ok: false, message: "Giro não encontrado. Abra um novo Pix." };
+  if (error?.code === "P0009") {
+    return { ok: false, message: "A roleta está sem prêmios configurados." };
   }
   if (
     error ||
     !result ||
     !isDemoRoulettePrizeKey(result.won_prize_key) ||
-    !Number.isSafeInteger(result.inventory_quantity) ||
-    result.inventory_quantity <= 0
+    !Number.isSafeInteger(result.won_inventory_quantity) ||
+    result.won_inventory_quantity <= 0
   ) {
     if (error) console.error(`[roleta:spin] ${error.code ?? "sem código"} ${error.message}`);
     return { ok: false, message: "Não foi possível concluir o giro. Tente novamente." };
@@ -232,7 +307,12 @@ function readSpinResult(
   return {
     ok: true,
     prizeKey: result.won_prize_key,
-    inventoryQuantity: result.inventory_quantity,
+    inventoryQuantity: result.won_inventory_quantity,
+    balanceCents: safeCount(result.coin_balance_cents),
     spinId: result.recorded_spin_id,
   };
+}
+
+function safeCount(value: number | null | undefined) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }

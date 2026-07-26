@@ -4,6 +4,7 @@ import {
   DEMO_ROULETTE_PRIZES,
   buildRouletteWheelPrizes,
   demoRouletteRotation,
+  formatCoins,
   mergeDemoRouletteInventory,
   normalizeDemoRouletteInventory,
   normalizeRoulettePrizeProducts,
@@ -44,22 +45,31 @@ describe("demo roulette", () => {
   it("descarta slots sem produto válido do catálogo", () => {
     expect(normalizeRoulettePrizeProducts([
       {
-        prize_key: "premio_2",
-        product_id: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
-        product_name: "  1x Dragonfly  ",
-        product_image_url: "http://inseguro.example/imagem.png",
+        slot_prize_key: "premio_2",
+        slot_product_id: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
+        slot_product_name: "  1x Dragonfly  ",
+        slot_product_image_url: "http://inseguro.example/imagem.png",
+        slot_value_cents: 200,
+        slot_sale_value_cents: 100,
+        slot_draw_chance_bps: 1500,
       },
       {
-        prize_key: "premio_9",
-        product_id: "1d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
-        product_name: "Fora da roleta",
-        product_image_url: null,
+        slot_prize_key: "premio_9",
+        slot_product_id: "1d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
+        slot_product_name: "Fora da roleta",
+        slot_product_image_url: null,
+        slot_value_cents: 100,
+        slot_sale_value_cents: 50,
+        slot_draw_chance_bps: 1000,
       },
       {
-        prize_key: "premio_3",
-        product_id: "2d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
-        product_name: "   ",
-        product_image_url: null,
+        slot_prize_key: "premio_3",
+        slot_product_id: "2d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
+        slot_product_name: "   ",
+        slot_product_image_url: null,
+        slot_value_cents: 100,
+        slot_sale_value_cents: 50,
+        slot_draw_chance_bps: 1000,
       },
     ])).toEqual([
       {
@@ -67,6 +77,9 @@ describe("demo roulette", () => {
         productId: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         name: "1x Dragonfly",
         imageUrl: null,
+        valueCents: 200,
+        saleValueCents: 100,
+        drawChanceBps: 1500,
       },
     ]);
   });
@@ -78,6 +91,9 @@ describe("demo roulette", () => {
         productId: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         name: "10x Super Watering Can",
         imageUrl: "https://exemplo.supabase.co/regador.png",
+        valueCents: 500,
+        saleValueCents: 250,
+        drawChanceBps: 900,
       },
     ]);
 
@@ -86,12 +102,23 @@ describe("demo roulette", () => {
       displayName: "10x Super Watering Can",
       wheelLabel: "10x Super Wat…",
       imageUrl: "https://exemplo.supabase.co/regador.png",
+      valueCents: 500,
+      saleValueCents: 250,
     });
     expect(rouletteWheelPrize(prizes, "premio_5")).toMatchObject({
       displayName: "Prêmio 5",
       productId: null,
       imageUrl: null,
+      valueCents: 0,
+      saleValueCents: 0,
     });
+  });
+
+  it("formata moedas em pt-BR a partir dos centavos", () => {
+    expect(formatCoins(0)).toBe("0,00");
+    expect(formatCoins(3)).toBe("0,03");
+    expect(formatCoins(100)).toBe("1,00");
+    expect(formatCoins(1_234)).toBe("12,34");
   });
 
   it("faz ao menos cinco voltas e alinha o centro do prêmio ao ponteiro", () => {

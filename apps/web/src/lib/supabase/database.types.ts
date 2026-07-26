@@ -72,6 +72,7 @@ type PlatformSettingsRow = {
   lead_recovery_enabled: boolean;
   lead_recovery_discount_bps: number;
   lead_recovery_delay_minutes: number;
+  roulette_sale_rate_bps: number;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
@@ -579,17 +580,26 @@ type LedgerEntryRow = {
 type RoulettePrizeProductRow = {
   prize_key: string;
   product_id: string;
+  draw_weight: number;
   created_at: string;
   updated_at: string;
 };
 
-type RouletteSpinChargeRow = {
+type RouletteCoinBalanceRow = {
+  auth_user_id: string;
+  discord_user_id: string;
+  balance_cents: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type RouletteCoinPurchaseRow = {
   id: string;
   auth_user_id: string;
   discord_user_id: string;
   amount_cents: number;
   currency_code: string;
-  status: "awaiting_payment" | "paid" | "consumed" | "expired";
+  status: "awaiting_payment" | "credited" | "expired";
   payment_provider: string;
   payment_provider_reference: string | null;
   payment_checkout_url: string | null;
@@ -600,13 +610,22 @@ type RouletteSpinChargeRow = {
   provider_created_at: string | null;
   reconciliation_sha256: string | null;
   provider_checked_at: string | null;
-  paid_amount_cents: number | null;
-  paid_at: string | null;
-  consumed_at: string | null;
-  spin_id: string | null;
+  credited_at: string | null;
   expires_at: string;
   created_at: string;
   updated_at: string;
+};
+
+type RouletteCoinEntryRow = {
+  id: string;
+  auth_user_id: string;
+  kind: "purchase" | "spin" | "sale" | "admin_spin";
+  amount_cents: number;
+  balance_after_cents: number;
+  purchase_id: string | null;
+  spin_id: string | null;
+  prize_key: string | null;
+  created_at: string;
 };
 
 export type Database = {
@@ -1298,11 +1317,36 @@ export type Database = {
           >,
         ];
       };
-      roulette_spin_charges: {
-        Row: RouletteSpinChargeRow;
-        Insert: InsertRow<RouletteSpinChargeRow, "auth_user_id" | "discord_user_id">;
-        Update: UpdateRow<RouletteSpinChargeRow>;
+      roulette_coin_balances: {
+        Row: RouletteCoinBalanceRow;
+        Insert: InsertRow<RouletteCoinBalanceRow, "auth_user_id" | "discord_user_id">;
+        Update: UpdateRow<RouletteCoinBalanceRow>;
         Relationships: [];
+      };
+      roulette_coin_purchases: {
+        Row: RouletteCoinPurchaseRow;
+        Insert: InsertRow<
+          RouletteCoinPurchaseRow,
+          "auth_user_id" | "discord_user_id" | "amount_cents"
+        >;
+        Update: UpdateRow<RouletteCoinPurchaseRow>;
+        Relationships: [];
+      };
+      roulette_coin_entries: {
+        Row: RouletteCoinEntryRow;
+        Insert: InsertRow<
+          RouletteCoinEntryRow,
+          "auth_user_id" | "kind" | "amount_cents" | "balance_after_cents"
+        >;
+        Update: UpdateRow<RouletteCoinEntryRow>;
+        Relationships: [
+          Relationship<
+            "roulette_coin_entries_purchase_id_fkey",
+            ["purchase_id"],
+            "roulette_coin_purchases",
+            ["id"]
+          >,
+        ];
       };
     };
     Views: {
@@ -1386,64 +1430,72 @@ export type Database = {
       get_roulette_prizes: {
         Args: Record<never, never>;
         Returns: {
-          prize_key: string;
-          product_id: string;
-          product_name: string;
-          product_image_url: string | null;
+          slot_prize_key: string;
+          slot_product_id: string;
+          slot_product_name: string;
+          slot_product_image_url: string | null;
+          slot_value_cents: number;
+          slot_sale_value_cents: number;
+          slot_draw_weight: number;
+          slot_draw_chance_bps: number;
         }[];
       };
-      start_roulette_spin_charge: {
-        Args: { p_discord_user_id: string };
+      get_roulette_coin_balance: {
+        Args: Record<never, never>;
+        Returns: number;
+      };
+      start_roulette_coin_purchase: {
+        Args: { p_discord_user_id: string; p_coin_quantity: number };
         Returns: {
-          charge_id: string;
-          charge_status: "awaiting_payment" | "paid" | "consumed" | "expired";
-          checkout_url: string | null;
-          amount_cents: number;
-          expires_at: string;
+          purchase_id: string;
+          purchase_status: "awaiting_payment" | "credited" | "expired";
+          purchase_checkout_url: string | null;
+          purchase_amount_cents: number;
+          purchase_expires_at: string;
         }[];
       };
-      get_roulette_spin_charge: {
-        Args: { p_charge_id: string };
+      get_roulette_coin_purchase: {
+        Args: { p_purchase_id: string };
         Returns: {
-          charge_id: string;
-          charge_status: "awaiting_payment" | "paid" | "consumed" | "expired";
-          checkout_url: string | null;
-          amount_cents: number;
-          expires_at: string;
+          purchase_id: string;
+          purchase_status: "awaiting_payment" | "credited" | "expired";
+          purchase_checkout_url: string | null;
+          purchase_amount_cents: number;
+          purchase_expires_at: string;
         }[];
       };
-      claim_roulette_spin_checkout: {
-        Args: { p_charge_id: string; p_claim_token: string };
+      claim_roulette_coin_checkout: {
+        Args: { p_purchase_id: string; p_claim_token: string };
         Returns: {
-          claimed: boolean;
-          claimed_charge_id: string;
-          amount_cents: number;
-          provider_reference: string | null;
-          checkout_url: string | null;
+          claim_succeeded: boolean;
+          claimed_purchase_id: string;
+          claimed_amount_cents: number;
+          claimed_provider_reference: string | null;
+          claimed_checkout_url: string | null;
         }[];
       };
-      register_roulette_spin_checkout: {
+      register_roulette_coin_checkout: {
         Args: {
-          p_charge_id: string;
+          p_purchase_id: string;
           p_claim_token: string;
           p_provider_reference: string;
           p_checkout_url: string;
         };
         Returns: {
-          registered_charge_id: string;
-          provider_reference: string;
-          checkout_url: string;
+          registered_purchase_id: string;
+          registered_provider_reference: string;
+          registered_checkout_url: string;
         }[];
       };
-      release_roulette_spin_checkout_claim: {
-        Args: { p_charge_id: string; p_claim_token: string };
+      release_roulette_coin_checkout_claim: {
+        Args: { p_purchase_id: string; p_claim_token: string };
         Returns: undefined;
       };
-      claim_roulette_spin_provider_check: {
-        Args: { p_charge_id: string; p_minimum_interval_seconds: number };
+      claim_roulette_coin_provider_check: {
+        Args: { p_purchase_id: string; p_minimum_interval_seconds: number };
         Returns: boolean;
       };
-      confirm_roulette_spin_payment: {
+      confirm_roulette_coin_purchase: {
         Args: {
           p_provider_payment_id: string;
           p_provider_proof_id: string;
@@ -1454,18 +1506,20 @@ export type Database = {
           p_reconciliation_sha256: string;
         };
         Returns: {
-          confirmed_charge_id: string;
-          charge_status: "awaiting_payment" | "paid" | "consumed" | "expired";
-          paid_amount_cents: number | null;
+          confirmed_purchase_id: string;
+          confirmed_status: "awaiting_payment" | "credited" | "expired";
+          credited_amount_cents: number;
+          coin_balance_cents: number;
           first_confirmation: boolean;
         }[];
       };
-      spin_paid_roulette: {
-        Args: { p_discord_user_id: string; p_charge_id: string };
+      spin_roulette: {
+        Args: { p_discord_user_id: string };
         Returns: {
           recorded_spin_id: string;
           won_prize_key: string;
-          inventory_quantity: number;
+          won_inventory_quantity: number;
+          coin_balance_cents: number;
           spun_at: string;
         }[];
       };
@@ -1474,8 +1528,18 @@ export type Database = {
         Returns: {
           recorded_spin_id: string;
           won_prize_key: string;
-          inventory_quantity: number;
+          won_inventory_quantity: number;
+          coin_balance_cents: number;
           spun_at: string;
+        }[];
+      };
+      sell_roulette_prize: {
+        Args: { p_prize_key: string };
+        Returns: {
+          sold_prize_key: string;
+          remaining_quantity: number;
+          credited_amount_cents: number;
+          coin_balance_cents: number;
         }[];
       };
       admin_reorder_products: {

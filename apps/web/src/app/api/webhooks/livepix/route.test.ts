@@ -26,7 +26,7 @@ vi.mock("@/lib/bot/discord-customer-rank", () => ({
   synchronizeDiscordCustomerRankRole: mocks.synchronizeDiscordCustomerRankRole,
 }));
 vi.mock("@/lib/roulette/runtime", () => ({
-  getRouletteSpinPaymentService: () => ({
+  getRouletteCoinPurchaseService: () => ({
     reconcilePayment: mocks.reconcileRouletteSpin,
   }),
 }));
@@ -147,24 +147,25 @@ describe("LivePix webhook route", () => {
     expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
   });
 
-  it("confirma o giro pago da roleta quando a referência não é de um pedido", async () => {
+  it("credita as moedas da roleta quando a referência não é de um pedido", async () => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
     mocks.reconcilePayment.mockResolvedValue(null);
     mocks.reconcileRouletteSpin.mockResolvedValue({
-      chargeId: "1a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
-      status: "paid",
-      paidAmountCents: 100,
+      purchaseId: "1a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+      status: "credited",
+      creditedAmountCents: 300,
+      coinBalanceCents: 300,
       firstConfirmation: true,
     });
 
     const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ received: true, roulette: "paid" });
+    await expect(response.json()).resolves.toEqual({ received: true, roulette: "credited" });
     expect(mocks.claimTicket).not.toHaveBeenCalled();
   });
 
-  it("ignora a referência que não pertence a pedido nem a giro", async () => {
+  it("ignora a referência que não pertence a pedido nem a compra de moedas", async () => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
     mocks.reconcilePayment.mockResolvedValue(null);
     mocks.reconcileRouletteSpin.mockResolvedValue(null);

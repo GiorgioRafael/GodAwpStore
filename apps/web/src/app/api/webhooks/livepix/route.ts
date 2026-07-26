@@ -3,7 +3,7 @@ import { synchronizeDiscordCustomerRankRole } from "@/lib/bot/discord-customer-r
 import { readLimitedBody, RequestBodyTooLargeError } from "@/lib/http/limited-body";
 import { getLivePixPaymentService } from "@/lib/livepix/runtime";
 import { parseLivePixPaymentWebhook } from "@/lib/livepix/webhook";
-import { getRouletteSpinPaymentService } from "@/lib/roulette/runtime";
+import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,14 +35,14 @@ export async function POST(request: Request) {
       providerReference: event.resource.reference,
     });
     if (!confirmation) {
-      // A reference that belongs to no order is either a roulette spin charge
+      // A reference that belongs to no order is either a roulette coin purchase
       // or an event for another integration.
-      const spin = await getRouletteSpinPaymentService().reconcilePayment({
+      const coins = await getRouletteCoinPurchaseService().reconcilePayment({
         providerPaymentId: event.resource.id,
         providerReference: event.resource.reference,
       });
-      return spin
-        ? Response.json({ received: true, roulette: spin.status })
+      return coins
+        ? Response.json({ received: true, roulette: coins.status })
         : Response.json({ received: true, ignored: true });
     }
 

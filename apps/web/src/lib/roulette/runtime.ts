@@ -2,15 +2,15 @@ import "server-only";
 
 import { getLivePixClient } from "@/lib/livepix/client";
 
-import { SupabaseRouletteSpinPaymentRepository } from "./spin-payment-repository";
-import { RouletteSpinPaymentService } from "./spin-payment";
+import { SupabaseRouletteCoinPurchaseRepository } from "./coin-purchase-repository";
+import { RouletteCoinPurchaseService } from "./coin-purchase";
 
-let spinPaymentService: RouletteSpinPaymentService | undefined;
+let coinPurchaseService: RouletteCoinPurchaseService | undefined;
 
-export function getRouletteSpinPaymentService() {
-  spinPaymentService ??= new RouletteSpinPaymentService(
-    new SupabaseRouletteSpinPaymentRepository(),
+export function getRouletteCoinPurchaseService() {
+  coinPurchaseService ??= new RouletteCoinPurchaseService(
+    new SupabaseRouletteCoinPurchaseRepository(),
     getLivePixClient(),
   );
-  return spinPaymentService;
+  return coinPurchaseService;
 }

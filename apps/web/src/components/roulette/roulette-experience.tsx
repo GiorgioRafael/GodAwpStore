@@ -4,11 +4,14 @@
 
 import {
   Box,
+  Coins,
   Crown,
   Gem,
   Gift,
   Loader2,
+  Minus,
   PackageOpen,
+  Plus,
   QrCode,
   RotateCw,
   ShieldCheck,
@@ -20,15 +23,19 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  getRouletteSpinPaymentStatus,
+  getRouletteCoinPurchaseStatus,
+  sellRoulettePrize,
   spinRoulette,
-  startRouletteSpinPayment,
+  startRouletteCoinPurchase,
 } from "@/app/roleta/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
 import {
   demoRouletteRotation,
+  formatCoins,
   mergeDemoRouletteInventory,
   rouletteWheelPrize,
+  MAXIMUM_COIN_PURCHASE,
+  SPIN_COST_CENTS,
   type DemoRouletteInventoryItem,
   type DemoRoulettePrizeKey,
   type RouletteWheelPrize,
@@ -45,55 +52,58 @@ const PRIZE_ICONS: Record<DemoRoulettePrizeKey, LucideIcon> = {
 const WHEEL_SIZE = 360;
 const WHEEL_CENTER = WHEEL_SIZE / 2;
 const WHEEL_RADIUS = 164;
-const SPIN_PRICE_LABEL = "R$ 1,00";
 const PAYMENT_POLL_INTERVAL_MS = 4_000;
 
-type Phase = "idle" | "preparing" | "awaiting_payment" | "spinning";
+type Phase = "idle" | "preparing" | "awaiting_payment" | "spinning" | "selling";
 
 export function RouletteExperience({
   prizes,
   initialInventory,
+  initialBalanceCents = 0,
   available = true,
   isAdmin = false,
-  initialChargeId = null,
+  initialPurchaseId = null,
 }: {
   prizes: RouletteWheelPrize[];
   initialInventory: DemoRouletteInventoryItem[];
+  initialBalanceCents?: number;
   available?: boolean;
   isAdmin?: boolean;
-  initialChargeId?: string | null;
+  initialPurchaseId?: string | null;
 }) {
   const [inventory, setInventory] = useState(initialInventory);
+  const [balanceCents, setBalanceCents] = useState(initialBalanceCents);
   const [lastPrizeKey, setLastPrizeKey] = useState<DemoRoulettePrizeKey | null>(null);
   const [rotation, setRotation] = useState(0);
-  const [phase, setPhase] = useState<Phase>(initialChargeId ? "awaiting_payment" : "idle");
-  const [chargeId, setChargeId] = useState<string | null>(initialChargeId);
+  const [phase, setPhase] = useState<Phase>(initialPurchaseId ? "awaiting_payment" : "idle");
+  const [purchaseId, setPurchaseId] = useState<string | null>(initialPurchaseId);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [coinQuantity, setCoinQuantity] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const rotationRef = useRef(0);
   const phaseRef = useRef(phase);
   const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
   const isBusy = phase !== "idle";
+  const canSpin = isAdmin || balanceCents >= SPIN_COST_CENTS;
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
 
-  const runSpin = useCallback(async (paidChargeId: string | null) => {
+  const runSpin = useCallback(async () => {
     setPhase("spinning");
     setError(null);
+    setNotice(null);
 
-    const result = await spinRoulette(paidChargeId);
+    const result = await spinRoulette();
     if (!result.ok) {
       setError(result.message);
       setPhase("idle");
-      setChargeId(null);
-      setCheckoutUrl(null);
       return;
     }
 
-    setChargeId(null);
-    setCheckoutUrl(null);
+    setBalanceCents(result.balanceCents);
     const nextRotation = demoRouletteRotation(rotationRef.current, result.prizeKey);
     rotationRef.current = nextRotation;
     setRotation(nextRotation);
@@ -108,78 +118,98 @@ export function RouletteExperience({
     setPhase("idle");
   }, []);
 
-  // Pix confirmation arrives through the LivePix webhook, so the browser waits
-  // here until the paid charge is ready to be spun.
+  // The coins land through the LivePix webhook, so the browser waits here until
+  // the balance is credited.
   useEffect(() => {
-    if (phase !== "awaiting_payment" || !chargeId) return;
+    if (phase !== "awaiting_payment" || !purchaseId) return;
 
     let cancelled = false;
-    async function check(pendingChargeId: string) {
-      const status = await getRouletteSpinPaymentStatus(pendingChargeId);
+    async function check(pendingPurchaseId: string) {
+      const status = await getRouletteCoinPurchaseStatus(pendingPurchaseId);
       if (cancelled || phaseRef.current !== "awaiting_payment") return;
 
       if (!status.ok) {
         setError(status.message);
         setPhase("idle");
-        setChargeId(null);
+        setPurchaseId(null);
         setCheckoutUrl(null);
         return;
       }
-      if (status.status === "paid") {
-        void runSpin(pendingChargeId);
+      setBalanceCents(status.balanceCents);
+      if (status.status === "credited") {
+        setNotice("Moedas creditadas. Bom giro!");
+        setPhase("idle");
+        setPurchaseId(null);
+        setCheckoutUrl(null);
         return;
       }
-      if (status.status === "expired" || status.status === "consumed") {
-        setError(
-          status.status === "expired"
-            ? "O Pix expirou antes da confirmação. Gere um novo giro."
-            : "Este giro já foi usado. Pague novamente para girar.",
-        );
+      if (status.status === "expired") {
+        setError("O Pix expirou antes da confirmação. Gere uma nova compra.");
         setPhase("idle");
-        setChargeId(null);
+        setPurchaseId(null);
         setCheckoutUrl(null);
       }
     }
 
-    // Someone returning from the LivePix page may already be paid, so check
+    // Someone returning from the LivePix page may already be credited, so check
     // once right away instead of waiting a full poll interval.
-    void check(chargeId);
-    const timer = window.setInterval(() => void check(chargeId), PAYMENT_POLL_INTERVAL_MS);
+    void check(purchaseId);
+    const timer = window.setInterval(() => void check(purchaseId), PAYMENT_POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [chargeId, phase, runSpin]);
+  }, [purchaseId, phase]);
 
   async function handleSpin() {
+    if (isBusy || !available || !canSpin) return;
+    await runSpin();
+  }
+
+  async function handleBuyCoins() {
     if (isBusy || !available) return;
     setError(null);
-
-    if (isAdmin) {
-      await runSpin(null);
-      return;
-    }
-
+    setNotice(null);
     setPhase("preparing");
-    const charge = await startRouletteSpinPayment();
-    if (!charge.ok) {
-      setError(charge.message);
+
+    const purchase = await startRouletteCoinPurchase(coinQuantity);
+    if (!purchase.ok) {
+      setError(purchase.message);
       setPhase("idle");
       return;
     }
 
-    setChargeId(charge.chargeId);
-    if (charge.status === "paid") {
-      await runSpin(charge.chargeId);
+    setPurchaseId(purchase.purchaseId);
+    setCheckoutUrl(purchase.checkoutUrl);
+    setPhase("awaiting_payment");
+    if (purchase.checkoutUrl) {
+      window.open(purchase.checkoutUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+
+  async function handleSell(prizeKey: DemoRoulettePrizeKey) {
+    if (isBusy || !available) return;
+    setError(null);
+    setNotice(null);
+    setPhase("selling");
+
+    const sale = await sellRoulettePrize(prizeKey);
+    if (!sale.ok) {
+      setError(sale.message);
+      setPhase("idle");
       return;
     }
 
-    setCheckoutUrl(charge.checkoutUrl);
-    setPhase("awaiting_payment");
-    if (charge.checkoutUrl) {
-      window.open(charge.checkoutUrl, "_blank", "noopener,noreferrer");
+    setBalanceCents(sale.balanceCents);
+    setInventory((current) =>
+      mergeDemoRouletteInventory(current, sale.prizeKey, sale.remainingQuantity),
+    );
+    setNotice(`Item vendido por ${formatCoins(sale.creditedCents)} moedas.`);
+    if (lastPrizeKey === sale.prizeKey && sale.remainingQuantity === 0) {
+      setLastPrizeKey(null);
     }
+    setPhase("idle");
   }
 
   const lastPrize = lastPrizeKey ? rouletteWheelPrize(prizes, lastPrizeKey) : null;
@@ -198,7 +228,7 @@ export function RouletteExperience({
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#ae98b7] sm:text-base">
             {isAdmin
               ? "Modo administrador: os giros são gratuitos para testes internos."
-              : `Cada giro custa ${SPIN_PRICE_LABEL} no Pix e libera um item do catálogo.`}
+              : "Cada moeda vale R$ 1,00 e paga um giro. Não gostou do prêmio? Venda de volta por moedas."}
           </p>
 
           <div className="mt-7 grid items-center gap-7 xl:grid-cols-[minmax(0,560px)_minmax(170px,1fr)] [@media(max-height:820px)]:mt-4">
@@ -250,33 +280,25 @@ export function RouletteExperience({
                             stroke="rgba(232,121,249,.36)"
                             strokeWidth="1.6"
                           />
-                          <circle
-                            cx={label.x}
-                            cy={label.y - 18}
-                            r="15"
-                            fill="rgba(0,0,0,.2)"
-                            stroke={prize.accent}
-                            strokeOpacity=".45"
-                          />
                           <text
                             x={label.x}
-                            y={label.y - 14}
-                            textAnchor="middle"
-                            fill={prize.accent}
-                            fontSize="17"
-                            fontWeight="800"
-                          >
-                            {index + 1}
-                          </text>
-                          <text
-                            x={label.x}
-                            y={label.y + 17}
+                            y={label.y - 8}
                             textAnchor="middle"
                             fill="#fff8ff"
                             fontSize="13"
                             fontWeight="700"
                           >
                             {prize.wheelLabel}
+                          </text>
+                          <text
+                            x={label.x}
+                            y={label.y + 12}
+                            textAnchor="middle"
+                            fill={prize.accent}
+                            fontSize="13"
+                            fontWeight="800"
+                          >
+                            {formatCoins(prize.valueCents)}
                           </text>
                         </g>
                       );
@@ -291,7 +313,7 @@ export function RouletteExperience({
               <button
                 type="button"
                 onClick={handleSpin}
-                disabled={isBusy || !available}
+                disabled={isBusy || !available || !canSpin}
                 className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-fuchsia-200/55 bg-gradient-to-b from-fuchsia-500 to-[#b81780] px-6 text-base font-bold text-white shadow-[0_0_0_3px_rgba(217,70,239,.1),0_15px_40px_rgba(217,70,239,.24)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
               >
                 {phase === "spinning" ? (
@@ -301,25 +323,78 @@ export function RouletteExperience({
                 ) : (
                   <Loader2 aria-hidden="true" className="size-5 animate-spin" />
                 )}
-                {spinButtonLabel(phase, isAdmin)}
+                {spinButtonLabel(phase, isAdmin, canSpin)}
               </button>
-              <p className="mt-3 text-center text-xs leading-5 text-[#8f7a98]">
-                {isAdmin
-                  ? "Giro de teste interno: nenhuma cobrança é gerada."
-                  : `Pagamento único de ${SPIN_PRICE_LABEL} por giro, via Pix da LivePix.`}
-              </p>
+
+              {!isAdmin ? (
+                <div className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#140f0a]/80 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-amber-200">
+                      <Coins aria-hidden="true" className="size-4" />
+                      Saldo: {formatCoins(balanceCents)} moedas
+                    </span>
+                    <span className="text-xs text-[#9e8a76]">1 moeda = R$ 1,00</span>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <div className="flex h-11 items-center rounded-xl border border-amber-300/25 bg-black/25">
+                      <button
+                        type="button"
+                        aria-label="Menos uma moeda"
+                        onClick={() => setCoinQuantity((value) => Math.max(1, value - 1))}
+                        disabled={isBusy || coinQuantity <= 1}
+                        className="grid size-11 place-items-center rounded-l-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
+                      >
+                        <Minus aria-hidden="true" className="size-4" />
+                      </button>
+                      <span
+                        data-testid="coin-quantity"
+                        className="min-w-10 text-center text-base font-bold text-amber-100"
+                      >
+                        {coinQuantity}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Mais uma moeda"
+                        onClick={() =>
+                          setCoinQuantity((value) => Math.min(MAXIMUM_COIN_PURCHASE, value + 1))
+                        }
+                        disabled={isBusy || coinQuantity >= MAXIMUM_COIN_PURCHASE}
+                        className="grid size-11 place-items-center rounded-r-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
+                      >
+                        <Plus aria-hidden="true" className="size-4" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleBuyCoins}
+                      disabled={isBusy || !available}
+                      className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-300/50 bg-amber-400/15 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <QrCode aria-hidden="true" className="size-4" />
+                      {phase === "preparing"
+                        ? "Gerando o Pix..."
+                        : `Comprar por R$ ${coinQuantity},00`}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-3 text-center text-xs leading-5 text-[#8f7a98]">
+                  Giro de teste interno: nenhuma moeda é gasta.
+                </p>
+              )}
 
               {phase === "awaiting_payment" ? (
                 <div
                   role="status"
-                  className="mx-auto mt-4 max-w-md rounded-2xl border border-fuchsia-300/25 bg-[#140b1a]/90 p-4 text-center"
+                  className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-fuchsia-300/25 bg-[#140b1a]/90 p-4 text-center"
                 >
                   <p className="flex items-center justify-center gap-2 text-sm font-semibold text-fuchsia-200">
                     <Loader2 aria-hidden="true" className="size-4 animate-spin" />
                     Aguardando a confirmação do Pix
                   </p>
                   <p className="mt-2 text-xs leading-5 text-[#9e88a8]">
-                    A roleta gira sozinha assim que a LivePix confirmar {SPIN_PRICE_LABEL}.
+                    As moedas caem no seu saldo assim que a LivePix confirmar.
                   </p>
                   {checkoutUrl ? (
                     <a
@@ -329,7 +404,7 @@ export function RouletteExperience({
                       className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-200/50 bg-fuchsia-500/15 px-4 text-sm font-semibold text-fuchsia-100 transition-colors hover:bg-fuchsia-500/25"
                     >
                       <QrCode aria-hidden="true" className="size-4" />
-                      Abrir o Pix de {SPIN_PRICE_LABEL}
+                      Abrir o Pix
                     </a>
                   ) : null}
                 </div>
@@ -349,6 +424,14 @@ export function RouletteExperience({
                   className="mx-auto mt-4 max-w-md rounded-xl border border-rose-400/25 bg-rose-400/[0.08] px-4 py-3 text-center text-sm text-rose-200"
                 >
                   {error}
+                </p>
+              ) : null}
+              {notice ? (
+                <p
+                  role="status"
+                  className="mx-auto mt-4 max-w-md rounded-xl border border-emerald-400/25 bg-emerald-400/[0.08] px-4 py-3 text-center text-sm text-emerald-200"
+                >
+                  {notice}
                 </p>
               ) : null}
             </div>
@@ -373,6 +456,9 @@ export function RouletteExperience({
                     className="relative mt-1 text-3xl font-semibold tracking-[-0.04em] text-white"
                   >
                     {lastPrize.displayName}
+                  </p>
+                  <p className="relative mt-1 text-sm font-semibold text-amber-200">
+                    vale {formatCoins(lastPrize.valueCents)} moedas
                   </p>
                 </div>
               ) : (
@@ -414,36 +500,50 @@ export function RouletteExperience({
                 return (
                   <li
                     key={item.prizeKey}
-                    className="grid grid-cols-[52px_1fr_auto] items-center gap-4 overflow-hidden rounded-2xl border border-fuchsia-300/20 bg-[#100a15]/90 p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)]"
+                    className="overflow-hidden rounded-2xl border border-fuchsia-300/20 bg-[#100a15]/90 p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)]"
                   >
-                    <span
-                      className="grid size-[52px] place-items-center overflow-hidden rounded-xl border bg-black/20"
-                      style={{
-                        borderColor: `${prize.accent}55`,
-                        color: prize.accent,
-                        backgroundColor: `${prize.surface}cc`,
-                      }}
+                    <div className="grid grid-cols-[52px_1fr_auto] items-center gap-4">
+                      <span
+                        className="grid size-[52px] place-items-center overflow-hidden rounded-xl border bg-black/20"
+                        style={{
+                          borderColor: `${prize.accent}55`,
+                          color: prize.accent,
+                          backgroundColor: `${prize.surface}cc`,
+                        }}
+                      >
+                        {prize.imageUrl ? (
+                          <img src={prize.imageUrl} alt="" className="size-full object-cover" />
+                        ) : (
+                          <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
+                        )}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-[#fbf8fc]">
+                          {prize.displayName}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-[#9e8a76]">
+                          vale {formatCoins(prize.valueCents)} moedas
+                        </span>
+                      </span>
+                      <span
+                        className="min-w-10 border-l border-fuchsia-300/15 pl-4 text-center text-xl font-bold"
+                        style={{ color: prize.accent }}
+                        aria-label={`Quantidade: ${item.quantity}`}
+                      >
+                        {item.quantity}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleSell(item.prizeKey)}
+                      disabled={isBusy || !available || prize.saleValueCents <= 0}
+                      className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-300/35 bg-amber-400/10 px-3 text-xs font-bold text-amber-100 transition-colors hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      {prize.imageUrl ? (
-                        <img
-                          src={prize.imageUrl}
-                          alt=""
-                          className="size-full object-cover"
-                        />
-                      ) : (
-                        <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
-                      )}
-                    </span>
-                    <span className="min-w-0 truncate text-sm font-semibold text-[#fbf8fc]">
-                      {prize.displayName}
-                    </span>
-                    <span
-                      className="min-w-10 border-l border-fuchsia-300/15 pl-4 text-center text-xl font-bold"
-                      style={{ color: prize.accent }}
-                      aria-label={`Quantidade: ${item.quantity}`}
-                    >
-                      {item.quantity}
-                    </span>
+                      <Coins aria-hidden="true" className="size-3.5" />
+                      {prize.saleValueCents > 0
+                        ? `Vender 1 por ${formatCoins(prize.saleValueCents)} moedas`
+                        : "Sem valor de recompra"}
+                    </button>
                   </li>
                 );
               })}
@@ -472,8 +572,9 @@ export function RouletteExperience({
               className="mt-0.5 size-4 shrink-0 text-fuchsia-300/55"
             />
             <p>
-              Os cinco itens são uma seleção provisória do catálogo para testes. O resgate
-              dos prêmios ainda será liberado em uma próxima etapa.
+              Os cinco itens são uma seleção provisória do catálogo para testes. Vender devolve
+              parte do valor em moedas; a entrega dos prêmios ainda será liberada em uma
+              próxima etapa.
             </p>
           </div>
         </aside>
@@ -482,11 +583,13 @@ export function RouletteExperience({
   );
 }
 
-function spinButtonLabel(phase: Phase, isAdmin: boolean) {
+function spinButtonLabel(phase: Phase, isAdmin: boolean, canSpin: boolean) {
   if (phase === "spinning") return "Girando...";
   if (phase === "preparing") return "Gerando o Pix...";
   if (phase === "awaiting_payment") return "Aguardando o Pix...";
-  return isAdmin ? "Girar grátis (admin)" : `Girar por ${SPIN_PRICE_LABEL}`;
+  if (phase === "selling") return "Vendendo...";
+  if (isAdmin) return "Girar grátis (admin)";
+  return canSpin ? "Girar (1 moeda)" : "Sem moedas suficientes";
 }
 
 function wheelSegmentPath(index: number, total: number) {
