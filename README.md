@@ -205,6 +205,34 @@ transação, somente para servidores ativos na whitelist. Ao confirmar o pagamen
 o banco valida o pedido e registra lucro líquido e comissão uma única vez, mesmo
 se a LivePix reenviar o webhook.
 
+## Roleta paga
+
+A rota `/roleta` exige login pelo Discord e cobra **R$ 1,00 por giro** usando a
+mesma integração LivePix da loja. O fluxo é:
+
+1. `start_roulette_spin_charge` abre — ou reaproveita — uma cobrança de R$ 1,00
+   com validade de 30 minutos;
+2. o servidor cria o checkout LivePix com retorno para
+   `https://gwstore.vercel.app/roleta?giro=ID-DA-COBRANCA`;
+3. o webhook `POST /api/webhooks/livepix` reconhece a referência do giro quando
+   ela não pertence a nenhum pedido e confirma a cobrança;
+4. o navegador acompanha o status e, como reserva, o servidor consulta a LivePix
+   diretamente no máximo uma vez a cada 5 segundos por cobrança;
+5. `spin_paid_roulette` consome a cobrança paga uma única vez e grava o prêmio.
+
+Nenhum giro toca estoque, saldo, comissão ou ticket do Discord: a cobrança vive
+em `roulette_spin_charges`, separada de `orders`.
+
+Os administradores de `ADMIN_DISCORD_IDS` giram de graça para testes internos.
+A liberação é validada no servidor e executada por `spin_roulette_as_admin`, que
+só o cliente `service_role` pode chamar — uma sessão autenticada no navegador não
+alcança essa função.
+
+As cinco fatias apontam para produtos aleatórios do catálogo ativo, escolhidos na
+migração `20260726000500_add_paid_roulette_spins.sql`. É uma configuração
+provisória de teste: para trocar a seleção, basta atualizar
+`public.roulette_prize_products`, e a roleta passa a exibir os novos itens.
+
 ## Verificações
 
 ```powershell
@@ -221,6 +249,7 @@ npx supabase db start
 $env:PGPASSWORD = "postgres"
 psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/schema_verification.sql
 psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/integration.sql
+psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/roulette_demo_verification.sql
 ```
 
 O GitHub Actions executa as verificações da aplicação e os testes transacionais

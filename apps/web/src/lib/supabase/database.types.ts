@@ -576,6 +576,39 @@ type LedgerEntryRow = {
   created_at: string;
 };
 
+type RoulettePrizeProductRow = {
+  prize_key: string;
+  product_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+type RouletteSpinChargeRow = {
+  id: string;
+  auth_user_id: string;
+  discord_user_id: string;
+  amount_cents: number;
+  currency_code: string;
+  status: "awaiting_payment" | "paid" | "consumed" | "expired";
+  payment_provider: string;
+  payment_provider_reference: string | null;
+  payment_checkout_url: string | null;
+  checkout_claim_token: string | null;
+  checkout_claimed_at: string | null;
+  provider_payment_id: string | null;
+  provider_proof_id: string | null;
+  provider_created_at: string | null;
+  reconciliation_sha256: string | null;
+  provider_checked_at: string | null;
+  paid_amount_cents: number | null;
+  paid_at: string | null;
+  consumed_at: string | null;
+  spin_id: string | null;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -1252,6 +1285,25 @@ export type Database = {
           >,
         ];
       };
+      roulette_prize_products: {
+        Row: RoulettePrizeProductRow;
+        Insert: InsertRow<RoulettePrizeProductRow, "prize_key" | "product_id">;
+        Update: UpdateRow<RoulettePrizeProductRow>;
+        Relationships: [
+          Relationship<
+            "roulette_prize_products_product_id_fkey",
+            ["product_id"],
+            "products",
+            ["id"]
+          >,
+        ];
+      };
+      roulette_spin_charges: {
+        Row: RouletteSpinChargeRow;
+        Insert: InsertRow<RouletteSpinChargeRow, "auth_user_id" | "discord_user_id">;
+        Update: UpdateRow<RouletteSpinChargeRow>;
+        Relationships: [];
+      };
     };
     Views: {
       effective_whitelist_commissions: {
@@ -1331,8 +1383,94 @@ export type Database = {
           updated_at: string;
         }[];
       };
-      spin_demo_roulette: {
+      get_roulette_prizes: {
+        Args: Record<never, never>;
+        Returns: {
+          prize_key: string;
+          product_id: string;
+          product_name: string;
+          product_image_url: string | null;
+        }[];
+      };
+      start_roulette_spin_charge: {
         Args: { p_discord_user_id: string };
+        Returns: {
+          charge_id: string;
+          charge_status: "awaiting_payment" | "paid" | "consumed" | "expired";
+          checkout_url: string | null;
+          amount_cents: number;
+          expires_at: string;
+        }[];
+      };
+      get_roulette_spin_charge: {
+        Args: { p_charge_id: string };
+        Returns: {
+          charge_id: string;
+          charge_status: "awaiting_payment" | "paid" | "consumed" | "expired";
+          checkout_url: string | null;
+          amount_cents: number;
+          expires_at: string;
+        }[];
+      };
+      claim_roulette_spin_checkout: {
+        Args: { p_charge_id: string; p_claim_token: string };
+        Returns: {
+          claimed: boolean;
+          claimed_charge_id: string;
+          amount_cents: number;
+          provider_reference: string | null;
+          checkout_url: string | null;
+        }[];
+      };
+      register_roulette_spin_checkout: {
+        Args: {
+          p_charge_id: string;
+          p_claim_token: string;
+          p_provider_reference: string;
+          p_checkout_url: string;
+        };
+        Returns: {
+          registered_charge_id: string;
+          provider_reference: string;
+          checkout_url: string;
+        }[];
+      };
+      release_roulette_spin_checkout_claim: {
+        Args: { p_charge_id: string; p_claim_token: string };
+        Returns: undefined;
+      };
+      claim_roulette_spin_provider_check: {
+        Args: { p_charge_id: string; p_minimum_interval_seconds: number };
+        Returns: boolean;
+      };
+      confirm_roulette_spin_payment: {
+        Args: {
+          p_provider_payment_id: string;
+          p_provider_proof_id: string;
+          p_provider_reference: string;
+          p_amount_cents: number;
+          p_currency_code: string;
+          p_provider_created_at: string;
+          p_reconciliation_sha256: string;
+        };
+        Returns: {
+          confirmed_charge_id: string;
+          charge_status: "awaiting_payment" | "paid" | "consumed" | "expired";
+          paid_amount_cents: number | null;
+          first_confirmation: boolean;
+        }[];
+      };
+      spin_paid_roulette: {
+        Args: { p_discord_user_id: string; p_charge_id: string };
+        Returns: {
+          spin_id: string;
+          prize_key: string;
+          inventory_quantity: number;
+          spun_at: string;
+        }[];
+      };
+      spin_roulette_as_admin: {
+        Args: { p_auth_user_id: string; p_discord_user_id: string };
         Returns: {
           spin_id: string;
           prize_key: string;

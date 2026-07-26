@@ -5,22 +5,37 @@ import { notFound } from "next/navigation";
 import { RouletteExperience } from "@/components/roulette/roulette-experience";
 import { RouletteHeader } from "@/components/roulette/roulette-header";
 import { LinkButton } from "@/components/ui/button";
+import { getAdminSession } from "@/lib/auth";
 import { extractDiscordIdentity } from "@/lib/auth-identity";
 import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
-import { normalizeDemoRouletteInventory } from "@/lib/roulette/demo";
+import {
+  buildRouletteWheelPrizes,
+  normalizeDemoRouletteInventory,
+  normalizeRoulettePrizeProducts,
+} from "@/lib/roulette/demo";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Roleta",
-  description: `Experiência gratuita da ${STORE_NAME}.`,
+  description: `Gire a roleta da ${STORE_NAME} por R$ 1,00.`,
   robots: { index: false, follow: false },
 };
 export const dynamic = "force-dynamic";
 
-export default async function RoulettePage() {
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export default async function RoulettePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (STORE_SLUG !== "gwstore") notFound();
 
-  const supabase = await createServerSupabaseClient();
+  const [query, supabase] = await Promise.all([
+    searchParams,
+    createServerSupabaseClient(),
+  ]);
   const { data: authData } = supabase
     ? await supabase.auth.getUser()
     : { data: { user: null } };
@@ -59,8 +74,8 @@ export default async function RoulettePage() {
                 className="mt-0.5 size-4 shrink-0 text-emerald-400"
               />
               <p className="text-xs leading-5 text-[#8f7b98]">
-                Esta etapa é gratuita e não possui pagamento, saldo, resgate ou integração com
-                o estoque da loja.
+                Cada giro custa R$ 1,00 via Pix. Os prêmios ficam no seu inventário e ainda
+                não têm resgate automático.
               </p>
             </div>
           </section>
@@ -69,10 +84,16 @@ export default async function RoulettePage() {
     );
   }
 
-  const { data: inventoryRows, error: inventoryError } = await supabase!.rpc(
-    "get_demo_roulette_inventory",
+  const [inventoryResult, prizeResult, adminSession] = await Promise.all([
+    supabase!.rpc("get_demo_roulette_inventory"),
+    supabase!.rpc("get_roulette_prizes"),
+    getAdminSession().catch(() => null),
+  ]);
+  const inventory = normalizeDemoRouletteInventory(inventoryResult.data ?? []);
+  const prizes = buildRouletteWheelPrizes(
+    normalizeRoulettePrizeProducts(prizeResult.data ?? []),
   );
-  const inventory = normalizeDemoRouletteInventory(inventoryRows ?? []);
+  const pendingChargeId = await readPendingCharge(supabase!, readChargeId(query.giro));
 
   return (
     <>
@@ -83,9 +104,36 @@ export default async function RoulettePage() {
         }}
       />
       <RouletteExperience
+        prizes={prizes}
         initialInventory={inventory}
-        available={!inventoryError}
+        available={!inventoryResult.error}
+        isAdmin={adminSession?.status === "authorized"}
+        initialChargeId={pendingChargeId}
       />
     </>
   );
+}
+
+function readChargeId(value: string | string[] | undefined) {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return candidate && UUID_PATTERN.test(candidate) ? candidate : null;
+}
+
+/**
+ * The LivePix return lands on `/roleta?giro=…`. Only a charge that is still
+ * waiting or already paid resumes the wheel; a stale link is ignored so the
+ * player is not greeted by an error.
+ */
+async function readPendingCharge(
+  supabase: NonNullable<Awaited<ReturnType<typeof createServerSupabaseClient>>>,
+  chargeId: string | null,
+) {
+  if (!chargeId) return null;
+  const { data } = await supabase.rpc("get_roulette_spin_charge", {
+    p_charge_id: chargeId,
+  });
+  const charge = data?.[0];
+  return charge?.charge_status === "awaiting_payment" || charge?.charge_status === "paid"
+    ? charge.charge_id
+    : null;
 }

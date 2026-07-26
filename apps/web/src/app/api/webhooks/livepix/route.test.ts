@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   failTicket: vi.fn(),
   ensurePaidOrderTicket: vi.fn(),
   synchronizeDiscordCustomerRankRole: vi.fn(),
+  reconcileRouletteSpin: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -23,6 +24,11 @@ vi.mock("@/lib/bot/discord-ticket", () => ({
 }));
 vi.mock("@/lib/bot/discord-customer-rank", () => ({
   synchronizeDiscordCustomerRankRole: mocks.synchronizeDiscordCustomerRankRole,
+}));
+vi.mock("@/lib/roulette/runtime", () => ({
+  getRouletteSpinPaymentService: () => ({
+    reconcilePayment: mocks.reconcileRouletteSpin,
+  }),
 }));
 
 import { POST } from "./route";
@@ -139,6 +145,34 @@ describe("LivePix webhook route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, ticket: "open" });
     expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
+  });
+
+  it("confirma o giro pago da roleta quando a referência não é de um pedido", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue(null);
+    mocks.reconcileRouletteSpin.mockResolvedValue({
+      chargeId: "1a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+      status: "paid",
+      paidAmountCents: 100,
+      firstConfirmation: true,
+    });
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, roulette: "paid" });
+    expect(mocks.claimTicket).not.toHaveBeenCalled();
+  });
+
+  it("ignora a referência que não pertence a pedido nem a giro", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue(null);
+    mocks.reconcileRouletteSpin.mockResolvedValue(null);
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, ignored: true });
   });
 
   it("libera o lease e pede retry quando o Discord falha", async () => {

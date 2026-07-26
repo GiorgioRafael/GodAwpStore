@@ -171,7 +171,7 @@ export class LivePixPaymentService {
   }
 }
 
-async function reconciliationDigest(payment: LivePixPayment) {
+export async function reconciliationDigest(payment: LivePixPayment) {
   const canonical = [
     payment.id,
     payment.proof,

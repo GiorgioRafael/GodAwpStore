@@ -1,28 +1,37 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Catalog images use runtime Supabase URLs. */
+
 import {
   Box,
   Crown,
   Gem,
   Gift,
+  Loader2,
   PackageOpen,
+  QrCode,
   RotateCw,
+  ShieldCheck,
   Sparkles,
   Star,
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { spinDemoRoulette } from "@/app/roleta/actions";
+import {
+  getRouletteSpinPaymentStatus,
+  spinRoulette,
+  startRouletteSpinPayment,
+} from "@/app/roleta/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
 import {
-  DEMO_ROULETTE_PRIZES,
-  demoRoulettePrize,
   demoRouletteRotation,
   mergeDemoRouletteInventory,
+  rouletteWheelPrize,
   type DemoRouletteInventoryItem,
   type DemoRoulettePrizeKey,
+  type RouletteWheelPrize,
 } from "@/lib/roulette/demo";
 
 const PRIZE_ICONS: Record<DemoRoulettePrizeKey, LucideIcon> = {
@@ -36,50 +45,144 @@ const PRIZE_ICONS: Record<DemoRoulettePrizeKey, LucideIcon> = {
 const WHEEL_SIZE = 360;
 const WHEEL_CENTER = WHEEL_SIZE / 2;
 const WHEEL_RADIUS = 164;
+const SPIN_PRICE_LABEL = "R$ 1,00";
+const PAYMENT_POLL_INTERVAL_MS = 4_000;
+
+type Phase = "idle" | "preparing" | "awaiting_payment" | "spinning";
 
 export function RouletteExperience({
+  prizes,
   initialInventory,
   available = true,
+  isAdmin = false,
+  initialChargeId = null,
 }: {
+  prizes: RouletteWheelPrize[];
   initialInventory: DemoRouletteInventoryItem[];
   available?: boolean;
+  isAdmin?: boolean;
+  initialChargeId?: string | null;
 }) {
   const [inventory, setInventory] = useState(initialInventory);
   const [lastPrizeKey, setLastPrizeKey] = useState<DemoRoulettePrizeKey | null>(null);
   const [rotation, setRotation] = useState(0);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [phase, setPhase] = useState<Phase>(initialChargeId ? "awaiting_payment" : "idle");
+  const [chargeId, setChargeId] = useState<string | null>(initialChargeId);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const rotationRef = useRef(0);
+  const phaseRef = useRef(phase);
   const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
+  const isBusy = phase !== "idle";
 
-  function handleSpin() {
-    if (isPending || !available) return;
-    setFeedback(null);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
 
-    startTransition(async () => {
-      const result = await spinDemoRoulette();
-      if (!result.ok) {
-        setFeedback(result.message);
+  const runSpin = useCallback(async (paidChargeId: string | null) => {
+    setPhase("spinning");
+    setError(null);
+
+    const result = await spinRoulette(paidChargeId);
+    if (!result.ok) {
+      setError(result.message);
+      setPhase("idle");
+      setChargeId(null);
+      setCheckoutUrl(null);
+      return;
+    }
+
+    setChargeId(null);
+    setCheckoutUrl(null);
+    const nextRotation = demoRouletteRotation(rotationRef.current, result.prizeKey);
+    rotationRef.current = nextRotation;
+    setRotation(nextRotation);
+
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    await new Promise((resolve) => window.setTimeout(resolve, reduceMotion ? 80 : 2_900));
+
+    setInventory((current) =>
+      mergeDemoRouletteInventory(current, result.prizeKey, result.inventoryQuantity),
+    );
+    setLastPrizeKey(result.prizeKey);
+    setPhase("idle");
+  }, []);
+
+  // Pix confirmation arrives through the LivePix webhook, so the browser waits
+  // here until the paid charge is ready to be spun.
+  useEffect(() => {
+    if (phase !== "awaiting_payment" || !chargeId) return;
+
+    let cancelled = false;
+    async function check(pendingChargeId: string) {
+      const status = await getRouletteSpinPaymentStatus(pendingChargeId);
+      if (cancelled || phaseRef.current !== "awaiting_payment") return;
+
+      if (!status.ok) {
+        setError(status.message);
+        setPhase("idle");
+        setChargeId(null);
+        setCheckoutUrl(null);
         return;
       }
+      if (status.status === "paid") {
+        void runSpin(pendingChargeId);
+        return;
+      }
+      if (status.status === "expired" || status.status === "consumed") {
+        setError(
+          status.status === "expired"
+            ? "O Pix expirou antes da confirmação. Gere um novo giro."
+            : "Este giro já foi usado. Pague novamente para girar.",
+        );
+        setPhase("idle");
+        setChargeId(null);
+        setCheckoutUrl(null);
+      }
+    }
 
-      const nextRotation = demoRouletteRotation(rotationRef.current, result.prizeKey);
-      rotationRef.current = nextRotation;
-      setRotation(nextRotation);
+    // Someone returning from the LivePix page may already be paid, so check
+    // once right away instead of waiting a full poll interval.
+    void check(chargeId);
+    const timer = window.setInterval(() => void check(chargeId), PAYMENT_POLL_INTERVAL_MS);
 
-      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      await new Promise((resolve) => window.setTimeout(resolve, reduceMotion ? 80 : 2_900));
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [chargeId, phase, runSpin]);
 
-      setInventory((current) =>
-        mergeDemoRouletteInventory(
-          current,
-          result.prizeKey,
-          result.inventoryQuantity,
-        ),
-      );
-      setLastPrizeKey(result.prizeKey);
-    });
+  async function handleSpin() {
+    if (isBusy || !available) return;
+    setError(null);
+
+    if (isAdmin) {
+      await runSpin(null);
+      return;
+    }
+
+    setPhase("preparing");
+    const charge = await startRouletteSpinPayment();
+    if (!charge.ok) {
+      setError(charge.message);
+      setPhase("idle");
+      return;
+    }
+
+    setChargeId(charge.chargeId);
+    if (charge.status === "paid") {
+      await runSpin(charge.chargeId);
+      return;
+    }
+
+    setCheckoutUrl(charge.checkoutUrl);
+    setPhase("awaiting_payment");
+    if (charge.checkoutUrl) {
+      window.open(charge.checkoutUrl, "_blank", "noopener,noreferrer");
+    }
   }
+
+  const lastPrize = lastPrizeKey ? rouletteWheelPrize(prizes, lastPrizeKey) : null;
 
   return (
     <main className="relative min-h-[calc(100vh-76px)] overflow-hidden bg-[#050306] text-white">
@@ -93,7 +196,9 @@ export function RouletteExperience({
             Gire e descubra seu prêmio
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[#ae98b7] sm:text-base">
-            Uma experiência gratuita enquanto preparamos a versão completa.
+            {isAdmin
+              ? "Modo administrador: os giros são gratuitos para testes internos."
+              : `Cada giro custa ${SPIN_PRICE_LABEL} no Pix e libera um item do catálogo.`}
           </p>
 
           <div className="mt-7 grid items-center gap-7 xl:grid-cols-[minmax(0,560px)_minmax(170px,1fr)] [@media(max-height:820px)]:mt-4">
@@ -116,12 +221,12 @@ export function RouletteExperience({
                   <svg
                     viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
                     role="img"
-                    aria-label="Roleta com cinco prêmios provisórios"
+                    aria-label="Roleta com cinco itens do catálogo"
                     className="size-full overflow-visible rounded-full will-change-transform"
                     style={{
                       transform: `rotate(${rotation}deg)`,
                       transformOrigin: "50% 50%",
-                      transitionDuration: isPending ? "2800ms" : "0ms",
+                      transitionDuration: phase === "spinning" ? "2800ms" : "0ms",
                       transitionProperty: "transform",
                       transitionTimingFunction: "cubic-bezier(.12,.68,.08,1)",
                     }}
@@ -134,9 +239,9 @@ export function RouletteExperience({
                       stroke="rgba(244,114,182,.72)"
                       strokeWidth="3"
                     />
-                    {DEMO_ROULETTE_PRIZES.map((prize, index) => {
-                      const path = wheelSegmentPath(index);
-                      const label = wheelLabelPoint(index);
+                    {prizes.map((prize, index) => {
+                      const path = wheelSegmentPath(index, prizes.length);
+                      const label = wheelLabelPoint(index, prizes.length);
                       return (
                         <g key={prize.key}>
                           <path
@@ -168,10 +273,10 @@ export function RouletteExperience({
                             y={label.y + 17}
                             textAnchor="middle"
                             fill="#fff8ff"
-                            fontSize="15"
+                            fontSize="13"
                             fontWeight="700"
                           >
-                            {prize.shortName}
+                            {prize.wheelLabel}
                           </text>
                         </g>
                       );
@@ -186,18 +291,50 @@ export function RouletteExperience({
               <button
                 type="button"
                 onClick={handleSpin}
-                disabled={isPending || !available}
+                disabled={isBusy || !available}
                 className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-fuchsia-200/55 bg-gradient-to-b from-fuchsia-500 to-[#b81780] px-6 text-base font-bold text-white shadow-[0_0_0_3px_rgba(217,70,239,.1),0_15px_40px_rgba(217,70,239,.24)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
               >
-                <RotateCw
-                  aria-hidden="true"
-                  className={`size-5 ${isPending ? "animate-spin" : ""}`}
-                />
-                {isPending ? "Girando..." : "Girar roleta"}
+                {phase === "spinning" ? (
+                  <RotateCw aria-hidden="true" className="size-5 animate-spin" />
+                ) : phase === "idle" ? (
+                  <RotateCw aria-hidden="true" className="size-5" />
+                ) : (
+                  <Loader2 aria-hidden="true" className="size-5 animate-spin" />
+                )}
+                {spinButtonLabel(phase, isAdmin)}
               </button>
               <p className="mt-3 text-center text-xs leading-5 text-[#8f7a98]">
-                O resultado é salvo no seu inventário.
+                {isAdmin
+                  ? "Giro de teste interno: nenhuma cobrança é gerada."
+                  : `Pagamento único de ${SPIN_PRICE_LABEL} por giro, via Pix da LivePix.`}
               </p>
+
+              {phase === "awaiting_payment" ? (
+                <div
+                  role="status"
+                  className="mx-auto mt-4 max-w-md rounded-2xl border border-fuchsia-300/25 bg-[#140b1a]/90 p-4 text-center"
+                >
+                  <p className="flex items-center justify-center gap-2 text-sm font-semibold text-fuchsia-200">
+                    <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                    Aguardando a confirmação do Pix
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-[#9e88a8]">
+                    A roleta gira sozinha assim que a LivePix confirmar {SPIN_PRICE_LABEL}.
+                  </p>
+                  {checkoutUrl ? (
+                    <a
+                      href={checkoutUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-200/50 bg-fuchsia-500/15 px-4 text-sm font-semibold text-fuchsia-100 transition-colors hover:bg-fuchsia-500/25"
+                    >
+                      <QrCode aria-hidden="true" className="size-4" />
+                      Abrir o Pix de {SPIN_PRICE_LABEL}
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+
               {!available ? (
                 <p
                   role="alert"
@@ -206,12 +343,12 @@ export function RouletteExperience({
                   O inventário está temporariamente indisponível.
                 </p>
               ) : null}
-              {feedback ? (
+              {error ? (
                 <p
                   role="alert"
                   className="mx-auto mt-4 max-w-md rounded-xl border border-rose-400/25 bg-rose-400/[0.08] px-4 py-3 text-center text-sm text-rose-200"
                 >
-                  {feedback}
+                  {error}
                 </p>
               ) : null}
             </div>
@@ -220,7 +357,7 @@ export function RouletteExperience({
               aria-live="polite"
               className="mx-auto w-full max-w-sm text-center xl:text-left"
             >
-              {lastPrizeKey ? (
+              {lastPrize ? (
                 <div className="relative overflow-hidden border-y border-fuchsia-300/30 py-6">
                   <div
                     aria-hidden="true"
@@ -235,7 +372,7 @@ export function RouletteExperience({
                     data-testid="roulette-result"
                     className="relative mt-1 text-3xl font-semibold tracking-[-0.04em] text-white"
                   >
-                    {demoRoulettePrize(lastPrizeKey).name}
+                    {lastPrize.displayName}
                   </p>
                 </div>
               ) : (
@@ -272,7 +409,7 @@ export function RouletteExperience({
           {inventory.length ? (
             <ul className="mt-7 space-y-3">
               {inventory.map((item) => {
-                const prize = demoRoulettePrize(item.prizeKey);
+                const prize = rouletteWheelPrize(prizes, item.prizeKey);
                 const Icon = PRIZE_ICONS[item.prizeKey];
                 return (
                   <li
@@ -280,17 +417,25 @@ export function RouletteExperience({
                     className="grid grid-cols-[52px_1fr_auto] items-center gap-4 overflow-hidden rounded-2xl border border-fuchsia-300/20 bg-[#100a15]/90 p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)]"
                   >
                     <span
-                      className="grid size-[52px] place-items-center rounded-xl border bg-black/20"
+                      className="grid size-[52px] place-items-center overflow-hidden rounded-xl border bg-black/20"
                       style={{
                         borderColor: `${prize.accent}55`,
                         color: prize.accent,
                         backgroundColor: `${prize.surface}cc`,
                       }}
                     >
-                      <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
+                      {prize.imageUrl ? (
+                        <img
+                          src={prize.imageUrl}
+                          alt=""
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
+                      )}
                     </span>
                     <span className="min-w-0 truncate text-sm font-semibold text-[#fbf8fc]">
-                      {prize.name}
+                      {prize.displayName}
                     </span>
                     <span
                       className="min-w-10 border-l border-fuchsia-300/15 pl-4 text-center text-xl font-bold"
@@ -315,17 +460,20 @@ export function RouletteExperience({
                   Seu inventário está vazio
                 </p>
                 <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-[#8f7b98]">
-                  Gire a roleta para receber seu primeiro prêmio provisório.
+                  Gire a roleta para receber seu primeiro prêmio.
                 </p>
               </div>
             </div>
           )}
 
           <div className="mt-5 flex gap-3 border-t border-fuchsia-300/10 pt-5 text-xs leading-5 text-[#87728f]">
-            <Gift aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fuchsia-300/55" />
+            <ShieldCheck
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-fuchsia-300/55"
+            />
             <p>
-              Os cinco nomes são provisórios. Itens reais e formas de uso serão adicionados
-              em uma próxima etapa.
+              Os cinco itens são uma seleção provisória do catálogo para testes. O resgate
+              dos prêmios ainda será liberado em uma próxima etapa.
             </p>
           </div>
         </aside>
@@ -334,8 +482,15 @@ export function RouletteExperience({
   );
 }
 
-function wheelSegmentPath(index: number) {
-  const segmentAngle = 360 / DEMO_ROULETTE_PRIZES.length;
+function spinButtonLabel(phase: Phase, isAdmin: boolean) {
+  if (phase === "spinning") return "Girando...";
+  if (phase === "preparing") return "Gerando o Pix...";
+  if (phase === "awaiting_payment") return "Aguardando o Pix...";
+  return isAdmin ? "Girar grátis (admin)" : `Girar por ${SPIN_PRICE_LABEL}`;
+}
+
+function wheelSegmentPath(index: number, total: number) {
+  const segmentAngle = 360 / total;
   const start = index * segmentAngle - 90;
   const end = start + segmentAngle;
   const startPoint = polarPoint(start);
@@ -348,8 +503,8 @@ function wheelSegmentPath(index: number) {
   ].join(" ");
 }
 
-function wheelLabelPoint(index: number) {
-  const segmentAngle = 360 / DEMO_ROULETTE_PRIZES.length;
+function wheelLabelPoint(index: number, total: number) {
+  const segmentAngle = 360 / total;
   return polarPoint(index * segmentAngle - 90 + segmentAngle / 2, 105);
 }
 

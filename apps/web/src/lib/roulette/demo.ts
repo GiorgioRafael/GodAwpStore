@@ -44,12 +44,106 @@ export type DemoRouletteInventoryItem = {
   quantity: number;
 };
 
+/** Catalog product currently attached to one of the five wheel slots. */
+export type RoulettePrizeProduct = {
+  prizeKey: DemoRoulettePrizeKey;
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+};
+
+/** A wheel slot ready to render: slot styling plus the resolved catalog item. */
+export type RouletteWheelPrize = DemoRoulettePrize & {
+  productId: string | null;
+  displayName: string;
+  wheelLabel: string;
+  imageUrl: string | null;
+};
+
+const MAXIMUM_WHEEL_LABEL_LENGTH = 14;
+
 export function isDemoRoulettePrizeKey(value: unknown): value is DemoRoulettePrizeKey {
   return DEMO_ROULETTE_PRIZES.some((prize) => prize.key === value);
 }
 
 export function demoRoulettePrize(prizeKey: DemoRoulettePrizeKey) {
   return DEMO_ROULETTE_PRIZES.find((prize) => prize.key === prizeKey)!;
+}
+
+export function normalizeRoulettePrizeProducts(
+  rows: Array<{
+    prize_key: string;
+    product_id: string;
+    product_name: string;
+    product_image_url: string | null;
+  }>,
+): RoulettePrizeProduct[] {
+  const byKey = new Map<DemoRoulettePrizeKey, RoulettePrizeProduct>();
+  for (const row of rows) {
+    if (!isDemoRoulettePrizeKey(row.prize_key)) continue;
+    const name = typeof row.product_name === "string" ? row.product_name.trim() : "";
+    if (!row.product_id || !name) continue;
+    byKey.set(row.prize_key, {
+      prizeKey: row.prize_key,
+      productId: row.product_id,
+      name,
+      imageUrl: normalizeImageUrl(row.product_image_url),
+    });
+  }
+  return DEMO_ROULETTE_PRIZES.flatMap((prize) => {
+    const product = byKey.get(prize.key);
+    return product ? [product] : [];
+  });
+}
+
+/**
+ * Merges the slot palette with the catalog item assigned to it. Slots without a
+ * live product keep the provisional name so the wheel never renders a gap.
+ */
+export function buildRouletteWheelPrizes(
+  products: RoulettePrizeProduct[],
+): RouletteWheelPrize[] {
+  const byKey = new Map(products.map((product) => [product.prizeKey, product]));
+  return DEMO_ROULETTE_PRIZES.map((prize) => {
+    const product = byKey.get(prize.key);
+    const displayName = product?.name ?? prize.name;
+    return {
+      ...prize,
+      productId: product?.productId ?? null,
+      displayName,
+      wheelLabel: truncateWheelLabel(displayName),
+      imageUrl: product?.imageUrl ?? null,
+    };
+  });
+}
+
+export function rouletteWheelPrize(
+  prizes: RouletteWheelPrize[],
+  prizeKey: DemoRoulettePrizeKey,
+) {
+  return prizes.find((prize) => prize.key === prizeKey) ?? {
+    ...demoRoulettePrize(prizeKey),
+    productId: null,
+    displayName: demoRoulettePrize(prizeKey).name,
+    wheelLabel: demoRoulettePrize(prizeKey).shortName,
+    imageUrl: null,
+  };
+}
+
+function truncateWheelLabel(value: string) {
+  return value.length > MAXIMUM_WHEEL_LABEL_LENGTH
+    ? `${value.slice(0, MAXIMUM_WHEEL_LABEL_LENGTH - 1).trimEnd()}…`
+    : value;
+}
+
+function normalizeImageUrl(value: string | null) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) return null;
+  try {
+    return new URL(normalized).protocol === "https:" ? normalized : null;
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeDemoRouletteInventory(
