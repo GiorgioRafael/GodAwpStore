@@ -104,7 +104,7 @@ describe("LivePixPaymentService", () => {
     expect(api.createPayment).not.toHaveBeenCalled();
   });
 
-  it("não reutiliza checkout depois do prazo de duas horas", async () => {
+  it("não reutiliza checkout depois do prazo de trinta minutos", async () => {
     const existing = {
       orderId,
       providerReference: "provider-ref",

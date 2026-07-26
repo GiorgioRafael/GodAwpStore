@@ -187,6 +187,7 @@ export async function publishDiscordStorefront({
           }),
           productOptionEmojis,
         ),
+        customization,
       ),
       allowed_mentions: { parse: [] },
     };

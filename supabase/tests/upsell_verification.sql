@@ -1,4 +1,4 @@
--- Discord upsell cap, ownership, idempotency and stock reservation.
+-- Discord upsell cap, ownership, idempotency and deferred stock.
 -- Every fixture is rolled back.
 
 begin;
@@ -129,7 +129,7 @@ begin
       select stock_quantity
       from public.products
       where id = 'a4000000-0000-4000-8000-000000000001'
-    ) <> 8 then
+    ) <> 10 then
     raise exception 'accepted upsell totals, audit link or stock are inconsistent';
   end if;
 
@@ -147,7 +147,7 @@ begin
       select stock_quantity
       from public.products
       where id = 'a4000000-0000-4000-8000-000000000001'
-    ) <> 8 then
+    ) <> 10 then
     raise exception 'replayed acceptance changed the order or stock';
   end if;
 

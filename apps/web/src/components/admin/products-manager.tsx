@@ -86,35 +86,17 @@ function ProductForm({
           </Select>
         </Field>
 
-        <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Nome" htmlFor={`${formId}-name`} error={fieldError(state, "name")}>
-            <Input
-              id={`${formId}-name`}
-              name="name"
-              defaultValue={product?.name ?? ""}
-              maxLength={160}
-              required
-              autoFocus
-              autoComplete="off"
-            />
-          </Field>
-          <Field
-            label="Slug"
-            htmlFor={`${formId}-slug`}
-            hint="letras, números e hífens"
-            error={fieldError(state, "slug")}
-          >
-            <Input
-              id={`${formId}-slug`}
-              name="slug"
-              defaultValue={product?.slug ?? ""}
-              maxLength={80}
-              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-              required
-              autoComplete="off"
-            />
-          </Field>
-        </div>
+        <Field label="Nome" htmlFor={`${formId}-name`} error={fieldError(state, "name")}>
+          <Input
+            id={`${formId}-name`}
+            name="name"
+            defaultValue={product?.name ?? ""}
+            maxLength={160}
+            required
+            autoFocus
+            autoComplete="off"
+          />
+        </Field>
 
         <Field
           label="Descrição"

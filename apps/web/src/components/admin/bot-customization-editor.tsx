@@ -30,6 +30,7 @@ import {
   DiscordMessagePreview,
   type DiscordPreviewScenario,
 } from "@/components/admin/discord-message-preview";
+import { MediaUploadField } from "@/components/admin/media-upload-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -425,6 +426,7 @@ interface BotCustomizationEditorProps {
   initialConfig: BotMessageCustomization;
   initialNotificationDiscordUserIds: string[];
   initialTicketCloseAdminDiscordUserIds: string[];
+  defaultStorefrontBannerUrl?: string;
   updatedAt: string | null;
 }
 
@@ -432,9 +434,12 @@ export function BotCustomizationEditor({
   initialConfig,
   initialNotificationDiscordUserIds,
   initialTicketCloseAdminDiscordUserIds,
+  defaultStorefrontBannerUrl = "",
   updatedAt,
 }: BotCustomizationEditorProps) {
-  const [config, setConfig] = useState<BotMessageCustomization>(() => cloneConfig(initialConfig));
+  const [config, setConfig] = useState<BotMessageCustomization>(() =>
+    withDefaultStorefrontBanner(cloneConfig(initialConfig), defaultStorefrontBannerUrl),
+  );
   const [notificationDiscordUserIds, setNotificationDiscordUserIds] = useState<string[]>(() => [
     ...initialNotificationDiscordUserIds,
   ]);
@@ -494,7 +499,12 @@ export function BotCustomizationEditor({
   }
 
   function restoreDefaults() {
-    setConfig(cloneConfig(DEFAULT_BOT_MESSAGE_CUSTOMIZATION));
+    setConfig(
+      withDefaultStorefrontBanner(
+        cloneConfig(DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
+        defaultStorefrontBannerUrl,
+      ),
+    );
     setNotificationDiscordUserIds([...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]);
     setNotificationDiscordUserIdInput("");
     setNotificationDiscordUserIdError(null);
@@ -900,64 +910,96 @@ export function BotCustomizationEditor({
                       </div>
                     </div>
                   ) : (
-                    activeSection.groups.map((group) => (
-                      <fieldset key={group.title} className="space-y-4">
-                        <legend className="text-sm font-semibold text-foreground">{group.title}</legend>
-                        <p className="-mt-2 text-xs leading-5 text-muted">{group.description}</p>
-                        <div className="space-y-5 rounded-xl border border-border bg-surface-muted p-4">
-                          {group.fields.map((field) => {
-                            const id = `${formId}-${field.section}-${field.key}`;
-                            const value = fieldValue(config, field);
-                            return (
-                              <Field
-                                key={`${field.section}.${field.key}`}
-                                label={field.label}
-                                htmlFor={id}
-                                hint={`${value.length}/${field.maxLength}`}
-                              >
-                                {field.multiline ? (
-                                  <Textarea
-                                    id={id}
-                                    value={value}
-                                    maxLength={field.maxLength}
-                                    rows={field.tall ? 8 : 4}
-                                    onChange={(event) => updateField(field, event.target.value)}
-                                  />
-                                ) : (
-                                  <Input
-                                    id={id}
-                                    value={value}
-                                    maxLength={field.maxLength}
-                                    onChange={(event) => updateField(field, event.target.value)}
-                                  />
-                                )}
+                    <>
+                      {activeSection.id === "storefront" ? (
+                        <fieldset className="space-y-4">
+                          <legend className="text-sm font-semibold text-foreground">
+                            Imagem da vitrine
+                          </legend>
+                          <p className="-mt-2 text-xs leading-5 text-muted">
+                            Banner exibido no topo da mensagem pública da loja no Discord.
+                          </p>
+                          <div className="rounded-xl border border-border bg-surface-muted p-4">
+                            <MediaUploadField
+                              name="storefrontBannerUrl"
+                              label="Banner da vitrine"
+                              folder="storefronts"
+                              value={config.storefront.bannerUrl}
+                              onValueChange={(bannerUrl) => {
+                                setConfig((current) => ({
+                                  ...current,
+                                  storefront: { ...current.storefront, bannerUrl },
+                                }));
+                                setRestoredLocally(false);
+                              }}
+                              clearValue={defaultStorefrontBannerUrl}
+                              clearLabel="Restaurar banner padrão"
+                              clearMessage="O banner padrão será usado depois que a personalização for salva."
+                              hint="Imagem horizontal em JPG, PNG ou WebP de até 5 MB."
+                            />
+                          </div>
+                        </fieldset>
+                      ) : null}
 
-                                {field.description ? (
-                                  <p className="text-xs leading-5 text-muted">{field.description}</p>
-                                ) : null}
+                      {activeSection.groups.map((group) => (
+                        <fieldset key={group.title} className="space-y-4">
+                          <legend className="text-sm font-semibold text-foreground">{group.title}</legend>
+                          <p className="-mt-2 text-xs leading-5 text-muted">{group.description}</p>
+                          <div className="space-y-5 rounded-xl border border-border bg-surface-muted p-4">
+                            {group.fields.map((field) => {
+                              const id = `${formId}-${field.section}-${field.key}`;
+                              const value = fieldValue(config, field);
+                              return (
+                                <Field
+                                  key={`${field.section}.${field.key}`}
+                                  label={field.label}
+                                  htmlFor={id}
+                                  hint={`${value.length}/${field.maxLength}`}
+                                >
+                                  {field.multiline ? (
+                                    <Textarea
+                                      id={id}
+                                      value={value}
+                                      maxLength={field.maxLength}
+                                      rows={field.tall ? 8 : 4}
+                                      onChange={(event) => updateField(field, event.target.value)}
+                                    />
+                                  ) : (
+                                    <Input
+                                      id={id}
+                                      value={value}
+                                      maxLength={field.maxLength}
+                                      onChange={(event) => updateField(field, event.target.value)}
+                                    />
+                                  )}
 
-                                {field.tokens?.length ? (
-                                  <div className="flex flex-wrap items-center gap-1.5" aria-label={`Variáveis de ${field.label}`}>
-                                    <span className="mr-1 text-[11px] text-muted">Variáveis:</span>
-                                    {field.tokens.map((token) => (
-                                      <button
-                                        key={token}
-                                        type="button"
-                                        onClick={() => appendToken(field, token)}
-                                        className="rounded-md border border-border-strong bg-surface px-1.5 py-1 font-mono text-[10px] text-gold-bright transition-colors hover:border-gold/45 hover:bg-gold/[0.06]"
-                                        aria-label={`Adicionar ${token} em ${field.label}`}
-                                      >
-                                        {token}
-                                      </button>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </Field>
-                            );
-                          })}
-                        </div>
-                      </fieldset>
-                    ))
+                                  {field.description ? (
+                                    <p className="text-xs leading-5 text-muted">{field.description}</p>
+                                  ) : null}
+
+                                  {field.tokens?.length ? (
+                                    <div className="flex flex-wrap items-center gap-1.5" aria-label={`Variáveis de ${field.label}`}>
+                                      <span className="mr-1 text-[11px] text-muted">Variáveis:</span>
+                                      {field.tokens.map((token) => (
+                                        <button
+                                          key={token}
+                                          type="button"
+                                          onClick={() => appendToken(field, token)}
+                                          className="rounded-md border border-border-strong bg-surface px-1.5 py-1 font-mono text-[10px] text-gold-bright transition-colors hover:border-gold/45 hover:bg-gold/[0.06]"
+                                          aria-label={`Adicionar ${token} em ${field.label}`}
+                                        >
+                                          {token}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </Field>
+                              );
+                            })}
+                          </div>
+                        </fieldset>
+                      ))}
+                    </>
                   )}
                 </div>
               </div>
@@ -1012,4 +1054,18 @@ function fieldValue(config: BotMessageCustomization, field: FieldDefinition) {
 
 function cloneConfig(config: BotMessageCustomization): BotMessageCustomization {
   return JSON.parse(JSON.stringify(config)) as BotMessageCustomization;
+}
+
+function withDefaultStorefrontBanner(
+  config: BotMessageCustomization,
+  defaultStorefrontBannerUrl: string,
+): BotMessageCustomization {
+  if (config.storefront.bannerUrl || !defaultStorefrontBannerUrl) return config;
+  return {
+    ...config,
+    storefront: {
+      ...config.storefront,
+      bannerUrl: defaultStorefrontBannerUrl,
+    },
+  };
 }

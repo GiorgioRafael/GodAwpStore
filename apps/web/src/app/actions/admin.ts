@@ -6,7 +6,9 @@ import {
   parseBrlToCents,
   platformSettingsSchema,
   productInputSchema,
+  slugFromName,
   substoreInputSchema,
+  uniqueSlug,
   uuidSchema,
   whitelistEntryInputSchema,
 } from "@godawp/domain";
@@ -269,6 +271,7 @@ export async function saveProductAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
+  const generatedSlug = slugFromName(text(formData, "name"));
   let minimumPriceCents = Number.NaN;
   try {
     minimumPriceCents = parseBrlToCents(text(formData, "minimumPrice"));
@@ -279,7 +282,7 @@ export async function saveProductAction(
   const parsed = productInputSchema.safeParse({
     substoreId: text(formData, "substoreId"),
     name: text(formData, "name"),
-    slug: text(formData, "slug"),
+    slug: generatedSlug,
     description: nullableText(formData, "description"),
     minimumPriceCents,
     stockQuantity: integer(formData, "stockQuantity"),
@@ -308,6 +311,19 @@ export async function saveProductAction(
 
   const { identity, supabase } = await actionContext();
   const id = parsedId?.success ? parsedId.data : null;
+  let existingSlugsQuery = supabase
+    .from("products")
+    .select("slug")
+    .eq("substore_id", parsed.data.substoreId)
+    .is("archived_at", null);
+  if (id) existingSlugsQuery = existingSlugsQuery.neq("id", id);
+  const { data: existingProducts, error: existingSlugsError } = await existingSlugsQuery;
+  if (existingSlugsError) return databaseFailure(existingSlugsError.code);
+  const slug = uniqueSlug(
+    parsed.data.slug,
+    (existingProducts ?? []).map((product) => product.slug),
+  );
+
   if (parsed.data.status === "active") {
     let activeProductsQuery = supabase
       .from("products")
@@ -330,7 +346,7 @@ export async function saveProductAction(
   const record = {
     substore_id: parsed.data.substoreId,
     name: parsed.data.name,
-    slug: parsed.data.slug,
+    slug,
     description: parsed.data.description,
     minimum_price_cents: parsed.data.minimumPriceCents,
     stock_quantity: parsed.data.stockQuantity,

@@ -18,6 +18,7 @@ describe("personalização das mensagens do bot", () => {
       storefront: { title: "Minha loja" },
     });
     expect(normalized.storefront.title).toBe("Minha loja");
+    expect(normalized.storefront.bannerUrl).toBe("");
     expect(normalized.storefront.subtitle).toBe(
       DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront.subtitle,
     );
@@ -64,6 +65,27 @@ describe("personalização das mensagens do bot", () => {
     });
     expect(parsed.success).toBe(true);
     if (parsed.success) expect(parsed.data.storefront.welcome).toBe("Olá mundo");
+  });
+
+  it("normaliza banner HTTPS e rejeita URL insegura", () => {
+    const secure = botMessageCustomizationSchema.parse({
+      ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      storefront: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
+        bannerUrl: " https://cdn.example.com/banner.png ",
+      },
+    });
+    expect(secure.storefront.bannerUrl).toBe("https://cdn.example.com/banner.png");
+
+    expect(
+      botMessageCustomizationSchema.safeParse({
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        storefront: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
+          bannerUrl: "http://example.com/banner.png",
+        },
+      }).success,
+    ).toBe(false);
   });
 
   it("rejeita campos extras, tokens desconhecidos e limites do Discord", () => {

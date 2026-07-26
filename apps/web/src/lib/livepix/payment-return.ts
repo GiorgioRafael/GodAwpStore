@@ -4,6 +4,7 @@ export type PaymentReturnStatus =
   | "pending"
   | "expired"
   | "late_payment"
+  | "stock_unavailable"
   | "refunded"
   | "failed"
   | "unknown";
@@ -13,6 +14,7 @@ type PaymentStatusRow = {
   payment_status: string;
   discord_ticket_status: string;
   late_payment_detected_at: string | null;
+  stock_commit_failure_reason: string | null;
 };
 
 export function resolvePaymentReturnStatus(row: PaymentStatusRow): PaymentReturnStatus {
@@ -20,6 +22,9 @@ export function resolvePaymentReturnStatus(row: PaymentStatusRow): PaymentReturn
   if (row.discord_ticket_status === "open") return "ticket_open";
   if (["paid", "processing", "delivered"].includes(row.status)) return "paid";
   if (row.payment_status === "failed" || row.status === "failed") return "failed";
+  if (row.stock_commit_failure_reason === "insufficient_stock_after_payment") {
+    return "stock_unavailable";
+  }
   if (
     row.late_payment_detected_at ||
     (["cancelled", "expired"].includes(row.status) && row.payment_status === "paid")
@@ -55,11 +60,18 @@ export function paymentReturnCopy(status: PaymentReturnStatus) {
         "O pedido continua cancelado e não será entregue automaticamente. Fale com um administrador no Discord para análise e possível reembolso.",
     };
   }
+  if (status === "stock_unavailable") {
+    return {
+      title: "Pagamento recebido · análise necessária",
+      description:
+        "O último item foi comprado por outra pessoa antes da confirmação do seu Pix. O pedido foi bloqueado para evitar estoque negativo; fale com um administrador no Discord para troca ou reembolso.",
+    };
+  }
   if (status === "expired") {
     return {
       title: "Pedido cancelado",
       description:
-        "O prazo de 2 horas terminou sem aprovação do pagamento e o estoque foi restabelecido. Volte ao Discord para criar um novo pedido.",
+        "O prazo de 30 minutos terminou sem aprovação do pagamento. Nenhum item foi retirado do estoque; volte ao Discord para criar um novo pedido.",
     };
   }
   if (status === "refunded") {

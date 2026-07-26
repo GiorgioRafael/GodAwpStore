@@ -21,7 +21,9 @@ const ALLOWED_TYPES = new Map([
 function safeFolder(value: FormDataEntryValue | null): string {
   if (typeof value !== "string") return "catalog";
   const normalized = value.toLowerCase().replace(/[^a-z0-9-]/g, "");
-  return ["games", "substores", "products"].includes(normalized) ? normalized : "catalog";
+  return ["games", "substores", "products", "storefronts"].includes(normalized)
+    ? normalized
+    : "catalog";
 }
 
 function requestId(request: Request): string {
@@ -145,7 +147,7 @@ export async function DELETE(request: NextRequest) {
 
   if (
     !path ||
-    !/^(catalog|games|substores|products)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/i.test(path)
+    !/^(catalog|games|substores|products|storefronts)\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpg|png|webp)$/i.test(path)
   ) {
     return NextResponse.json({ error: "Caminho de imagem inválido." }, { status: 400 });
   }

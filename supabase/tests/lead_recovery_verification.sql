@@ -1,5 +1,5 @@
 -- Abandoned checkout recovery: eligibility, composition, ownership,
--- idempotency, fresh stock reservation and a fresh LivePix order.
+-- idempotency, deferred stock and a fresh LivePix order.
 
 begin;
 
@@ -43,7 +43,7 @@ values
     'Recovery Product',
     'recovery-product',
     1000,
-    9,
+    10,
     'active'
   ),
   (
@@ -75,7 +75,7 @@ set
   lead_recovery_delay_minutes = 15
 where id = 1;
 
--- The product starts at 9 because this source order reserved one unit.
+-- The unpaid source order does not reserve aggregate stock.
 insert into public.orders (
   id,
   guild_id,
@@ -150,7 +150,7 @@ begin
       from public.products
       where id = 'b4000000-0000-4000-8000-000000000001'
     ) <> 10 then
-    raise exception 'source checkout did not expire and restore stock';
+    raise exception 'source checkout did not expire without consuming stock';
   end if;
 
   select * into strict claim
@@ -232,7 +232,7 @@ begin
       select stock_quantity
       from public.products
       where id = 'b4000000-0000-4000-8000-000000000001'
-    ) <> 9 then
+    ) <> 10 then
     raise exception 'recovered order totals, fresh checkout state or stock are inconsistent';
   end if;
 
@@ -305,7 +305,7 @@ end
 $$;
 
 update public.products
-set stock_quantity = 4
+set stock_quantity = 5
 where id = 'b4000000-0000-4000-8000-000000000002';
 
 insert into public.orders (

@@ -817,6 +817,61 @@ begin
   ) then
     raise exception 'Product reorder function must preserve the table access boundary';
   end if;
+
+  if (
+    select count(*)
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'orders'
+      and column_name in (
+        'stock_committed_at',
+        'stock_commit_failed_at',
+        'stock_commit_failure_reason'
+      )
+  ) <> 3 then
+    raise exception 'Payment-time stock commit columns are missing';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.orders'::regclass
+      and conname in (
+        'orders_stock_commit_state',
+        'orders_stock_commit_failure_state',
+        'orders_unpaid_payment_deadline_required'
+      )
+  ) <> 3 then
+    raise exception 'Payment-time stock commit constraints are missing';
+  end if;
+
+  if to_regprocedure(
+    'private.commit_paid_order_stock(uuid,timestamp with time zone)'
+  ) is null
+    or has_function_privilege(
+      'service_role',
+      'private.commit_paid_order_stock(uuid,timestamp with time zone)',
+      'EXECUTE'
+    )
+    or not has_function_privilege(
+      'service_role',
+      'public.confirm_livepix_payment(text,text,text,bigint,text,timestamp with time zone,text)',
+      'EXECUTE'
+    ) then
+    raise exception 'Payment-time stock commit function privileges are invalid';
+  end if;
+
+  if has_function_privilege(
+    'service_role',
+    'public.confirm_livepix_payment_without_stock_commit(text,text,text,bigint,text,timestamp with time zone,text)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'service_role',
+    'public.create_bot_cart_with_legacy_reservation(text,uuid,uuid,text,jsonb,integer,text,integer)',
+    'EXECUTE'
+  ) then
+    raise exception 'Legacy stock reservation RPCs remain externally executable';
+  end if;
 end
 $$;
 

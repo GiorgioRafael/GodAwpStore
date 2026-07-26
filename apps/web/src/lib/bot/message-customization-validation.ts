@@ -4,6 +4,7 @@ import {
   BOT_MESSAGE_FIELD_LIMITS,
   BOT_MESSAGE_TOKEN_ALLOWLIST,
   botMessageLines,
+  normalizeBotMessageImageUrl,
   type BotMessageCustomization,
 } from "./message-customization";
 
@@ -31,6 +32,7 @@ const TOKEN_LENGTH_BUDGETS: Record<string, number> = {
 };
 
 const optionalFields = new Set([
+  "storefront.bannerUrl",
   "storefront.welcome",
   "storefront.catalogText",
   "storefront.privacyText",
@@ -76,7 +78,18 @@ function textField(path: keyof typeof BOT_MESSAGE_FIELD_LIMITS) {
   );
 }
 
+const storefrontBannerUrlSchema = z
+  .string()
+  .transform(cleanDiscordText)
+  .pipe(z.string().trim().max(BOT_MESSAGE_FIELD_LIMITS["storefront.bannerUrl"]))
+  .refine(
+    (value) => value === "" || normalizeBotMessageImageUrl(value) !== "",
+    "Use uma URL HTTPS válida para o banner.",
+  )
+  .transform(normalizeBotMessageImageUrl);
+
 const storefrontSchema = z.object({
+  bannerUrl: storefrontBannerUrlSchema,
   title: textField("storefront.title"),
   paginatedTitle: textField("storefront.paginatedTitle"),
   subtitle: textField("storefront.subtitle"),

@@ -172,9 +172,9 @@ begin
     where order_row.id = '62000000-0000-4000-8000-000000000001'
       and order_row.quantity = 1
       and order_row.inventory_unit_id is null
-      and product.stock_quantity = 1
+      and product.stock_quantity = 2
   ) then
-    raise exception 'bot order did not atomically reserve aggregate stock';
+    raise exception 'unpaid bot order changed aggregate stock';
   end if;
 
   select *
@@ -306,8 +306,18 @@ begin
       and payment_provider_created_at = '2026-07-16 12:00:00+00'::timestamptz
       and payment_status = 'paid'
       and paid_at is not null
+      and stock_committed_at is not null
   ) then
     raise exception 'reconciled LivePix confirmation did not persist payment state';
+  end if;
+
+  if (
+    select stock_quantity
+    from public.products
+    where slug = '2x-moon-bloom'
+      and archived_at is null
+  ) <> 1 then
+    raise exception 'verified LivePix payment did not commit stock exactly once';
   end if;
 
   if (
@@ -524,8 +534,17 @@ begin
     100,
     3000
   );
-  if not v_result.out_of_stock or v_result.created_order_id is not null then
-    raise exception 'atomic reservation allowed overselling the last unit';
+  if v_result.out_of_stock or v_result.created_order_id is null then
+    raise exception 'another unpaid checkout blocked the last visible unit';
+  end if;
+
+  if (
+    select stock_quantity
+    from public.products
+    where slug = '2x-moon-bloom'
+      and archived_at is null
+  ) <> 1 then
+    raise exception 'additional unpaid checkout changed the last visible unit';
   end if;
 end
 $$;

@@ -6,6 +6,7 @@ import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 import {
   completeDiscordGameNicknameSubmission,
   createNativeDiscordGameNicknameResponse,
+  formatCopyableNicknameConfirmation,
   GameNicknameSubmissionError,
   normalizeGameNickname,
   parseNativeDiscordGameNicknameInteraction,
@@ -134,7 +135,27 @@ describe("Discord game nickname interactions", () => {
     expect(requests[1]?.url.endsWith(`/channels/${channelId}/messages`)).toBe(true);
     expect(requests[1]?.headers.get("authorization")).toBe("Bot secret-bot-token");
     expect(String(requests[1]?.body.nonce)).toHaveLength(25);
-    expect(String(requests[1]?.body.content)).toContain("Player\\_One");
+    expect(String(requests[1]?.body.content)).toContain(
+      "```text\nPlayer_One\n```",
+    );
+    expect(String(requests[1]?.body.content)).not.toContain("**Player_One**");
+  });
+
+  it("coloca o nick em bloco copiável mesmo com o modelo antigo em negrito", () => {
+    expect(
+      formatCopyableNicknameConfirmation(
+        "✅ Nick **{game_nickname}** recebido! A equipe continuará a entrega.",
+        "515 (+0 this session)",
+      ),
+    ).toBe(
+      [
+        "✅ Nick",
+        "```text",
+        "515 (+0 this session)",
+        "```",
+        "recebido! A equipe continuará a entrega.",
+      ].join("\n"),
+    );
   });
 
   it("repete a confirmação com nonce determinístico quando o mesmo nick já estava salvo", async () => {
@@ -247,6 +268,10 @@ describe("Discord game nickname interactions", () => {
       content: string;
     };
     expect(payload.content).toBe(DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.nicknameInvalidText);
+  });
+
+  it("rejeita crases para não permitir fechar o bloco copiável do Discord", () => {
+    expect(normalizeGameNickname("Player`One")).toBeNull();
   });
 
   it("rejeita payload de modal ambíguo ou com tipo de campo incorreto", async () => {

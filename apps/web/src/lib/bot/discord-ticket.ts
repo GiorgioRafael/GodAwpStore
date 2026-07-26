@@ -237,6 +237,7 @@ export function paidTicketWelcomeMessage(
     DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS,
 ) {
   const productName = sanitizeDiscordText(input.productName, 256);
+  const purchasedItems = formatPurchasedItems(productName, input.quantity);
   const orderMarker = welcomeMessageMarker(input.orderId);
   const message = customization.ticket;
   const nicknamePrompt = interpolateBotMessageLimited(message.nicknamePromptText, {}, 1_000);
@@ -272,13 +273,8 @@ export function paidTicketWelcomeMessage(
         fields: [
           {
             name: interpolateBotMessageLimited(message.productLabel, {}, 256),
-            value: productName,
-            inline: true,
-          },
-          {
-            name: interpolateBotMessageLimited(message.quantityLabel, {}, 256),
-            value: new Intl.NumberFormat("pt-BR").format(input.quantity),
-            inline: true,
+            value: purchasedItems,
+            inline: false,
           },
           {
             name: interpolateBotMessageLimited(message.amountLabel, {}, 256),
@@ -403,6 +399,29 @@ function messageNonce(orderId: string) {
 function sanitizeDiscordText(value: string, maxLength: number) {
   const normalized = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+export function formatPurchasedItems(productName: string, totalQuantity: number) {
+  const entries = productName.split(/,\s+/).map((entry) => entry.trim()).filter(Boolean);
+  const parsed = entries.map((entry) => {
+    const match = entry.match(/^(.*?)\s+×(\d+)$/u);
+    if (!match) return null;
+    return {
+      name: match[1]?.trim() || "Produto",
+      quantity: Number.parseInt(match[2] || "0", 10),
+    };
+  });
+  const items =
+    parsed.length > 0 && parsed.every((item) => item && item.quantity > 0)
+      ? parsed as Array<{ name: string; quantity: number }>
+      : [{ name: productName, quantity: totalQuantity }];
+
+  return items
+    .map(({ name, quantity }) => {
+      const safeName = sanitizeDiscordText(name, 256).replaceAll("`", "'");
+      return `\`${new Intl.NumberFormat("pt-BR").format(quantity)}x ${safeName}\``;
+    })
+    .join("\n");
 }
 
 function formatBrl(cents: number) {

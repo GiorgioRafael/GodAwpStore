@@ -164,7 +164,28 @@ describe("Discord paid-order ticket", () => {
     expect((welcome?.body as { content: string }).content).toContain("nick");
     expect(String((welcome?.body as { nonce: string }).nonce)).toHaveLength(25);
     expect(JSON.stringify(welcome?.body)).toContain("Dragon Breath @everyone");
+    expect(JSON.stringify(welcome?.body)).toContain("`2x Dragon Breath @everyone`");
     expect(JSON.stringify(welcome?.body)).not.toContain("secret-ticket-token");
+  });
+
+  it("separa cada produto do carrinho em uma linha copiável com sua quantidade", () => {
+    const payload = ticket.paidTicketWelcomeMessage({
+      ...order,
+      productName:
+        "Promoções GAG2 - 100x Ghost Pepper ×1, Promoções GAG2 - 50x Sun Bloom ×1, Promoções GAG2 - 10x Star Fruit ×1",
+      quantity: 3,
+    });
+    const fields = payload.embeds[0]?.fields ?? [];
+
+    expect(fields[0]?.value).toBe(
+      [
+        "`1x Promoções GAG2 - 100x Ghost Pepper`",
+        "`1x Promoções GAG2 - 50x Sun Bloom`",
+        "`1x Promoções GAG2 - 10x Star Fruit`",
+      ].join("\n"),
+    );
+    expect(fields).toHaveLength(3);
+    expect(fields.some((field) => field.name === "Quantidade")).toBe(false);
   });
 
   it("allowlists multiple configured users and deduplicates the buyer", () => {

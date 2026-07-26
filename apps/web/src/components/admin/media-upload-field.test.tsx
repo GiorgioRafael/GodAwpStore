@@ -70,4 +70,52 @@ describe("MediaUploadField", () => {
     await waitFor(() => expect(hiddenInput).toHaveValue(""));
     expect(screen.getByText(/será desvinculada/)).toBeInTheDocument();
   });
+
+  it("permite controlar o banner da vitrine e restaurar a imagem padrão", async () => {
+    const user = userEvent.setup();
+    const defaultUrl = "https://gwstore.vercel.app/brands/gwstore-storefront-banner.png";
+    const customUrl =
+      "https://example.supabase.co/storage/v1/object/public/catalog-media/storefronts/banner.png";
+    const onValueChange = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ path: "storefronts/banner.png", publicUrl: customUrl }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const { rerender } = render(
+      <MediaUploadField
+        name="storefrontBannerUrl"
+        label="Banner da vitrine"
+        folder="storefronts"
+        value={defaultUrl}
+        onValueChange={onValueChange}
+        clearValue={defaultUrl}
+        clearLabel="Restaurar banner padrão"
+      />,
+    );
+
+    await user.upload(
+      screen.getByLabelText("Banner da vitrine"),
+      new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "banner.png", {
+        type: "image/png",
+      }),
+    );
+    expect(await screen.findByText(/Upload concluído/)).toBeInTheDocument();
+    expect(onValueChange).toHaveBeenLastCalledWith(customUrl);
+
+    rerender(
+      <MediaUploadField
+        name="storefrontBannerUrl"
+        label="Banner da vitrine"
+        folder="storefronts"
+        value={customUrl}
+        onValueChange={onValueChange}
+        clearValue={defaultUrl}
+        clearLabel="Restaurar banner padrão"
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Restaurar banner padrão" }));
+    expect(onValueChange).toHaveBeenLastCalledWith(defaultUrl);
+  });
 });

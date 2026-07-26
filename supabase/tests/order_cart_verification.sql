@@ -1,4 +1,4 @@
--- Multi-product checkout, idempotency, stock restoration and ticket summary.
+-- Multi-product checkout, idempotency, deferred stock and ticket summary.
 -- Every fixture is rolled back.
 
 begin;
@@ -97,9 +97,9 @@ begin
     raise exception 'cart aggregate or normalized items are inconsistent';
   end if;
 
-  if (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 3
-    or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 2 then
-    raise exception 'cart did not reserve every product quantity';
+  if (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 5
+    or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 5 then
+    raise exception 'unpaid cart hid product stock';
   end if;
 
   select * into strict retried
@@ -116,9 +116,9 @@ begin
 
   if retried.was_created
     or retried.checkout_order_id <> created.checkout_order_id
-    or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 3
-    or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 2 then
-    raise exception 'cart idempotency consumed stock twice';
+    or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 5
+    or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 5 then
+    raise exception 'cart idempotency changed unpaid stock';
   end if;
 
   update public.orders
@@ -135,7 +135,7 @@ begin
   if (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 5
     or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 5
     or (select status from public.orders where id = created.checkout_order_id) <> 'cancelled' then
-    raise exception 'expired cart did not restore every product exactly once';
+    raise exception 'expired cart changed stock that was never reserved';
   end if;
 
   perform *
@@ -147,7 +147,7 @@ begin
 
   if (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 5
     or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 5 then
-    raise exception 'repeated cart expiration restored stock twice';
+    raise exception 'repeated cart expiration changed stock';
   end if;
 end
 $$;

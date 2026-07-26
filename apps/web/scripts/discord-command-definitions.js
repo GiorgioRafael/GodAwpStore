@@ -22,4 +22,10 @@ export const discordCommands = Object.freeze([
     type: 1,
     dm_permission: false,
   }),
+  Object.freeze({
+    name: "ranking",
+    description: "Publica a tabela completa e explica como funciona o ranking",
+    type: 1,
+    dm_permission: false,
+  }),
 ]);

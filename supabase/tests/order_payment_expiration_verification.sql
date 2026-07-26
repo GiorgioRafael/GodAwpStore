@@ -1,5 +1,5 @@
--- Transactional verification for the two-hour payment deadline, exactly-once
--- stock restoration, late-payment handling and RPC privileges.
+-- Transactional verification for the thirty-minute payment deadline,
+-- payment-time stock commit, late-payment handling and RPC privileges.
 
 begin;
 
@@ -79,14 +79,24 @@ values
     0,
     'active',
     1
+  ),
+  (
+    '81300000-0000-4000-8000-000000000003',
+    '81200000-0000-4000-8000-000000000001',
+    'Last unit payment race product',
+    'last-unit-payment-race-product',
+    100,
+    1,
+    'active',
+    0
   );
 
 create temporary table expiration_metrics_before on commit drop as
 select paid_orders_count, gross_revenue_cents
 from public.admin_paid_pix_metrics;
 
--- The public creation RPC must reserve aggregate stock and assign its deadline
--- without relying on LivePix checkout registration.
+-- The public creation RPC must leave aggregate stock visible and assign its
+-- deadline without relying on LivePix checkout registration.
 select *
 from public.create_bot_order_with_reservation(
   '820000000000000101',
@@ -111,8 +121,8 @@ begin
   from public.orders as order_row
   where order_row.payment_reference = 'discord:820000000000000101';
 
-  if v_order.payment_expires_at is distinct from v_order.created_at + interval '2 hours' then
-    raise exception 'order creation did not establish the exact two-hour deadline';
+  if v_order.payment_expires_at is distinct from v_order.created_at + interval '30 minutes' then
+    raise exception 'order creation did not establish the exact thirty-minute deadline';
   end if;
 end
 $$;
@@ -137,8 +147,8 @@ begin
   from public.audit_events
   where action = 'bot.order.payment_timeout'
     and entity_id = v_order.id
-    and metadata ->> 'reason' = 'payment_not_approved_within_2_hours'
-    and metadata ->> 'stock_restored' = '3';
+    and metadata ->> 'reason' = 'payment_not_approved_within_30_minutes'
+    and metadata ->> 'stock_restored' = '0';
 
   if v_order.status <> 'cancelled'
     or v_order.payment_status <> 'cancelled'
@@ -148,13 +158,12 @@ begin
     or v_order.stock_release_reason <> 'payment_timeout'
     or v_stock <> 20
     or v_audits <> 1 then
-    raise exception 'expired aggregate order was not cancelled/restocked/audited atomically';
+    raise exception 'expired aggregate order was not cancelled without consuming stock';
   end if;
 end
 $$;
 
--- Re-running the worker is idempotent: it cannot return the same stock or
--- duplicate the timeout audit event.
+-- Re-running the worker is idempotent and cannot duplicate the timeout event.
 select * from public.expire_unpaid_orders(100);
 
 do $$
@@ -175,7 +184,7 @@ begin
     );
 
   if v_stock <> 20 or v_audits <> 1 then
-    raise exception 'expiration retry returned stock or audited twice';
+    raise exception 'expiration retry changed stock or audited twice';
   end if;
 end
 $$;
@@ -196,7 +205,7 @@ from public.create_bot_order_with_reservation(
 
 update public.orders
 set
-  created_at = clock_timestamp() - interval '119 minutes',
+  created_at = clock_timestamp() - interval '29 minutes',
   payment_provider_reference = 'expiration-on-time-reference',
   payment_checkout_url = 'https://checkout.livepix.gg/expiration-on-time-reference',
   payment_status = 'pending'
@@ -231,6 +240,7 @@ begin
   if v_order.status <> 'paid'
     or v_order.payment_status <> 'paid'
     or v_order.paid_at is null
+    or v_order.stock_committed_at is null
     or v_stock <> 18 then
     raise exception 'on-time payment lost its race against expiration';
   end if;
@@ -238,7 +248,7 @@ end
 $$;
 
 -- A confirmation observed at/after the boundary uses the same expiration
--- primitive, returns stock once, records the event, and never resurrects the
+-- primitive, records the event, and never resurrects the
 -- order even when the provider notification is replayed.
 select *
 from public.create_bot_order_with_reservation(
@@ -365,6 +375,161 @@ begin
 end
 $$;
 
+-- Multiple people may hold a Pix for the last visible unit. Both unpaid
+-- checkouts leave it visible, but stable product locks allow only the first
+-- verified payment to commit stock. The second payment is retained for
+-- manual exchange/refund without a ticket or ledger credit.
+select *
+from public.create_bot_order_with_reservation(
+  '820000000000000106',
+  '81000000-0000-4000-8000-000000000001',
+  '80000000-0000-4000-8000-000000000001',
+  '81300000-0000-4000-8000-000000000003',
+  '820000000000000006',
+  1,
+  100,
+  1000
+);
+
+select *
+from public.create_bot_order_with_reservation(
+  '820000000000000107',
+  '81000000-0000-4000-8000-000000000001',
+  '80000000-0000-4000-8000-000000000001',
+  '81300000-0000-4000-8000-000000000003',
+  '820000000000000007',
+  1,
+  100,
+  1000
+);
+
+do $$
+begin
+  if (
+    select stock_quantity
+    from public.products
+    where id = '81300000-0000-4000-8000-000000000003'
+  ) <> 1 then
+    raise exception 'unpaid last-unit checkouts hid stock';
+  end if;
+end
+$$;
+
+select *
+from public.register_livepix_checkout(
+  (select id from public.orders where payment_reference = 'discord:820000000000000106'),
+  'last-unit-first-reference',
+  'https://checkout.livepix.gg/last-unit-first-reference',
+  null
+);
+
+select *
+from public.register_livepix_checkout(
+  (select id from public.orders where payment_reference = 'discord:820000000000000107'),
+  'last-unit-second-reference',
+  'https://checkout.livepix.gg/last-unit-second-reference',
+  null
+);
+
+select *
+from public.confirm_livepix_payment(
+  'last-unit-first-payment',
+  'last-unit-first-proof',
+  'last-unit-first-reference',
+  100,
+  'BRL',
+  clock_timestamp(),
+  repeat('3', 64)
+);
+
+select *
+from public.confirm_livepix_payment(
+  'last-unit-second-payment',
+  'last-unit-second-proof',
+  'last-unit-second-reference',
+  100,
+  'BRL',
+  clock_timestamp(),
+  repeat('4', 64)
+);
+
+select *
+from public.confirm_livepix_payment(
+  'last-unit-second-payment',
+  'last-unit-second-proof',
+  'last-unit-second-reference',
+  100,
+  'BRL',
+  (
+    select provider_created_at
+    from public.payment_webhook_events
+    where provider_checkout_id = 'last-unit-second-payment'
+  ),
+  repeat('4', 64)
+);
+
+do $$
+declare
+  v_first public.orders%rowtype;
+  v_second public.orders%rowtype;
+  v_second_ledger_entries integer;
+  v_failure_audits integer;
+begin
+  select * into strict v_first
+  from public.orders
+  where payment_reference = 'discord:820000000000000106';
+
+  select * into strict v_second
+  from public.orders
+  where payment_reference = 'discord:820000000000000107';
+
+  select count(*)::integer
+  into v_second_ledger_entries
+  from public.ledger_entries
+  where order_id = v_second.id;
+
+  select count(*)::integer
+  into v_failure_audits
+  from public.audit_events
+  where action = 'bot.order.stock_commit_failed'
+    and entity_id = v_second.id;
+
+  if v_first.status <> 'paid'
+    or v_first.stock_committed_at is null
+    or v_second.status <> 'cancelled'
+    or v_second.payment_status <> 'paid'
+    or v_second.stock_committed_at is not null
+    or v_second.stock_commit_failed_at is null
+    or v_second.stock_commit_failure_reason <> 'insufficient_stock_after_payment'
+    or v_second_ledger_entries <> 0
+    or v_failure_audits <> 1
+    or (
+      select stock_quantity
+      from public.products
+      where id = '81300000-0000-4000-8000-000000000003'
+    ) <> 0 then
+    raise exception 'last-unit payment race was not committed exactly once';
+  end if;
+end
+$$;
+
+do $$
+declare
+  v_second_order_id uuid := (
+    select id
+    from public.orders
+    where payment_reference = 'discord:820000000000000107'
+  );
+begin
+  begin
+    perform public.claim_discord_ticket(v_second_order_id);
+    raise exception 'paid order without committed stock claimed a Discord ticket';
+  exception
+    when data_exception then null;
+  end;
+end
+$$;
+
 -- Checkout registration can neither clear nor extend the authoritative
 -- deadline, including the null currently sent by the application.
 select *
@@ -403,7 +568,7 @@ begin
   where order_row.payment_reference = 'discord:820000000000000104';
 
   if v_order.payment_expires_at is null
-    or v_order.payment_expires_at is distinct from v_order.created_at + interval '2 hours' then
+    or v_order.payment_expires_at is distinct from v_order.created_at + interval '30 minutes' then
     raise exception 'checkout registration cleared or extended the server deadline';
   end if;
 end

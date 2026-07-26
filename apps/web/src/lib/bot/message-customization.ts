@@ -10,6 +10,7 @@ export const BOT_MESSAGE_CONFIG_VERSION = 1 as const;
 export type BotMessageCustomization = {
   version: typeof BOT_MESSAGE_CONFIG_VERSION;
   storefront: {
+    bannerUrl: string;
     title: string;
     paginatedTitle: string;
     subtitle: string;
@@ -122,6 +123,7 @@ export type BotMessageCustomization = {
 export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
   version: BOT_MESSAGE_CONFIG_VERSION,
   storefront: {
+    bannerUrl: "",
     title: `🛍️✨ ${STORE_NAME_UPPER} • LOJA OFICIAL ✨🛍️`,
     paginatedTitle: `🛍️✨ ${STORE_NAME_UPPER} • PRODUTOS {page}/{pages} ✨🛍️`,
     subtitle: `🎮 ${STORE_CATALOG_LABEL} • ⚡ Compra rápida, privada e segura`,
@@ -270,6 +272,7 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
 };
 
 export const BOT_MESSAGE_FIELD_LIMITS = {
+  "storefront.bannerUrl": 2_048,
   "storefront.title": 256,
   "storefront.paginatedTitle": 256,
   "storefront.subtitle": 256,
@@ -387,9 +390,16 @@ export const BOT_MESSAGE_TOKEN_ALLOWLIST: Record<string, readonly string[]> = {
 
 export function normalizeBotMessageCustomization(value: Json | unknown): BotMessageCustomization {
   const root = asRecord(value);
+  const storefront = normalizeSection(
+    root.storefront,
+    DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
+  );
   return {
     version: BOT_MESSAGE_CONFIG_VERSION,
-    storefront: normalizeSection(root.storefront, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront),
+    storefront: {
+      ...storefront,
+      bannerUrl: normalizeBotMessageImageUrl(storefront.bannerUrl),
+    },
     product: normalizeSection(root.product, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.product),
     quantity: normalizeSection(root.quantity, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.quantity),
     order: normalizeSection(root.order, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.order),
@@ -401,6 +411,17 @@ export function normalizeBotMessageCustomization(value: Json | unknown): BotMess
 
 export function botMessageCustomizationToJson(value: BotMessageCustomization): JsonObject {
   return value as unknown as JsonObject;
+}
+
+export function normalizeBotMessageImageUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== "https:" || url.username || url.password) return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
 }
 
 export function interpolateBotMessage(

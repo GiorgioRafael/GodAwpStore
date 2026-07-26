@@ -53,6 +53,7 @@ vi.mock("@/lib/bot/message-customization-server", () => ({
 
 import {
   saveBotMessageCustomizationAction,
+  saveProductAction,
   saveProductOrderAction,
   saveSubstoreAction,
   type AdminActionState,
@@ -286,6 +287,63 @@ describe("action de ordenação dos produtos", () => {
   });
 });
 
+describe("action de produtos", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.requireAdmin.mockResolvedValue({
+      authUserId: "10000000-0000-4000-8000-000000000001",
+    });
+    mocks.synchronizePublishedDiscordStorefronts.mockResolvedValue({
+      published: 1,
+      failed: 0,
+      productEmojiFailures: 0,
+    });
+  });
+
+  it("gera um slug único a partir do nome sem receber o campo no formulário", async () => {
+    const existingSlugsQuery = awaitableQuery({
+      data: [{ slug: "pocao-dagua" }, { slug: "pocao-dagua-2" }],
+      error: null,
+    });
+    const activeProductsQuery = awaitableQuery({ count: 0, error: null });
+    const single = vi.fn(async () => ({
+      data: { id: "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae" },
+      error: null,
+    }));
+    const select = vi.fn(() => ({ single }));
+    const insert = vi.fn(() => ({ select }));
+    const from = vi
+      .fn()
+      .mockReturnValueOnce(existingSlugsQuery)
+      .mockReturnValueOnce(activeProductsQuery)
+      .mockReturnValueOnce({ insert });
+    mocks.createServerSupabaseClient.mockResolvedValue({ from });
+
+    const formData = new FormData();
+    formData.set("substoreId", "338e5b0d-90e3-48aa-8f8e-aa090d777c64");
+    formData.set("name", "Poção D'Água");
+    formData.set("minimumPrice", "10,00");
+    formData.set("stockQuantity", "5");
+    formData.set("lowStockThreshold", "2");
+    formData.set("status", "active");
+    formData.set("sortOrder", "1");
+
+    const result = await saveProductAction(previousState, formData);
+
+    expect(formData.has("slug")).toBe(false);
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Poção D'Água",
+        slug: "pocao-dagua-3",
+      }),
+    );
+    expect(result).toEqual({
+      ok: true,
+      message: "Produto e estoque criados. Vitrine do Discord sincronizada.",
+    });
+  });
+});
+
 describe("action de sublojas", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -366,4 +424,22 @@ function clientMock(data: { id: number } | null) {
     eq: query.eq,
     from: vi.fn(() => ({ update })),
   };
+}
+
+function awaitableQuery<TResult>(result: TResult) {
+  const query = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    is: vi.fn(),
+    neq: vi.fn(),
+    then: (
+      resolve: (value: TResult) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(result).then(resolve, reject),
+  };
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+  query.is.mockReturnValue(query);
+  query.neq.mockReturnValue(query);
+  return query;
 }

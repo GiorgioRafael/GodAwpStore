@@ -348,7 +348,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                   <Badge tone={orderStatusTone(row.status)}>{ORDER_STATUS_LABELS[row.status] ?? row.status}</Badge>
                 </td>
                 <td className="px-5 py-4 text-xs text-muted">
-                  {row.late_payment_detected_at ? (
+                  {row.stock_commit_failure_reason === "insufficient_stock_after_payment" ? (
+                    <span className="font-medium text-danger">
+                      Pago sem estoque · revisar/reembolsar
+                    </span>
+                  ) : row.late_payment_detected_at ? (
                     <span className="font-medium text-danger">
                       Pago após o prazo · {dateTime(row.paid_at ?? row.late_payment_detected_at)}
                     </span>

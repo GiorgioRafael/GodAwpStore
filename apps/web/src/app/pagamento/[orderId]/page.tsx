@@ -49,7 +49,7 @@ async function readPaymentStatus(orderId: string) {
 
   const { data, error } = await client
     .from("orders")
-    .select("status,payment_status,discord_ticket_status,late_payment_detected_at")
+    .select("status,payment_status,discord_ticket_status,late_payment_detected_at,stock_commit_failure_reason")
     .eq("id", orderId)
     .maybeSingle();
   if (error || !data) return "unknown" as const;

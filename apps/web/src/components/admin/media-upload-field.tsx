@@ -7,7 +7,7 @@ import { MediaThumbnail } from "@/components/admin/media-thumbnail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/form-field";
 
-type MediaFolder = "games" | "substores" | "products";
+type MediaFolder = "games" | "substores" | "products" | "storefronts";
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxFileSize = 5 * 1024 * 1024;
@@ -17,6 +17,11 @@ interface MediaUploadFieldProps {
   label: string;
   folder: MediaFolder;
   initialValue?: string | null;
+  value?: string | null;
+  onValueChange?: (value: string) => void;
+  clearValue?: string | null;
+  clearMessage?: string;
+  clearLabel?: string;
   error?: string;
   hint?: string;
 }
@@ -38,14 +43,26 @@ export function MediaUploadField({
   label,
   folder,
   initialValue = null,
+  value: controlledValue,
+  onValueChange,
+  clearValue = null,
+  clearMessage = "A imagem será desvinculada quando o formulário for salvo.",
+  clearLabel,
   error,
   hint = "JPG, PNG ou WebP de até 5 MB.",
 }: MediaUploadFieldProps) {
   const id = useId();
-  const [value, setValue] = useState(initialValue ?? "");
+  const [internalValue, setInternalValue] = useState(initialValue ?? "");
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const value = controlledValue === undefined ? internalValue : controlledValue ?? "";
+  const normalizedClearValue = clearValue ?? "";
+
+  function updateValue(nextValue: string) {
+    if (controlledValue === undefined) setInternalValue(nextValue);
+    onValueChange?.(nextValue);
+  }
 
   async function upload(file: File) {
     setUploadMessage("");
@@ -87,7 +104,7 @@ export function MediaUploadField({
         return;
       }
 
-      setValue(payload.publicUrl);
+      updateValue(payload.publicUrl);
       setUploadMessage("Upload concluído. Salve o formulário para vincular a imagem.");
     } catch {
       setUploadError("Falha de conexão durante o upload. Tente novamente.");
@@ -161,13 +178,13 @@ export function MediaUploadField({
             variant="ghost"
             size="icon"
             className="size-9"
-            disabled={!value || uploading}
+            disabled={!value || value === normalizedClearValue || uploading}
             onClick={() => {
-              setValue("");
-              setUploadMessage("A imagem será desvinculada quando o formulário for salvo.");
+              updateValue(normalizedClearValue);
+              setUploadMessage(clearMessage);
               setUploadError("");
             }}
-            aria-label={`Remover ${label.toLowerCase()} do registro`}
+            aria-label={clearLabel ?? `Remover ${label.toLowerCase()} do registro`}
           >
             <Trash2 aria-hidden="true" className="size-4" />
           </Button>

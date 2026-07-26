@@ -234,10 +234,9 @@ export async function completeDiscordGameNicknameSubmission(
         result.wasCreated || !result.wasChanged
           ? customization.ticket.nicknameSavedText
           : customization.ticket.nicknameUpdatedText;
-      confirmationText = interpolateBotMessageLimited(
+      confirmationText = formatCopyableNicknameConfirmation(
         template,
-        { game_nickname: escapeDiscordMarkdown(result.nickname) },
-        1_000,
+        result.nickname,
       );
       publicConfirmation = {
         channelId,
@@ -317,15 +316,38 @@ export function normalizeGameNickname(value: unknown) {
   if (
     length < GAME_NICKNAME_MINIMUM_LENGTH ||
     length > GAME_NICKNAME_MAXIMUM_LENGTH ||
-    CONTROL_CHARACTER_PATTERN.test(nickname)
+    CONTROL_CHARACTER_PATTERN.test(nickname) ||
+    nickname.includes("`")
   ) {
     return null;
   }
   return nickname;
 }
 
-function escapeDiscordMarkdown(value: string) {
-  return value.replace(/([\\`*_{}\[\]()#+\-.!|>~])/g, "\\$1");
+export function formatCopyableNicknameConfirmation(
+  template: string,
+  nickname: string,
+) {
+  const normalizedTemplate = template
+    .replace(/\*\*\{game_nickname\}\*\*/g, "{game_nickname}")
+    .replace(/__\{game_nickname\}__/g, "{game_nickname}")
+    .replace(/`{1,2}\{game_nickname\}`{1,2}/g, "{game_nickname}");
+  const token = "{game_nickname}";
+  const tokenIndex = normalizedTemplate.indexOf(token);
+  if (tokenIndex < 0) {
+    return interpolateBotMessageLimited(normalizedTemplate, {}, 1_000);
+  }
+
+  const before = normalizedTemplate.slice(0, tokenIndex).trimEnd();
+  const after = normalizedTemplate.slice(tokenIndex + token.length).trimStart();
+  return [
+    before,
+    `\`\`\`text\n${nickname}\n\`\`\``,
+    after,
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .slice(0, 1_000);
 }
 
 function readSnowflakeProperty(raw: unknown, key: string) {

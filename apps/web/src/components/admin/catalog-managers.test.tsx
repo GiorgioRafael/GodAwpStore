@@ -192,6 +192,7 @@ describe("gestores do catálogo", () => {
     await user.click(screen.getByRole("button", { name: "Novo produto" }));
     expect(screen.getByRole("heading", { name: "Novo produto" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Subloja" })).toHaveValue(activeSubstore.id);
+    expect(screen.queryByRole("textbox", { name: "Slug" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Preço mínimo" })).toBeRequired();
     expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(0);
   });

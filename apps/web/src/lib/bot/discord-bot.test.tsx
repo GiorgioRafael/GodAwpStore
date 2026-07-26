@@ -509,8 +509,8 @@ describe("Discord catalog cards", () => {
     expect(String(request?.body)).toContain("🐉🔥");
     expect(String(request?.body)).toContain("3 unidades");
     expect(String(request?.body)).toContain("R$ 1,20");
-    expect(String(request?.body)).toContain("cancelados automaticamente após **2 horas**");
-    expect(String(request?.body)).toContain("estoque reservado é restabelecido");
+    expect(String(request?.body)).toContain("cancelados automaticamente após **30 minutos**");
+    expect(String(request?.body)).toContain("estoque só é reduzido quando o pagamento é confirmado");
   });
 
   it("mantém o aviso de expiração mesmo quando os textos editáveis estão vazios", () => {
@@ -536,8 +536,8 @@ describe("Discord catalog cards", () => {
     );
 
     const serialized = JSON.stringify(toCardElement(card));
-    expect(serialized).toContain("cancelados automaticamente após **2 horas**");
-    expect(serialized).toContain("estoque reservado é restabelecido");
+    expect(serialized).toContain("cancelados automaticamente após **30 minutos**");
+    expect(serialized).toContain("estoque só é reduzido quando o pagamento é confirmado");
   });
 
   it("mostra subtotal e desconto de booster no checkout privado", async () => {

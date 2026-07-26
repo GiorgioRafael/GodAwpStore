@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- O banner usa a URL pública escolhida pelo administrador. */
+
 import { ChevronDown, MessageSquareText, Send } from "lucide-react";
 
 import { BrandMark } from "@/components/layout/brand-mark";
@@ -156,6 +158,13 @@ function CardMessagePreview({
   return (
     <div className="overflow-hidden rounded-lg border border-[#3f4147] bg-[#2b2d31] shadow-sm">
       <div className="border-l-4 border-[#5865f2] px-4 py-3.5">
+        {scenario === "storefront" && config.storefront.bannerUrl ? (
+          <img
+            src={config.storefront.bannerUrl}
+            alt="Banner da vitrine"
+            className="mb-3 aspect-video w-full rounded-md bg-[#1e1f22] object-cover"
+          />
+        ) : null}
         <DiscordText className="text-base font-semibold leading-6 text-[#f2f3f5]">
           {message.title}
         </DiscordText>

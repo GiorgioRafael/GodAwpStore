@@ -424,6 +424,9 @@ type OrderRow = {
   payment_provider_created_at: string | null;
   stock_released_at: string | null;
   stock_release_reason: string | null;
+  stock_committed_at: string | null;
+  stock_commit_failed_at: string | null;
+  stock_commit_failure_reason: string | null;
   late_payment_detected_at: string | null;
   discord_ticket_channel_id: string | null;
   discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];

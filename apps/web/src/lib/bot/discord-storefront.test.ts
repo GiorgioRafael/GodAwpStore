@@ -128,6 +128,46 @@ describe("Discord storefront", () => {
     expect(JSON.stringify(payload.components)).toContain("select_products");
   });
 
+  it("prioriza o banner salvo no painel sobre o banner padrão do ambiente", async () => {
+    const defaultBannerUrl =
+      "https://gwstore.vercel.app/brands/gwstore-storefront-banner.png";
+    const customBannerUrl =
+      "https://project.supabase.co/storage/v1/object/public/catalog-media/storefronts/custom.png";
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    vi.stubEnv("DISCORD_STOREFRONT_BANNER_URL", defaultBannerUrl);
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }));
+
+    await publishDiscordStorefront({
+      channel: { id: channelId, name: "compras" },
+      catalog: catalog(),
+      customization: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        storefront: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
+          bannerUrl: customBannerUrl,
+        },
+      },
+      previous: null,
+      fetcher,
+    });
+
+    const payload = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as {
+      components: Array<{
+        components: Array<{
+          type: number;
+          items?: Array<{ media?: { url?: string } }>;
+        }>;
+      }>;
+    };
+    expect(payload.components[0]?.components[0]).toMatchObject({
+      type: 12,
+      items: [{ media: { url: customBannerUrl } }],
+    });
+    expect(JSON.stringify(payload.components)).not.toContain(defaultBannerUrl);
+  });
+
   it("aplica os textos personalizados sem liberar menções", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const fetcher = vi

@@ -126,7 +126,7 @@ from public.create_bot_order_with_reservation(
   1000
 );
 
--- Replaying the same Discord interaction must not decrement the counter twice.
+-- Replaying the same Discord interaction must keep unpaid stock unchanged.
 select *
 from public.create_bot_order_with_reservation(
   '720000000000000102',
@@ -242,9 +242,9 @@ begin
     or v_order.sale_price_cents <> 100
     or v_order.inventory_unit_id is not null
     or v_link_count <> 0
-    or v_available_stock <> 30
-    or v_summary_stock <> 30 then
-    raise exception 'dynamic-price order did not reserve exactly 20 aggregate units';
+    or v_available_stock <> 50
+    or v_summary_stock <> 50 then
+    raise exception 'dynamic-price unpaid order changed aggregate stock';
   end if;
 end
 $$;

@@ -36,6 +36,7 @@ import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-reposit
 import { BotCommerceService } from "./commerce-service";
 import {
   customerRankCard,
+  customerRankGuideCard,
   customerRankUnavailableCard,
 } from "./customer-rank-card";
 import { SupabaseCustomerRankRepository } from "./customer-rank-repository";
@@ -51,6 +52,7 @@ import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
   interpolateBotMessage,
   interpolateBotMessageLimited,
+  normalizeBotMessageImageUrl,
   type BotMessageCustomization,
 } from "./message-customization";
 import { loadBotMessageCustomization } from "./message-customization-server";
@@ -76,7 +78,7 @@ const DISCORD_DEFERRED_CHANNEL_MESSAGE = 5;
 const DISCORD_MODAL_RESPONSE = 9;
 const QUANTITY_MODAL_PREFIX = "gwstore_quantity:";
 const UNPAID_ORDER_EXPIRATION_NOTICE =
-  "⏰ **Atenção:** pedidos não pagos são cancelados automaticamente após **2 horas**, e o estoque reservado é restabelecido.";
+  "⏰ **Atenção:** pedidos não pagos são cancelados automaticamente após **30 minutos**. O estoque só é reduzido quando o pagamento é confirmado.";
 
 let botSingleton: ReturnType<typeof createBot> | undefined;
 
@@ -170,6 +172,10 @@ function createBot() {
       logBotError("customer_rank", error);
       await event.channel.post(customerRankUnavailableCard());
     }
+  });
+
+  bot.onSlashCommand("/ranking", async (event) => {
+    await event.channel.post(customerRankGuideCard());
   });
 
   bot.onAction("select_product", async (event) => {
@@ -432,7 +438,7 @@ export function catalogCards(
       <Card
         key="empty-catalog"
         title={interpolateBotMessageLimited(message.emptyTitle, {}, 256)}
-        imageUrl={discordStorefrontBannerUrl() ?? undefined}
+        imageUrl={discordStorefrontBannerUrl(customization) ?? undefined}
       >
         {message.emptyText ? <CardText>{message.emptyText}</CardText> : null}
         {message.emptyHint ? <CardText>{message.emptyHint}</CardText> : null}
@@ -447,7 +453,7 @@ export function catalogCards(
   }
 
   const storefrontImageUrl =
-    discordStorefrontBannerUrl() ??
+    discordStorefrontBannerUrl(customization) ??
     discordImageUrl(catalog[0]?.substores[0]?.imageUrl);
   return [
     <Card
@@ -942,17 +948,25 @@ export function configureDiscordProductEntrySelect<T>(
   return payload;
 }
 
-export function configureDiscordStorefrontBanner<T>(payload: T): T {
-  const bannerUrl = discordStorefrontBannerUrl();
-  if (!bannerUrl || !isObject(payload) || !Array.isArray(payload.components)) {
+export function configureDiscordStorefrontBanner<T>(
+  payload: T,
+  customization?: BotMessageCustomization,
+): T {
+  if (!isObject(payload) || !Array.isArray(payload.components)) {
     return payload;
   }
+  const bannerUrl = discordStorefrontBannerUrl(customization);
 
   for (const container of payload.components) {
     if (!isObject(container) || !Array.isArray(container.components)) continue;
-    const bannerIndex = container.components.findIndex((component) =>
-      isDiscordMediaGalleryForUrl(component, bannerUrl),
-    );
+    let bannerIndex = bannerUrl
+      ? container.components.findIndex((component) =>
+          isDiscordMediaGalleryForUrl(component, bannerUrl),
+        )
+      : -1;
+    if (bannerIndex < 0 && hasDiscordProductSelector(container.components)) {
+      bannerIndex = container.components.findIndex(isDiscordMediaGallery);
+    }
     if (bannerIndex < 0) continue;
     if (bannerIndex > 0) {
       const [banner] = container.components.splice(bannerIndex, 1);
@@ -1065,20 +1079,42 @@ function discordImageUrl(value: string | null | undefined) {
   }
 }
 
-function discordStorefrontBannerUrl() {
-  return discordImageUrl(process.env.DISCORD_STOREFRONT_BANNER_URL?.trim());
+function discordStorefrontBannerUrl(customization?: BotMessageCustomization) {
+  return (
+    discordImageUrl(
+      normalizeBotMessageImageUrl(customization?.storefront.bannerUrl),
+    ) ?? discordImageUrl(process.env.DISCORD_STOREFRONT_BANNER_URL?.trim())
+  );
 }
 
 function isDiscordMediaGalleryForUrl(value: unknown, expectedUrl: string) {
-  if (!isObject(value) || value.type !== 12 || !Array.isArray(value.items)) {
-    return false;
-  }
+  if (!isDiscordMediaGallery(value)) return false;
   return value.items.some(
     (item) =>
       isObject(item) &&
       isObject(item.media) &&
       item.media.url === expectedUrl,
   );
+}
+
+function isDiscordMediaGallery(
+  value: unknown,
+): value is { type: number; items: unknown[] } {
+  return isObject(value) && value.type === 12 && Array.isArray(value.items);
+}
+
+function hasDiscordProductSelector(components: unknown[]) {
+  let found = false;
+  visitDiscordComponents(components, (component) => {
+    if (
+      component.type === 3 &&
+      typeof component.custom_id === "string" &&
+      decodeDiscordCustomId(component.custom_id).actionId === "select_products"
+    ) {
+      found = true;
+    }
+  });
+  return found;
 }
 
 function productEmoji(productName: string) {

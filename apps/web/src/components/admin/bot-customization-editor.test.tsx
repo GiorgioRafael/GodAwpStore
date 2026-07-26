@@ -18,11 +18,14 @@ import { BotCustomizationEditor } from "./bot-customization-editor";
 
 describe("editor de mensagens do bot", () => {
   it("atualiza a prévia ao vivo e serializa a configuração global", () => {
+    const defaultStorefrontBannerUrl =
+      "https://gwstore.vercel.app/brands/gwstore-storefront-banner.png";
     const { container } = render(
       <BotCustomizationEditor
         initialConfig={DEFAULT_BOT_MESSAGE_CUSTOMIZATION}
         initialNotificationDiscordUserIds={[...DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS]}
         initialTicketCloseAdminDiscordUserIds={[...DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS]}
+        defaultStorefrontBannerUrl={defaultStorefrontBannerUrl}
         updatedAt="2026-07-17T15:00:00.000Z"
       />,
     );
@@ -40,8 +43,16 @@ describe("editor de mensagens do bot", () => {
     );
     expect(serialized).not.toBeNull();
     expect(expectedUpdatedAt).toHaveValue("2026-07-17T15:00:00.000Z");
+    expect(screen.getByRole("img", { name: "Banner da vitrine" })).toHaveAttribute(
+      "src",
+      defaultStorefrontBannerUrl,
+    );
     expect(JSON.parse(serialized?.value ?? "{}")).toMatchObject({
-      storefront: { title: "✨ Loja personalizada ✨", welcome: "" },
+      storefront: {
+        bannerUrl: defaultStorefrontBannerUrl,
+        title: "✨ Loja personalizada ✨",
+        welcome: "",
+      },
     });
   });
 
