@@ -49,6 +49,7 @@ export type GiveawayAnnouncementInput = {
   startsAt: string;
   endsAt: string;
   status: Enums<"giveaway_status">;
+  winnerCount: number;
   requiredValidInvites: number;
   minimumAccountAgeDays: number;
   minimumStayMinutes: number;
@@ -182,7 +183,7 @@ export function giveawayAnnouncementPayload(
 ) {
   const status = statusPresentation(input.status);
   const prizeLines = input.prizes.map(
-    (prize) => `• **${formatQuantity(prize.quantity)}×** ${sanitize(prize.productName, 100)}`,
+    (prize) => `> **${formatQuantity(prize.quantity)}× ${sanitize(prize.productName, 100)}**`,
   );
   const requirement = input.requiredValidInvites === 0
     ? "Sem indicação obrigatória"
@@ -205,9 +206,12 @@ export function giveawayAnnouncementPayload(
   const failureLine = input.status === "failed" && input.failureReason
     ? `\n\n⚠️ ${sanitize(input.failureReason, 300)}`
     : "";
-  const prizeHeading = winners.length > 1
-    ? `Prêmios distribuídos entre ${formatQuantity(winners.length)} ganhadores`
-    : "Pacote completo para 1 ganhador";
+  const distributionWinnerCount = winners.length || input.winnerCount;
+  const isPlannedDistribution = winners.length === 0;
+  const divisionExplanation = prizeDivisionExplanation(
+    distributionWinnerCount,
+    isPlannedDistribution,
+  );
   const mentionedWinnerIds = winners.map((winner) => winner.discordUserId);
   const participationSteps = input.requiredValidInvites === 0
     ? "\n**Como participar**\n1. Clique em **Participar**.\n2. Consulte seu status no botão ao lado."
@@ -224,10 +228,11 @@ export function giveawayAnnouncementPayload(
     embeds: [
       {
         color: status.color,
-        title: `🎁 ${sanitize(input.title, 240)}`,
+        title: `🎁 PRÊMIO: ${sanitize(input.title, 220)}`,
         description: limitText([
           sanitize(input.description, 900),
-          `\n**${prizeHeading}**\n${prizeLines.join("\n")}`,
+          `\n## 🎁 ITENS DO SORTEIO\n${prizeLines.join("\n")}`,
+          `\n👥 **${isPlannedDistribution && distributionWinnerCount > 1 ? "Até " : ""}${formatQuantity(distributionWinnerCount)} ${distributionWinnerCount === 1 ? "ganhador" : "ganhadores"}**\n${divisionExplanation}`,
           participationSteps,
           `\n**Requisitos automáticos**\n${automaticRequirements}`,
           winnerLine,
@@ -282,19 +287,26 @@ export function giveawayResultAnnouncementPayload(
   siteUrl: string,
 ) {
   const winners = normalizedWinners(input);
-  const winnerLines = winners.map(
-    (winner, index) => `**${index + 1}.** <@${winner.discordUserId}>`,
-  );
   const prizeLines = input.prizes.map(
-    (prize) => `• **${formatQuantity(prize.quantity)}×** ${sanitize(prize.productName, 100)}`,
+    (prize) => `> **${formatQuantity(prize.quantity)}× ${sanitize(prize.productName, 100)}**`,
   );
+  const winnerLines = winners.map((winner, index) => {
+    const allocation = prizeAllocationForWinner(input.prizes, index, winners.length);
+    return [
+      `**${index + 1}.** <@${winner.discordUserId}>`,
+      ...allocation.map(
+        (prize) => `↳ **${formatQuantity(prize.quantity)}×** ${sanitize(prize.productName, 100)}`,
+      ),
+    ].join("\n");
+  });
   const embed = {
     color: 0xd4a64a,
     title: "🏆 RESULTADO DO SORTEIO",
     description: limitText([
       `O sorteio **${sanitize(input.title, 220)}** foi encerrado.`,
-      `\n**${winners.length === 1 ? "Ganhador" : "Ganhadores"}**\n${winnerLines.join("\n")}`,
-      `\n**Prêmios**\n${prizeLines.join("\n")}`,
+      `\n## 🎁 PRÊMIO SORTEADO\n${prizeLines.join("\n")}`,
+      `\n👥 **Divisão do pacote**\n${prizeDivisionExplanation(winners.length)}`,
+      `\n## ${winners.length === 1 ? "GANHADOR E PRÊMIO" : "GANHADORES E SUAS PARTES"}\n${winnerLines.join("\n\n")}`,
       "\nOs tickets privados de entrega serão abertos automaticamente.",
     ].join("\n"), EMBED_DESCRIPTION_LIMIT),
     footer: { text: `${STORE_NAME} Giveaway • ${input.id}` },
@@ -324,15 +336,25 @@ export function giveawayRerollAnnouncementPayload(
   siteUrl: string,
 ) {
   const winners = normalizedWinners(input);
-  const winnerLines = winners.map(
-    (winner, index) => `**${index + 1}.** <@${winner.discordUserId}>`,
+  const winnerLines = winners.map((winner, index) => {
+    const allocation = prizeAllocationForWinner(input.prizes, index, winners.length);
+    return [
+      `**${index + 1}.** <@${winner.discordUserId}>`,
+      ...allocation.map(
+        (prize) => `↳ **${formatQuantity(prize.quantity)}×** ${sanitize(prize.productName, 100)}`,
+      ),
+    ].join("\n");
+  });
+  const prizeLines = input.prizes.map(
+    (prize) => `> **${formatQuantity(prize.quantity)}× ${sanitize(prize.productName, 100)}**`,
   );
   const embed = {
     color: 0xe4ad55,
     title: "🔄 NOVO RESULTADO DO SORTEIO",
     description: limitText([
       `A equipe realizou um resorteio de **${sanitize(input.title, 220)}**.`,
-      `\n**${winners.length === 1 ? "Ganhador atual" : "Ganhadores atuais"}**\n${winnerLines.join("\n")}`,
+      `\n## 🎁 PRÊMIO SORTEADO\n${prizeLines.join("\n")}`,
+      `\n**${winners.length === 1 ? "Ganhador atual e prêmio" : "Ganhadores atuais e suas partes"}**\n${winnerLines.join("\n\n")}`,
       "\nOs novos tickets privados de entrega serão abertos automaticamente.",
     ].join("\n"), EMBED_DESCRIPTION_LIMIT),
     footer: { text: `${STORE_NAME} Giveaway • ${input.id}` },
@@ -532,7 +554,7 @@ export function giveawayWinnerTicketPayload(
   );
   const prizeFields = chunkLines(prizeLines, EMBED_FIELD_VALUE_LIMIT).map(
     (value, index) => ({
-      name: index === 0 ? "Itens do pacote" : `Itens do pacote (${index + 1})`,
+      name: index === 0 ? "🎁 Sua parte do prêmio" : `🎁 Sua parte do prêmio (${index + 1})`,
       value,
     }),
   );
@@ -619,6 +641,9 @@ function validateAnnouncement(input: GiveawayAnnouncementInput) {
   if (input.prizes.length < 1 || input.prizes.length > 20) {
     throw new Error("Pacote de prêmios inválido.");
   }
+  if (!Number.isInteger(input.winnerCount) || input.winnerCount < 1 || input.winnerCount > 5) {
+    throw new Error("Quantidade de ganhadores inválida.");
+  }
 }
 
 function validateTicket(input: GiveawayWinnerTicketInput) {
@@ -642,10 +667,36 @@ function normalizedWinners(input: GiveawayAnnouncementInput) {
   const winners = input.winners?.filter(
     (winner) => SNOWFLAKE_PATTERN.test(winner.discordUserId),
   ) ?? [];
-  if (winners.length) return winners.slice(0, 100);
+  if (winners.length) return winners.slice(0, 5);
   return input.winnerDiscordUserId && SNOWFLAKE_PATTERN.test(input.winnerDiscordUserId)
     ? [{ discordUserId: input.winnerDiscordUserId, displayName: "" }]
     : [];
+}
+
+function prizeDivisionExplanation(winnerCount: number, isMaximum = false) {
+  return winnerCount === 1
+    ? "O ganhador recebe o pacote completo."
+    : `O pacote será dividido da forma mais equilibrada possível entre ${isMaximum ? `até ${formatQuantity(winnerCount)}` : `os ${formatQuantity(winnerCount)}`} ganhadores. Quando uma quantidade não for divisível igualmente, as unidades restantes são distribuídas seguindo a ordem do sorteio.`;
+}
+
+function prizeAllocationForWinner(
+  prizes: GiveawayPrize[],
+  winnerIndex: number,
+  winnerCount: number,
+) {
+  if (winnerCount < 1) return [];
+  let unitsBefore = 0;
+  return prizes.flatMap((prize) => {
+    const baseQuantity = Math.floor(prize.quantity / winnerCount);
+    const remainder = prize.quantity % winnerCount;
+    const remainderStart = unitsBefore % winnerCount;
+    const relativePosition = (
+      winnerIndex - remainderStart + winnerCount
+    ) % winnerCount;
+    const quantity = baseQuantity + (relativePosition < remainder ? 1 : 0);
+    unitsBefore += prize.quantity;
+    return quantity > 0 ? [{ ...prize, quantity }] : [];
+  });
 }
 
 function statusPresentation(status: Enums<"giveaway_status">) {

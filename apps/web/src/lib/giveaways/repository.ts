@@ -41,6 +41,7 @@ export type PublicGiveawayView = Pick<
   | "starts_at"
   | "ends_at"
   | "status"
+  | "winner_count"
   | "required_valid_invites"
   | "minimum_account_age_days"
   | "minimum_stay_minutes"
@@ -152,7 +153,7 @@ export async function getPublicGiveaway(
   const { data: giveaway, error } = await client
     .from("giveaways")
     .select(
-      "id,public_slug,guild_id,title,description,rules_text,starts_at,ends_at,status,required_valid_invites,minimum_account_age_days,minimum_stay_minutes,winner_discord_user_id,winner_display_name,failure_reason",
+      "id,public_slug,guild_id,title,description,rules_text,starts_at,ends_at,status,winner_count,required_valid_invites,minimum_account_age_days,minimum_stay_minutes,winner_discord_user_id,winner_display_name,failure_reason",
     )
     .eq("public_slug", slug)
     .maybeSingle();
@@ -237,6 +238,7 @@ export async function getGiveawayAnnouncementInput(giveawayId: string) {
     startsAt: giveaway.starts_at,
     endsAt: giveaway.ends_at,
     status: effectiveStatus(giveaway.status, giveaway.starts_at, giveaway.ends_at),
+    winnerCount: giveaway.winner_count,
     requiredValidInvites: giveaway.required_valid_invites,
     minimumAccountAgeDays: giveaway.minimum_account_age_days,
     minimumStayMinutes: giveaway.minimum_stay_minutes,

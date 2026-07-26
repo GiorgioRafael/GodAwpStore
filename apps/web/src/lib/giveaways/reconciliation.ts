@@ -165,7 +165,7 @@ async function drawDueGiveaways(
     if (Date.now() + DRAW_BATCH_BUDGET_MS >= deadline) return;
     const claimToken = randomUUID();
     const { data: claim, error } = await client
-      .rpc("claim_due_giveaway_v2", { p_claim_token: claimToken })
+      .rpc("claim_due_giveaway_v3", { p_claim_token: claimToken })
       .maybeSingle();
     if (error) throw new Error(`Falha ao reservar sorteio: ${error.message}`);
     if (!claim) return;
@@ -176,7 +176,7 @@ async function drawDueGiveaways(
           client,
           claim.giveaway_id,
           claimToken,
-          null,
+          [],
         );
         result.drawsWithoutWinner += 1;
         await refreshAnnouncement(client, completed.completed_giveaway_id, fetcher, result);
@@ -205,18 +205,18 @@ async function drawDueGiveaways(
         result.drawsDeferred += 1;
         continue;
       }
-      const { data: winner, error: winnerError } = await client
-        .rpc("pick_giveaway_winner", {
+      const { data: winners, error: winnerError } = await client
+        .rpc("pick_giveaway_winners", {
           p_giveaway_id: claim.giveaway_id,
           p_claim_token: claimToken,
         })
-        .maybeSingle();
+        .order("winner_position");
       if (winnerError) throw new Error(winnerError.message);
       const completed = await completeGiveawayDraw(
         client,
         claim.giveaway_id,
         claimToken,
-        winner?.entry_id ?? null,
+        winners?.map((winner) => winner.entry_id) ?? [],
       );
       if (completed.resulting_status === "completed") result.drawsCompleted += 1;
       else result.drawsWithoutWinner += 1;
@@ -237,6 +237,7 @@ type DrawClaim = {
   required_valid_invites: number;
   minimum_stay_minutes: number;
   ends_at: string;
+  winner_count: number;
 };
 
 async function hasPotentiallyEligibleEntry(
@@ -257,13 +258,13 @@ async function completeGiveawayDraw(
   client: AdminClient,
   giveawayId: string,
   claimToken: string,
-  winnerEntryId: string | null,
+  winnerEntryIds: string[],
 ) {
   const { data, error } = await client
-    .rpc("complete_giveaway_draw_v2", {
+    .rpc("complete_giveaway_draw_v3", {
       p_giveaway_id: giveawayId,
       p_claim_token: claimToken,
-      p_winner_entry_id: winnerEntryId,
+      p_winner_entry_ids: winnerEntryIds,
     })
     .single();
   if (error || !data) {

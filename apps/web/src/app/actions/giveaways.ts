@@ -30,6 +30,7 @@ const giveawaySchema = z.object({
   description: z.string().trim().max(2_000),
   rulesText: z.string().trim().max(2_000),
   endsAt: z.string().datetime(),
+  winnerCount: z.number().int().min(1, "Escolha ao menos 1 ganhador.").max(5, "O limite é de 5 ganhadores."),
   requiredValidInvites: z.number().int().min(0).max(100),
   minimumAccountAgeDays: z.number().int().min(0).max(3_650),
   minimumStayMinutes: z.number().int().min(0).max(43_200),
@@ -48,6 +49,14 @@ const giveawaySchema = z.object({
   if (new Set(value.prizes.map((prize) => prize.productId)).size !== value.prizes.length) {
     context.addIssue({ code: "custom", path: ["prizes"], message: "Não repita produtos no pacote." });
   }
+  const totalPrizeUnits = value.prizes.reduce((total, prize) => total + prize.quantity, 0);
+  if (totalPrizeUnits < value.winnerCount) {
+    context.addIssue({
+      code: "custom",
+      path: ["prizes"],
+      message: "O pacote precisa ter ao menos uma unidade de prêmio por ganhador.",
+    });
+  }
 });
 
 export async function createGiveawayAction(
@@ -64,6 +73,7 @@ export async function createGiveawayAction(
     description: text(formData, "description"),
     rulesText: text(formData, "rulesText"),
     endsAt: localDateTimeToIso(text(formData, "endsAt")),
+    winnerCount: integer(formData, "winnerCount"),
     requiredValidInvites: integer(formData, "requiredValidInvites"),
     minimumAccountAgeDays: integer(formData, "minimumAccountAgeDays"),
     minimumStayMinutes: Math.round(integer(formData, "minimumStayHours") * 60),
@@ -108,7 +118,7 @@ export async function createGiveawayAction(
     }
 
     const { data, error } = await sessionClient
-      .rpc("admin_create_giveaway_v2", {
+      .rpc("admin_create_giveaway_v3", {
         p_public_slug: randomBytes(8).toString("hex"),
         p_guild_id: parsed.data.guildId,
         p_publication_channel_id: publicationChannel.id,
@@ -119,6 +129,7 @@ export async function createGiveawayAction(
         p_description: parsed.data.description,
         p_rules_text: parsed.data.rulesText,
         p_ends_at: parsed.data.endsAt,
+        p_winner_count: parsed.data.winnerCount,
         p_required_valid_invites: parsed.data.requiredValidInvites,
         p_minimum_account_age_days: parsed.data.minimumAccountAgeDays,
         p_minimum_stay_minutes: parsed.data.minimumStayMinutes,
@@ -205,7 +216,7 @@ export async function rerollGiveawayWinnersAction(
   if (!UUID_PATTERN.test(giveawayId)) return { ok: false, message: "Sorteio inválido." };
   if (
     winnerIds.length < 1
-    || winnerIds.length > 100
+    || winnerIds.length > 5
     || winnerIds.some((winnerId) => !UUID_PATTERN.test(winnerId))
     || new Set(winnerIds).size !== winnerIds.length
   ) {

@@ -85,6 +85,7 @@ export default async function GiveawayPage({
   const missingInvites = giveaway.entry
     ? Math.max(giveaway.required_valid_invites - giveaway.entry.validInviteCount, 0)
     : 0;
+  const displayedWinnerCount = giveaway.winners.length || giveaway.winner_count;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background px-4 py-8 text-foreground sm:px-6 sm:py-12">
@@ -115,16 +116,21 @@ export default async function GiveawayPage({
           </CardHeader>
 
           <CardContent className="space-y-6 border-t border-border">
-            <section>
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
+            <section className="rounded-2xl border border-gold/25 bg-gold/[0.06] p-5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-gold-bright">
                 <Trophy aria-hidden="true" className="size-4 text-gold" />
-                {giveaway.winners.length > 1
-                  ? `Prêmios para ${formatNumber(giveaway.winners.length)} ganhadores`
+                {displayedWinnerCount > 1
+                  ? `Prêmio dividido entre ${giveaway.winners.length ? "" : "até "}${formatNumber(displayedWinnerCount)} ganhadores`
                   : "Pacote completo para 1 ganhador"}
               </h2>
+              <p className="mt-2 text-xs leading-5 text-muted">
+                {displayedWinnerCount === 1
+                  ? "O ganhador recebe todos os itens abaixo."
+                  : "O pacote é distribuído da forma mais equilibrada possível. Unidades que não puderem ser divididas igualmente seguem a ordem do sorteio."}
+              </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 {giveaway.prizes.map((prize) => (
-                  <div key={prize.product_id} className="rounded-xl border border-border bg-surface-muted px-4 py-3 text-sm">
+                  <div key={prize.product_id} className="rounded-xl border border-gold/20 bg-black/10 px-4 py-3 text-sm">
                     <span className="font-semibold text-gold-bright">{formatNumber(prize.quantity)}×</span> {prize.product_name}
                   </div>
                 ))}

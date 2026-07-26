@@ -46,9 +46,11 @@ describe("GiveawayManager", () => {
     expect((screen.getByLabelText("Encerramento") as HTMLInputElement).value)
       .toBe("2026-07-22T12:00");
     expect(screen.getByText("Começa ao publicar · horário de Brasília")).toBeTruthy();
-    expect(screen.getByText(
-      "O sorteio começa assim que for criado e o pacote é reservado na mesma operação.",
-    )).toBeTruthy();
+    expect(screen.getByText(/O sorteio começa assim que for criado; o pacote é reservado/))
+      .toBeTruthy();
+    const winnerSelect = screen.getByLabelText("Quantidade de ganhadores") as HTMLSelectElement;
+    expect(winnerSelect.options).toHaveLength(5);
+    expect(winnerSelect.value).toBe("1");
     expect(screen.getByLabelText("Indicações válidas")).toBeTruthy();
     expect(screen.getByLabelText("Observações adicionais")).toBeTruthy();
     expect(screen.getByText(/usuário cria um convite nativo pelo próprio Discord/))
@@ -67,6 +69,7 @@ describe("GiveawayManager", () => {
         status: "completed",
         startsAt: "2026-07-20T18:00:00.000Z",
         endsAt: "2026-07-21T18:00:00.000Z",
+        winnerCount: 2,
         requiredValidInvites: 1,
         participantCount: 20,
         eligibleParticipantCount: 12,

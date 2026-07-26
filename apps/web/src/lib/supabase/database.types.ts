@@ -270,6 +270,7 @@ type GiveawayRow = {
   starts_at: string;
   ends_at: string;
   status: Database["public"]["Enums"]["giveaway_status"];
+  winner_count: number;
   required_valid_invites: number;
   minimum_account_age_days: number;
   minimum_stay_minutes: number;
@@ -1322,6 +1323,23 @@ export type Database = {
       };
     };
     Functions: {
+      get_demo_roulette_inventory: {
+        Args: Record<never, never>;
+        Returns: {
+          prize_key: string;
+          quantity: number;
+          updated_at: string;
+        }[];
+      };
+      spin_demo_roulette: {
+        Args: { p_discord_user_id: string };
+        Returns: {
+          spin_id: string;
+          prize_key: string;
+          inventory_quantity: number;
+          spun_at: string;
+        }[];
+      };
       admin_reorder_products: {
         Args: { p_product_ids: string[] };
         Returns: number;
@@ -1365,6 +1383,30 @@ export type Database = {
           p_required_valid_invites: number;
           p_minimum_account_age_days: number;
           p_minimum_stay_minutes: number;
+          p_prizes: Json;
+        };
+        Returns: {
+          created_giveaway_id: string;
+          created_status: Database["public"]["Enums"]["giveaway_status"];
+          created_public_slug: string;
+        }[];
+      };
+      admin_create_giveaway_v3: {
+        Args: {
+          p_public_slug: string;
+          p_guild_id: string;
+          p_publication_channel_id: string;
+          p_publication_channel_name: string;
+          p_ticket_category_id: string | null;
+          p_ticket_category_name: string | null;
+          p_title: string;
+          p_description: string;
+          p_rules_text: string;
+          p_ends_at: string;
+          p_required_valid_invites: number;
+          p_minimum_account_age_days: number;
+          p_minimum_stay_minutes: number;
+          p_winner_count: number;
           p_prizes: Json;
         };
         Returns: {
@@ -1495,6 +1537,17 @@ export type Database = {
           ends_at: string;
         }[];
       };
+      claim_due_giveaway_v3: {
+        Args: { p_claim_token: string };
+        Returns: {
+          giveaway_id: string;
+          discord_guild_id: string;
+          required_valid_invites: number;
+          minimum_stay_minutes: number;
+          ends_at: string;
+          winner_count: number;
+        }[];
+      };
       mark_giveaway_entry_membership: {
         Args: {
           p_giveaway_id: string;
@@ -1519,6 +1572,14 @@ export type Database = {
         Args: { p_giveaway_id: string; p_claim_token: string };
         Returns: { entry_id: string; discord_user_id: string }[];
       };
+      pick_giveaway_winners: {
+        Args: { p_giveaway_id: string; p_claim_token: string };
+        Returns: {
+          winner_position: number;
+          entry_id: string;
+          discord_user_id: string;
+        }[];
+      };
       complete_giveaway_draw: {
         Args: {
           p_giveaway_id: string;
@@ -1541,6 +1602,18 @@ export type Database = {
           completed_giveaway_id: string;
           resulting_status: Database["public"]["Enums"]["giveaway_status"];
           winner_discord_user_id: string | null;
+        }[];
+      };
+      complete_giveaway_draw_v3: {
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_winner_entry_ids: string[];
+        };
+        Returns: {
+          completed_giveaway_id: string;
+          resulting_status: Database["public"]["Enums"]["giveaway_status"];
+          actual_winner_count: number;
         }[];
       };
       claim_giveaway_ticket: {

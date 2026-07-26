@@ -51,7 +51,7 @@ export default async function GiveawaysPage() {
 
   return (
     <div className="space-y-7">
-      <PageHeader eyebrow="Engajamento" title="Sorteios" description="Crie um pacote de itens para um ganhador, valide indicações reais e abra o ticket de entrega automaticamente." />
+      <PageHeader eyebrow="Engajamento" title="Sorteios" description="Crie um pacote para até 5 ganhadores, valide indicações reais e abra os tickets de entrega automaticamente." />
       <Notice>Convites válidos usam autorização oficial do Discord: contas que já estavam no servidor, autoindicações, contas novas demais ou membros que saem antes do prazo não contam.</Notice>
       <GiveawayManager
         guilds={guilds}
@@ -71,6 +71,7 @@ export default async function GiveawaysPage() {
           status: giveaway.status,
           startsAt: giveaway.starts_at,
           endsAt: giveaway.ends_at,
+          winnerCount: giveaway.winner_count,
           requiredValidInvites: giveaway.required_valid_invites,
           participantCount: giveaway.participantCount,
           eligibleParticipantCount: giveaway.eligibleParticipantCount,

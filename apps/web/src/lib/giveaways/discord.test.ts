@@ -29,6 +29,7 @@ const input: GiveawayAnnouncementInput = {
   startsAt: "2026-07-20T18:00:00.000Z",
   endsAt: "2026-07-21T18:00:00.000Z",
   status: "active",
+  winnerCount: 1,
   requiredValidInvites: 2,
   minimumAccountAgeDays: 7,
   minimumStayMinutes: 60,
@@ -47,8 +48,10 @@ describe("giveaway Discord announcement", () => {
     const payload = giveawayAnnouncementPayload(input, "https://gwstore.vercel.app");
     const description = payload.embeds[0].description;
 
-    expect(description).toContain("2×** Super Watering");
-    expect(description).toContain("1×** Dragon's Breath");
+    expect(payload.embeds[0].title).toBe("🎁 PRÊMIO: Pacote especial");
+    expect(description).toContain("ITENS DO SORTEIO");
+    expect(description).toContain("2× Super Watering");
+    expect(description).toContain("1× Dragon's Breath");
     expect(description).toContain("2 convite(s) nativo(s) válido(s)");
     expect(description).toContain("7 dia(s)");
     expect(description).toContain("1 hora(s)");
@@ -71,6 +74,24 @@ describe("giveaway Discord announcement", () => {
       "Os requisitos automáticos acima são os únicos usados pelo sistema",
     );
     expect(payload.allowed_mentions).toEqual({ parse: [], users: [] });
+  });
+
+  it("destaca o prêmio e explica a divisão antes de um sorteio com cinco ganhadores", () => {
+    const payload = giveawayAnnouncementPayload(
+      {
+        ...input,
+        winnerCount: 5,
+        prizes: [{ productName: "Star Fruit", quantity: 12 }],
+      },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.embeds[0].title).toContain("PRÊMIO");
+    expect(payload.embeds[0].description).toContain("12× Star Fruit");
+    expect(payload.embeds[0].description).toContain("5 ganhadores");
+    expect(payload.embeds[0].description).toContain(
+      "unidades restantes são distribuídas seguindo a ordem do sorteio",
+    );
   });
 
   it("mantém os dois botões disponíveis enquanto a publicação ainda está agendada", () => {
@@ -141,7 +162,13 @@ describe("giveaway Discord announcement", () => {
       { discordUserId: "323456789012345678", displayName: "Segundo" },
     ];
     const payload = giveawayResultAnnouncementPayload(
-      { ...input, status: "completed", winners },
+      {
+        ...input,
+        status: "completed",
+        winnerCount: 2,
+        winners,
+        prizes: [{ productName: "Star Fruit", quantity: 5 }],
+      },
       "https://gwstore.vercel.app",
     );
 
@@ -154,6 +181,8 @@ describe("giveaway Discord announcement", () => {
     expect(payload.embeds[0].title).toBe("🏆 RESULTADO DO SORTEIO");
     expect(payload.embeds[0].description).toContain("1.** <@223456789012345678>");
     expect(payload.embeds[0].description).toContain("2.** <@323456789012345678>");
+    expect(payload.embeds[0].description).toContain("3×** Star Fruit");
+    expect(payload.embeds[0].description).toContain("2×** Star Fruit");
     expect(payload.components[0].components[0]).toMatchObject({
       label: "Ver resultado",
       url: "https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",

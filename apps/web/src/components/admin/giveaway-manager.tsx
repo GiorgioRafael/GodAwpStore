@@ -59,6 +59,7 @@ export type GiveawayListItem = {
   status: "scheduled" | "active" | "drawing" | "completed" | "cancelled" | "failed";
   startsAt: string;
   endsAt: string;
+  winnerCount: number;
   requiredValidInvites: number;
   participantCount: number;
   eligibleParticipantCount: number;
@@ -98,6 +99,7 @@ export function GiveawayManager({
   );
   const formId = useId();
   const [guildId, setGuildId] = useState(guilds[0]?.id ?? "");
+  const [winnerCount, setWinnerCount] = useState(1);
   const [prizes, setPrizes] = useState([{
     key: `${formId}-prize-0`,
     productId: "",
@@ -106,6 +108,10 @@ export function GiveawayManager({
   const guild = guilds.find((item) => item.id === guildId) ?? guilds[0];
   const selectedProductIds = useMemo(
     () => new Set(prizes.map((prize) => prize.productId).filter(Boolean)),
+    [prizes],
+  );
+  const totalPrizeUnits = useMemo(
+    () => prizes.reduce((total, prize) => total + (Number(prize.quantity) || 0), 0),
     [prizes],
   );
 
@@ -119,7 +125,7 @@ export function GiveawayManager({
             </span>
             <div>
               <h2 className="text-base font-semibold tracking-tight">Novo sorteio</h2>
-              <p className="mt-1 text-sm leading-6 text-muted">Configure o pacote, os critérios de indicação, o anúncio e o ticket do ganhador.</p>
+              <p className="mt-1 text-sm leading-6 text-muted">Configure o pacote, de 1 a 5 ganhadores, os critérios de indicação e os tickets de entrega.</p>
             </div>
           </div>
         </CardHeader>
@@ -148,13 +154,30 @@ export function GiveawayManager({
             </div>
             {guild?.error ? <p className="rounded-xl border border-danger/25 bg-danger/[0.07] p-3 text-sm text-[#ffc0bd]">{guild.error}</p> : null}
 
-            <div className="grid gap-5 lg:grid-cols-2">
+            <div className="grid gap-5 lg:grid-cols-3">
               <Field label="Título" htmlFor={`${formId}-title`} error={fieldError(state, "title")}>
                 <Input id={`${formId}-title`} name="title" placeholder="Ex.: Pacote Grow a Garden" maxLength={120} required />
+              </Field>
+              <Field label="Quantidade de ganhadores" htmlFor={`${formId}-winners`} hint="De 1 a 5" error={fieldError(state, "winnerCount")}>
+                <Select
+                  id={`${formId}-winners`}
+                  name="winnerCount"
+                  value={winnerCount}
+                  onChange={(event) => setWinnerCount(Number(event.target.value))}
+                  required
+                >
+                  {Array.from({ length: 5 }, (_, index) => index + 1).map((count) => (
+                    <option key={count} value={count}>
+                      {count} {count === 1 ? "ganhador" : "ganhadores"}
+                    </option>
+                  ))}
+                </Select>
               </Field>
               <Field label="Encerramento" htmlFor={`${formId}-ends`} hint="Começa ao publicar · horário de Brasília" error={fieldError(state, "endsAt")}>
                 <Input id={`${formId}-ends`} name="endsAt" type="datetime-local" defaultValue={defaultEndsAt} required />
               </Field>
+            </div>
+            <div className="grid gap-5 lg:grid-cols-2">
               <Field label="Descrição" htmlFor={`${formId}-description`}>
                 <Textarea id={`${formId}-description`} name="description" placeholder="Explique o sorteio e destaque o prêmio." maxLength={2000} />
               </Field>
@@ -167,7 +190,11 @@ export function GiveawayManager({
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold">Pacote de prêmios</h3>
-                  <p className="mt-1 text-xs leading-5 text-muted">Todos os itens abaixo vão para um único ganhador. O estoque é reservado ao criar.</p>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    {winnerCount === 1
+                      ? "O ganhador recebe o pacote completo. O estoque é reservado ao criar."
+                      : `O pacote inteiro será dividido da forma mais equilibrada possível entre ${winnerCount} ganhadores.`}
+                  </p>
                 </div>
                 <Button type="button" variant="secondary" size="sm" disabled={prizes.length >= Math.min(products.length, 20)} onClick={() => setPrizes((current) => [...current, { key: crypto.randomUUID(), productId: "", quantity: "1" }])}>
                   <Plus aria-hidden="true" className="size-4" /> Adicionar item
@@ -192,6 +219,19 @@ export function GiveawayManager({
                 ))}
               </div>
               {fieldError(state, "prizes") ? <p className="mt-2 text-xs text-danger">{fieldError(state, "prizes")}</p> : null}
+              <div className={`mt-3 rounded-xl border px-4 py-3 text-xs leading-5 ${
+                totalPrizeUnits < winnerCount
+                  ? "border-danger/25 bg-danger/[0.06] text-[#ffc0bd]"
+                  : "border-gold/20 bg-gold/[0.05] text-muted"
+              }`}>
+                <strong className="text-foreground">Como o prêmio será entregue:</strong>{" "}
+                {winnerCount === 1
+                  ? "todo o pacote vai para o único ganhador."
+                  : `as ${formatNumber(totalPrizeUnits)} unidade(s) do pacote serão distribuídas entre ${winnerCount} ganhadores, seguindo a ordem do sorteio e equilibrando as quantidades. Cada ganhador receberá um ticket com a sua parte.`}
+                {totalPrizeUnits < winnerCount
+                  ? ` Adicione pelo menos ${formatNumber(winnerCount - totalPrizeUnits)} unidade(s) ao pacote para que todos recebam um prêmio.`
+                  : null}
+              </div>
             </div>
 
             <div className="grid gap-5 sm:grid-cols-3">
@@ -210,8 +250,10 @@ export function GiveawayManager({
             </p>
           </CardContent>
           <CardFooter className="flex items-center justify-between gap-3">
-            <p className="text-xs leading-5 text-muted">O sorteio começa assim que for criado e o pacote é reservado na mesma operação.</p>
-            <Button type="submit" disabled={pending || !guild || products.length === 0}>
+            <p className="text-xs leading-5 text-muted">
+              O sorteio começa assim que for criado; o pacote é reservado e será dividido entre {winnerCount} {winnerCount === 1 ? "ganhador" : "ganhadores"}.
+            </p>
+            <Button type="submit" disabled={pending || !guild || products.length === 0 || totalPrizeUnits < winnerCount}>
               {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <Send aria-hidden="true" className="size-4" />}
               {pending ? "Criando..." : "Criar e publicar"}
             </Button>
@@ -251,13 +293,22 @@ function GiveawayCard({ giveaway }: { giveaway: GiveawayListItem }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4 pt-5">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <Metric icon={Users} label="Participantes" value={formatNumber(giveaway.participantCount)} />
           <Metric icon={UserCheck} label="Elegíveis" value={formatNumber(giveaway.eligibleParticipantCount)} />
+          <Metric icon={Trophy} label="Ganhadores" value={formatNumber(giveaway.winnerCount)} />
           <Metric icon={CalendarClock} label="Início" value={formatDateTime(giveaway.startsAt)} />
           <Metric icon={CalendarClock} label="Fim" value={formatDateTime(giveaway.endsAt)} />
         </div>
-        <div className="rounded-xl border border-border bg-surface-muted p-3"><p className="text-xs font-semibold uppercase tracking-[.14em] text-muted">Pacote</p><ul className="mt-2 space-y-1 text-sm">{giveaway.prizes.map((prize) => <li key={prize.productId}><span className="font-semibold text-gold-bright">{formatNumber(prize.quantity)}×</span> {prize.productName}</li>)}</ul></div>
+        <div className="rounded-xl border border-gold/25 bg-gold/[0.05] p-3">
+          <p className="text-xs font-semibold uppercase tracking-[.14em] text-gold-bright">Prêmio em destaque</p>
+          <p className="mt-1 text-xs text-muted">
+            {giveaway.winnerCount === 1
+              ? "Pacote completo para 1 ganhador"
+              : `Pacote dividido entre até ${formatNumber(giveaway.winnerCount)} ganhadores`}
+          </p>
+          <ul className="mt-3 space-y-1 text-sm">{giveaway.prizes.map((prize) => <li key={prize.productId}><span className="font-semibold text-gold-bright">{formatNumber(prize.quantity)}×</span> {prize.productName}</li>)}</ul>
+        </div>
         {giveaway.winners.length ? (
           <div className="rounded-xl border border-gold/25 bg-gold/[0.06] p-3">
             <p className="flex items-center gap-2 text-xs text-muted">

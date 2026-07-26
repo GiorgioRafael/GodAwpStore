@@ -379,6 +379,138 @@ begin
 end
 $$;
 
+set local role authenticated;
+
+select * from public.admin_create_giveaway_v3(
+  'giveawaymulti001',
+  '75000000-0000-4000-8000-000000000001',
+  '750000000000000003',
+  'sorteios',
+  null::text,
+  null::text,
+  'Pacote para dois ganhadores',
+  '',
+  '',
+  now() + interval '1 hour',
+  0,
+  0,
+  0,
+  2,
+  jsonb_build_array(jsonb_build_object(
+    'product_id', '74000000-0000-4000-8000-000000000001',
+    'quantity', 2
+  ))
+);
+
+reset role;
+set local role service_role;
+
+select * from public.register_giveaway_participant(
+  (select id from public.giveaways where public_slug = 'giveawaymulti001'),
+  '760000000000000011',
+  'Multi Participant 1',
+  null
+);
+select * from public.register_giveaway_participant(
+  (select id from public.giveaways where public_slug = 'giveawaymulti001'),
+  '760000000000000012',
+  'Multi Participant 2',
+  null
+);
+
+reset role;
+update public.giveaways
+set starts_at = now() - interval '2 seconds',
+    ends_at = now() - interval '1 second'
+where public_slug = 'giveawaymulti001';
+set local role service_role;
+
+select * from public.claim_due_giveaway_v3('77000000-0000-4000-8000-000000000011');
+select public.mark_giveaway_entry_membership(
+  (select id from public.giveaways where public_slug = 'giveawaymulti001'),
+  '77000000-0000-4000-8000-000000000011',
+  (select id from public.giveaway_entries where discord_user_id = '760000000000000011'),
+  true,
+  null
+);
+select public.mark_giveaway_entry_membership(
+  (select id from public.giveaways where public_slug = 'giveawaymulti001'),
+  '77000000-0000-4000-8000-000000000011',
+  (select id from public.giveaway_entries where discord_user_id = '760000000000000012'),
+  true,
+  null
+);
+
+create temporary table selected_multi_winners (
+  winner_position smallint,
+  entry_id uuid,
+  discord_user_id text
+) on commit drop;
+insert into selected_multi_winners
+select *
+from public.pick_giveaway_winners(
+  (select id from public.giveaways where public_slug = 'giveawaymulti001'),
+  '77000000-0000-4000-8000-000000000011'
+);
+
+select * from public.complete_giveaway_draw_v3(
+  (select id from public.giveaways where public_slug = 'giveawaymulti001'),
+  '77000000-0000-4000-8000-000000000011',
+  (select array_agg(entry_id order by winner_position) from selected_multi_winners)
+);
+
+create temporary table multi_winner_ticket_claims (
+  winner_id uuid,
+  giveaway_id uuid,
+  discord_guild_id text,
+  winner_discord_user_id text,
+  winner_display_name text,
+  ticket_category_id text,
+  giveaway_title text,
+  prizes jsonb
+) on commit drop;
+insert into multi_winner_ticket_claims
+select * from public.claim_giveaway_winner_ticket(
+  '77000000-0000-4000-8000-000000000012'
+);
+insert into multi_winner_ticket_claims
+select * from public.claim_giveaway_winner_ticket(
+  '77000000-0000-4000-8000-000000000013'
+);
+
+reset role;
+do $$
+begin
+  if (
+    select winner_count = 2
+      and status = 'completed'
+    from public.giveaways
+    where public_slug = 'giveawaymulti001'
+  ) is not true then
+    raise exception 'Configurable winner count was not persisted';
+  end if;
+  if (
+    select count(*) = 2
+      and count(distinct entry_id) = 2
+      and min(winner_position) = 1
+      and max(winner_position) = 2
+    from public.giveaway_winners
+    where giveaway_id = (select id from public.giveaways where public_slug = 'giveawaymulti001')
+  ) is not true then
+    raise exception 'Multi-winner draw did not select two unique ordered winners';
+  end if;
+  if (
+    select count(*) = 2
+      and min((prizes -> 0 ->> 'quantity')::integer) = 1
+      and max((prizes -> 0 ->> 'quantity')::integer) = 1
+    from multi_winner_ticket_claims
+    where giveaway_id = (select id from public.giveaways where public_slug = 'giveawaymulti001')
+  ) is not true then
+    raise exception 'Prize package was not divided evenly between winner tickets';
+  end if;
+end
+$$;
+
 rollback;
 
 select 'GodAwpStore giveaway verification passed' as result;
