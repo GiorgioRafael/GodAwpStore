@@ -33,7 +33,7 @@ beforeAll(async () => {
 });
 
 describe("carrinho nativo do Discord", () => {
-  it("fecha a lista após cada escolha e oferece adicionar outro ou continuar", () => {
+  it("permite adicionar de uma vez todos os produtos restantes do carrinho", () => {
     const initial = parseNativeDiscordCartInteraction({
       type: 3,
       data: { custom_id: "select_products", values: [selectionValues[0]] },
@@ -99,8 +99,8 @@ describe("carrinho nativo do Discord", () => {
               {
                 type: 3,
                 custom_id: "gwc:add",
-                max_values: 1,
-                placeholder: "➕ Adicionar outro produto (1/3)",
+                max_values: 2,
+                placeholder: "Adicionar até 2 produtos (1/3)",
                 options: [
                   { emoji: { id: "423456789012345671", name: "gw_product_1" } },
                   { emoji: { id: "423456789012345672", name: "gw_product_2" } },
@@ -115,16 +115,21 @@ describe("carrinho nativo do Discord", () => {
 
     const second = parseNativeDiscordCartInteraction({
       type: 3,
-      data: { custom_id: "gwc:add", values: [selectionValues[1]] },
+      data: {
+        custom_id: "gwc:add",
+        values: [selectionValues[1], selectionValues[2]],
+      },
       message: firstReview.data,
     });
     expect(second).toMatchObject({
       kind: "review",
       responseType: 7,
-      selections: [selections[0], selections[1]],
-      options: [{ value: selectionValues[2] }],
+      selections,
+      options: [],
     });
-    if (!second || second.kind !== "review") throw new Error("Segundo produto não adicionado.");
+    if (!second || second.kind !== "review") {
+      throw new Error("Produtos adicionais não foram adicionados.");
+    }
 
     const secondReview = createNativeDiscordCartReviewResponse(
       second.selections,
@@ -137,27 +142,8 @@ describe("carrinho nativo do Discord", () => {
         data: { custom_id: "gwc:continue" },
         message: secondReview.data,
       }),
-    ).toEqual({ kind: "open", selections: selections.slice(0, 2) });
-
-    const third = parseNativeDiscordCartInteraction({
-      type: 3,
-      data: { custom_id: "gwc:add", values: [selectionValues[2]] },
-      message: secondReview.data,
-    });
-    expect(third).toMatchObject({
-      kind: "review",
-      responseType: 7,
-      selections,
-      options: [],
-    });
-    if (!third || third.kind !== "review") throw new Error("Terceiro produto não adicionado.");
-    expect(
-      createNativeDiscordCartReviewResponse(
-        third.selections,
-        third.options,
-        third.responseType,
-      ),
-    ).toMatchObject({
+    ).toEqual({ kind: "open", selections });
+    expect(secondReview).toMatchObject({
       type: 7,
       data: {
         content: expect.stringContaining("Carrinho: 3/3"),
@@ -167,6 +153,53 @@ describe("carrinho nativo do Discord", () => {
         ],
       },
     });
+  });
+
+  it("aceita três produtos diretamente no seletor inicial", () => {
+    const interaction = parseNativeDiscordCartInteraction({
+      type: 3,
+      data: { custom_id: "select_products", values: selectionValues },
+      message: {
+        components: [
+          {
+            type: 1,
+            components: [
+              {
+                type: 3,
+                custom_id: "select_products",
+                options: selectionValues.map((value, index) => ({
+                  label: productNames[index],
+                  value,
+                })),
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(interaction).toEqual({
+      kind: "review",
+      responseType: 4,
+      selections,
+      options: [],
+    });
+  });
+
+  it("rejeita produto adicional que não existe nas opções exibidas", () => {
+    const review = createNativeDiscordCartReviewResponse(
+      [selections[0]],
+      [{ label: productNames[1], value: selectionValues[1] }],
+      4,
+    );
+
+    expect(
+      parseNativeDiscordCartInteraction({
+        type: 3,
+        data: { custom_id: "gwc:add", values: [selectionValues[2]] },
+        message: review.data,
+      }),
+    ).toBeNull();
   });
 
   it("abre um campo de quantidade para cada produto depois da confirmação", () => {

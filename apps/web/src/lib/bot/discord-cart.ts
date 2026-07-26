@@ -81,26 +81,33 @@ export function parseNativeDiscordCartInteraction(
     if (raw.data.custom_id === CART_ADD_ACTION && Array.isArray(raw.data.values)) {
       const currentSelections = readSelectedCartItems(raw);
       const addedSelections = decodeSelections(raw.data.values);
-      if (!currentSelections || !addedSelections || addedSelections.length !== 1) return null;
+      if (!currentSelections || !addedSelections) return null;
 
       const availableOptions = readCartOptions(raw);
-      const addedSelection = addedSelections[0];
-      const addedValue = raw.data.values[0];
+      const availableValues = new Set(availableOptions.map((option) => option.value));
       if (
-        !addedSelection ||
-        !availableOptions.some((option) => option.value === addedValue)
+        !raw.data.values.every(
+          (value): value is string =>
+            typeof value === "string" && availableValues.has(value),
+        )
       ) {
         return null;
       }
-      const selections = validateSelections([...currentSelections, addedSelection]);
+      const selections = validateSelections([...currentSelections, ...addedSelections]);
       if (!selections) return null;
+      const addedProductIds = new Set(
+        addedSelections.map((selection) => selection.productId),
+      );
 
       return {
         kind: "review",
         responseType: 7,
         selections,
         options: availableOptions.filter(
-          (option) => decodeDiscordCartSelection(option.value)?.productId !== addedSelection.productId,
+          (option) => {
+            const productId = decodeDiscordCartSelection(option.value)?.productId;
+            return productId ? !addedProductIds.has(productId) : false;
+          },
         ),
       };
     }
@@ -148,6 +155,11 @@ export function createNativeDiscordCartReviewResponse(
   const canAddMore =
     validatedSelections.length < MAXIMUM_CART_ITEMS && remainingOptions.length > 0;
   const count = validatedSelections.length;
+  const remainingSlots = MAXIMUM_CART_ITEMS - count;
+  const maximumAdditionalSelections = Math.min(
+    remainingSlots,
+    remainingOptions.length,
+  );
 
   return {
     type: responseType,
@@ -157,7 +169,7 @@ export function createNativeDiscordCartReviewResponse(
           ? `🛒 **Carrinho: ${count}/${MAXIMUM_CART_ITEMS} produtos**\nTudo certo! Agora avance para definir as quantidades.`
           : `🛒 **Carrinho: ${count}/${MAXIMUM_CART_ITEMS} produtos**\n${
               canAddMore
-                ? "Selecione mais um produto abaixo ou avance agora."
+                ? "Selecione mais produtos abaixo ou avance agora."
                 : "Avance para definir as quantidades."
             }`,
       ...(responseType === 4 ? { flags: DISCORD_EPHEMERAL_FLAG } : {}),
@@ -181,9 +193,11 @@ export function createNativeDiscordCartReviewResponse(
                   {
                     type: 3,
                     custom_id: CART_ADD_ACTION,
-                    placeholder: `➕ Adicionar outro produto (${count}/${MAXIMUM_CART_ITEMS})`,
+                    placeholder: `Adicionar até ${maximumAdditionalSelections} ${
+                      maximumAdditionalSelections === 1 ? "produto" : "produtos"
+                    } (${count}/${MAXIMUM_CART_ITEMS})`,
                     min_values: 1,
-                    max_values: 1,
+                    max_values: maximumAdditionalSelections,
                     options: remainingOptions,
                   },
                 ],

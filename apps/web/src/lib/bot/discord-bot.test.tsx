@@ -37,7 +37,7 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Discord catalog cards", () => {
-  it("configura o seletor inicial para fechar após a primeira escolha", () => {
+  it("configura o seletor inicial para escolher até três produtos", () => {
     const payload = {
       components: [
         {
@@ -57,7 +57,30 @@ describe("Discord catalog cards", () => {
     configureDiscordProductEntrySelect(payload);
     expect(payload.components[0]?.components[0]).toMatchObject({
       min_values: 1,
-      max_values: 1,
+      max_values: 3,
+    });
+  });
+
+  it("limita a seleção múltipla à quantidade de opções disponíveis", () => {
+    const payload = {
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 3,
+              custom_id: "select_products",
+              options: [{ value: "a" }, { value: "b" }],
+            },
+          ],
+        },
+      ],
+    };
+
+    configureDiscordProductEntrySelect(payload);
+    expect(payload.components[0]?.components[0]).toMatchObject({
+      min_values: 1,
+      max_values: 2,
     });
   });
 

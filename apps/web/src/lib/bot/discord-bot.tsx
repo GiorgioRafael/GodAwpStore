@@ -55,15 +55,16 @@ import {
 } from "./message-customization";
 import { loadBotMessageCustomization } from "./message-customization-server";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
-import type {
-  BotCatalogGame,
-  BotCatalogProduct,
-  BotCatalogSubstore,
-  BotCommerceRepository,
-  CartPurchaseResult,
-  CartQuantityPreparationResult,
-  PurchaseResult,
-  UpsellOffer,
+import {
+  MAXIMUM_CART_ITEMS,
+  type BotCatalogGame,
+  type BotCatalogProduct,
+  type BotCatalogSubstore,
+  type BotCommerceRepository,
+  type CartPurchaseResult,
+  type CartQuantityPreparationResult,
+  type PurchaseResult,
+  type UpsellOffer,
 } from "./types";
 import { STORE_SLUG } from "@/lib/brand";
 
@@ -931,7 +932,7 @@ export function configureDiscordProductEntrySelect<T>(
     }
 
     component.min_values = 1;
-    component.max_values = 1;
+    component.max_values = Math.min(MAXIMUM_CART_ITEMS, component.options.length);
     for (const option of component.options) {
       if (!isObject(option) || typeof option.value !== "string") continue;
       const emoji = productOptionEmojis.get(option.value);
