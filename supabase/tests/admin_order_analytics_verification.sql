@@ -81,7 +81,7 @@ insert into public.orders (
   id, guild_id, seller_whitelist_entry_id, product_id, buyer_discord_id,
   quantity, status, subtotal_price_cents, sale_price_cents, minimum_price_cents,
   commission_bps, payment_reference, payment_provider, payment_status,
-  stock_released_at, stock_release_reason, paid_at, cancelled_at, created_at
+  payment_expires_at, stock_released_at, stock_release_reason, paid_at, cancelled_at, created_at
 )
 values
   (
@@ -90,7 +90,7 @@ values
     'a2000000-0000-4000-8000-000000000001',
     'a5000000-0000-4000-8000-000000000001',
     '855555555555555551', 1, 'paid', 1000, 1000, 100, 1000,
-    'analytics-paid-today', 'livepix', 'paid', null, null,
+    'analytics-paid-today', 'livepix', 'paid', null, null, null,
     ((now() at time zone 'America/Sao_Paulo')::date::timestamp + interval '1 hour') at time zone 'America/Sao_Paulo',
     null,
     ((now() at time zone 'America/Sao_Paulo')::date::timestamp + interval '30 minutes') at time zone 'America/Sao_Paulo'
@@ -101,7 +101,7 @@ values
     'a2000000-0000-4000-8000-000000000001',
     'a5000000-0000-4000-8000-000000000001',
     '855555555555555552', 1, 'awaiting_payment', 2000, 2000, 100, 1000,
-    'analytics-pending-today', 'livepix', 'pending', null, null, null, null,
+    'analytics-pending-today', 'livepix', 'pending', null, null, null, null, null,
     ((now() at time zone 'America/Sao_Paulo')::date::timestamp + interval '2 hours') at time zone 'America/Sao_Paulo'
   ),
   (
@@ -111,6 +111,7 @@ values
     'a5000000-0000-4000-8000-000000000001',
     '855555555555555553', 1, 'cancelled', 3000, 3000, 100, 1000,
     'analytics-late-today', 'livepix', 'paid',
+    ((now() at time zone 'America/Sao_Paulo')::date::timestamp + interval '3 hours') at time zone 'America/Sao_Paulo',
     ((now() at time zone 'America/Sao_Paulo')::date::timestamp + interval '3 hours') at time zone 'America/Sao_Paulo',
     'payment_timeout',
     ((now() at time zone 'America/Sao_Paulo')::date::timestamp + interval '4 hours') at time zone 'America/Sao_Paulo',
@@ -123,7 +124,7 @@ values
     'a2000000-0000-4000-8000-000000000001',
     'a5000000-0000-4000-8000-000000000001',
     '855555555555555554', 1, 'processing', 4000, 4000, 100, 1000,
-    'analytics-paid-seven', 'livepix', 'paid', null, null,
+    'analytics-paid-seven', 'livepix', 'paid', null, null, null,
     (((now() at time zone 'America/Sao_Paulo')::date - 6)::timestamp + interval '1 hour') at time zone 'America/Sao_Paulo',
     null,
     (((now() at time zone 'America/Sao_Paulo')::date - 6)::timestamp + interval '30 minutes') at time zone 'America/Sao_Paulo'
@@ -134,7 +135,7 @@ values
     'a2000000-0000-4000-8000-000000000001',
     'a5000000-0000-4000-8000-000000000001',
     '855555555555555555', 1, 'paid', 5000, 5000, 100, 1000,
-    'analytics-paid-thirty', 'livepix', 'paid', null, null,
+    'analytics-paid-thirty', 'livepix', 'paid', null, null, null,
     (((now() at time zone 'America/Sao_Paulo')::date - 29)::timestamp + interval '1 hour') at time zone 'America/Sao_Paulo',
     null,
     (((now() at time zone 'America/Sao_Paulo')::date - 29)::timestamp + interval '30 minutes') at time zone 'America/Sao_Paulo'
@@ -145,7 +146,7 @@ values
     'a2000000-0000-4000-8000-000000000001',
     'a5000000-0000-4000-8000-000000000001',
     '855555555555555556', 1, 'refunded', 6000, 6000, 100, 1000,
-    'analytics-refunded-outside', 'livepix', 'refunded', null, null,
+    'analytics-refunded-outside', 'livepix', 'refunded', null, null, null,
     (((now() at time zone 'America/Sao_Paulo')::date - 30)::timestamp + interval '1 hour') at time zone 'America/Sao_Paulo',
     null,
     (((now() at time zone 'America/Sao_Paulo')::date - 30)::timestamp + interval '30 minutes') at time zone 'America/Sao_Paulo'
