@@ -164,3 +164,231 @@ begin
   end if;
 end
 $$;
+
+-- Structural checks alone let a spin that always raises 42702 reach production,
+-- so the whole lifecycle is exercised here: open the charge, refuse the spin
+-- while it is unpaid, settle it like the LivePix webhook does, spend it exactly
+-- once, and take the free administrator path.
+
+begin;
+
+set local client_min_messages = warning;
+
+insert into auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values
+  (
+    '9a000000-0000-4000-8000-000000000001',
+    'authenticated',
+    'authenticated',
+    'roulette-player@example.invalid',
+    '',
+    now(),
+    '{"provider":"discord","providers":["discord"]}'::jsonb,
+    '{"sub":"900000000000000001"}'::jsonb,
+    now(),
+    now()
+  ),
+  (
+    '9a000000-0000-4000-8000-000000000002',
+    'authenticated',
+    'authenticated',
+    'roulette-admin@example.invalid',
+    '',
+    now(),
+    '{"provider":"discord","providers":["discord"]}'::jsonb,
+    '{"sub":"900000000000000002"}'::jsonb,
+    now(),
+    now()
+  );
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+select set_config(
+  'roulette.charge_id',
+  (select charge_id::text from public.start_roulette_spin_charge('900000000000000001')),
+  true
+);
+
+do $$
+begin
+  if current_setting('roulette.charge_id', true) is null then
+    raise exception 'The player could not open a roulette charge';
+  end if;
+
+  begin
+    perform *
+    from public.spin_paid_roulette(
+      '900000000000000001',
+      current_setting('roulette.charge_id')::uuid
+    );
+    raise exception 'An unpaid roulette charge produced a spin';
+  exception
+    when sqlstate 'P0006' then null;
+  end;
+
+  begin
+    perform *
+    from public.spin_roulette_as_admin(
+      '9a000000-0000-4000-8000-000000000001',
+      '900000000000000001'
+    );
+    raise exception 'A player reached the free administrator spin';
+  exception
+    when insufficient_privilege then null;
+  end;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+set local role service_role;
+
+select *
+from public.claim_roulette_spin_checkout(
+  current_setting('roulette.charge_id')::uuid,
+  '9b000000-0000-4000-8000-000000000001'
+);
+
+select *
+from public.register_roulette_spin_checkout(
+  current_setting('roulette.charge_id')::uuid,
+  '9b000000-0000-4000-8000-000000000001',
+  'roulette-verification-reference',
+  'https://checkout.livepix.gg/roulette-verification'
+);
+
+do $$
+declare
+  v_confirmation record;
+begin
+  select * into v_confirmation
+  from public.confirm_roulette_spin_payment(
+    'roulette-verification-payment',
+    'roulette-verification-proof',
+    'roulette-verification-reference',
+    100,
+    'BRL',
+    now(),
+    repeat('a', 64)
+  );
+  if v_confirmation.charge_status <> 'paid' or not v_confirmation.first_confirmation then
+    raise exception 'The LivePix confirmation did not pay the roulette charge';
+  end if;
+
+  -- A webhook redelivery must not pay twice.
+  select * into v_confirmation
+  from public.confirm_roulette_spin_payment(
+    'roulette-verification-payment',
+    'roulette-verification-proof',
+    'roulette-verification-reference',
+    100,
+    'BRL',
+    now(),
+    repeat('a', 64)
+  );
+  if v_confirmation.first_confirmation then
+    raise exception 'A replayed LivePix webhook confirmed the same spin twice';
+  end if;
+end
+$$;
+
+reset role;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_spin record;
+begin
+  select * into v_spin
+  from public.spin_paid_roulette(
+    '900000000000000001',
+    current_setting('roulette.charge_id')::uuid
+  );
+  if v_spin.recorded_spin_id is null or v_spin.won_prize_key is null then
+    raise exception 'The paid roulette spin returned no prize';
+  end if;
+  if v_spin.inventory_quantity <> 1 then
+    raise exception 'The first paid spin should leave one item, found %', v_spin.inventory_quantity;
+  end if;
+
+  begin
+    perform *
+    from public.spin_paid_roulette(
+      '900000000000000001',
+      current_setting('roulette.charge_id')::uuid
+    );
+    raise exception 'A consumed roulette charge produced a second spin';
+  exception
+    when sqlstate 'P0005' then null;
+  end;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+set local role service_role;
+
+do $$
+declare
+  v_spin record;
+begin
+  select * into v_spin
+  from public.spin_roulette_as_admin(
+    '9a000000-0000-4000-8000-000000000002',
+    '900000000000000002'
+  );
+  if v_spin.recorded_spin_id is null or v_spin.won_prize_key is null then
+    raise exception 'The administrator spin returned no prize';
+  end if;
+  if v_spin.inventory_quantity <> 1 then
+    raise exception
+      'The first administrator spin should leave one item, found %',
+      v_spin.inventory_quantity;
+  end if;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+begin
+  if (
+    select charge.status
+    from public.roulette_spin_charges as charge
+    where charge.id = current_setting('roulette.charge_id')::uuid
+  ) <> 'consumed' then
+    raise exception 'The paid roulette charge was not consumed by the spin';
+  end if;
+
+  -- The administrator path is free: it must never open a charge.
+  if (select count(*) from public.roulette_spin_charges) <> 1 then
+    raise exception 'The administrator spin opened a roulette charge';
+  end if;
+
+  if (
+    select count(*)
+    from public.roulette_demo_spins
+    where auth_user_id in (
+      '9a000000-0000-4000-8000-000000000001',
+      '9a000000-0000-4000-8000-000000000002'
+    )
+  ) <> 2 then
+    raise exception 'The roulette did not record exactly one spin per player';
+  end if;
+end
+$$;
+
+rollback;

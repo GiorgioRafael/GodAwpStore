@@ -1463,8 +1463,8 @@ export type Database = {
       spin_paid_roulette: {
         Args: { p_discord_user_id: string; p_charge_id: string };
         Returns: {
-          spin_id: string;
-          prize_key: string;
+          recorded_spin_id: string;
+          won_prize_key: string;
           inventory_quantity: number;
           spun_at: string;
         }[];
@@ -1472,8 +1472,8 @@ export type Database = {
       spin_roulette_as_admin: {
         Args: { p_auth_user_id: string; p_discord_user_id: string };
         Returns: {
-          spin_id: string;
-          prize_key: string;
+          recorded_spin_id: string;
+          won_prize_key: string;
           inventory_quantity: number;
           spun_at: string;
         }[];

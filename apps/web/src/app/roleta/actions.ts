@@ -202,7 +202,7 @@ async function isRouletteAdmin() {
 
 function readSpinResult(
   result:
-    | { spin_id: string; prize_key: string; inventory_quantity: number }
+    | { recorded_spin_id: string; won_prize_key: string; inventory_quantity: number }
     | undefined,
   error: { code?: string; message: string } | null,
 ): SpinRouletteResult {
@@ -221,18 +221,18 @@ function readSpinResult(
   if (
     error ||
     !result ||
-    !isDemoRoulettePrizeKey(result.prize_key) ||
+    !isDemoRoulettePrizeKey(result.won_prize_key) ||
     !Number.isSafeInteger(result.inventory_quantity) ||
     result.inventory_quantity <= 0
   ) {
-    if (error) console.error(`[roleta:spin] ${error.message}`);
+    if (error) console.error(`[roleta:spin] ${error.code ?? "sem código"} ${error.message}`);
     return { ok: false, message: "Não foi possível concluir o giro. Tente novamente." };
   }
 
   return {
     ok: true,
-    prizeKey: result.prize_key,
+    prizeKey: result.won_prize_key,
     inventoryQuantity: result.inventory_quantity,
-    spinId: result.spin_id,
+    spinId: result.recorded_spin_id,
   };
 }
