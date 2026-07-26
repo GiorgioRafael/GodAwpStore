@@ -3,8 +3,10 @@ import { verifyKey } from "discord-interactions";
 
 import {
   completeDiscordQuantityPurchase,
+  createNativeDiscordRankingResponse,
   createNativeDiscordQuantityResponse,
   getDiscordBot,
+  isNativeDiscordRankingCommand,
   parseNativeDiscordQuantityInteraction,
 } from "@/lib/bot/discord-bot";
 import {
@@ -82,6 +84,10 @@ export async function POST(request: Request) {
         !isFreshDestructiveInteractionTimestamp(timestamp)
       ) {
         return new Response("Stale interaction", { status: 401 });
+      }
+
+      if (native.scope === "ranking") {
+        return Response.json(createNativeDiscordRankingResponse());
       }
 
       if (native.scope === "ticket_close") {
@@ -335,6 +341,15 @@ async function readNativeDiscordInteraction(request: Request) {
   const ticketClose = parseNativeDiscordTicketCloseInteraction(raw);
   if (ticketClose) {
     return { body, raw, scope: "ticket_close" as const, interaction: ticketClose };
+  }
+
+  if (isNativeDiscordRankingCommand(raw)) {
+    return {
+      body,
+      raw,
+      scope: "ranking" as const,
+      interaction: { kind: "publish" as const },
+    };
   }
 
   const ticketDelivery = parseNativeDiscordTicketDeliveryInteraction(raw);

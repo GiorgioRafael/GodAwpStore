@@ -10,8 +10,10 @@ let catalogCards: typeof import("./discord-bot").catalogCards;
 let collectDiscordProductOptionEmojis: typeof import("./discord-bot").collectDiscordProductOptionEmojis;
 let configureDiscordProductEntrySelect: typeof import("./discord-bot").configureDiscordProductEntrySelect;
 let configureDiscordStorefrontBanner: typeof import("./discord-bot").configureDiscordStorefrontBanner;
+let createNativeDiscordRankingResponse: typeof import("./discord-bot").createNativeDiscordRankingResponse;
 let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
+let isNativeDiscordRankingCommand: typeof import("./discord-bot").isNativeDiscordRankingCommand;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
 let purchaseResultCard: typeof import("./discord-bot").purchaseResultCard;
 let parseNativeDiscordQuantityInteraction: typeof import("./discord-bot").parseNativeDiscordQuantityInteraction;
@@ -24,8 +26,10 @@ beforeAll(async () => {
     collectDiscordProductOptionEmojis,
     configureDiscordProductEntrySelect,
     configureDiscordStorefrontBanner,
+    createNativeDiscordRankingResponse,
     createNativeDiscordQuantityResponse,
     getDiscordBot,
+    isNativeDiscordRankingCommand,
     postDiscordEphemeral,
     purchaseResultCard,
     parseNativeDiscordQuantityInteraction,
@@ -37,6 +41,30 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Discord catalog cards", () => {
+  it("responde /ranking imediatamente com a tabela pública completa", () => {
+    expect(
+      isNativeDiscordRankingCommand({
+        type: 2,
+        data: { name: "ranking" },
+      }),
+    ).toBe(true);
+    expect(
+      isNativeDiscordRankingCommand({
+        type: 2,
+        data: { name: "rank" },
+      }),
+    ).toBe(false);
+
+    const response = createNativeDiscordRankingResponse();
+    const serialized = JSON.stringify(response);
+
+    expect(response.type).toBe(4);
+    expect(serialized).toContain("SISTEMA DE RANKING");
+    expect(serialized).toContain("Bronze I");
+    expect(serialized).toContain("Diamond V");
+    expect(serialized).toContain("/rank");
+  });
+
   it("configura o seletor inicial para escolher até três produtos", () => {
     const payload = {
       components: [

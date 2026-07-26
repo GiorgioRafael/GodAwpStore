@@ -72,6 +72,8 @@ import { STORE_SLUG } from "@/lib/brand";
 
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DISCORD_APPLICATION_COMMAND = 2;
+const DISCORD_CHANNEL_MESSAGE_RESPONSE = 4;
 const DISCORD_MESSAGE_COMPONENT = 3;
 const DISCORD_MODAL_SUBMIT = 5;
 const DISCORD_DEFERRED_CHANNEL_MESSAGE = 5;
@@ -85,6 +87,30 @@ let botSingleton: ReturnType<typeof createBot> | undefined;
 export function getDiscordBot() {
   botSingleton ??= createBot();
   return botSingleton;
+}
+
+export function isNativeDiscordRankingCommand(raw: unknown) {
+  return (
+    isObject(raw) &&
+    raw.type === DISCORD_APPLICATION_COMMAND &&
+    isObject(raw.data) &&
+    raw.data.name === "ranking"
+  );
+}
+
+export function createNativeDiscordRankingResponse() {
+  const card = toCardElement(customerRankGuideCard());
+  if (!card) throw new Error("Tabela de ranking Discord inválida.");
+
+  return {
+    type: DISCORD_CHANNEL_MESSAGE_RESPONSE,
+    data: {
+      ...cardToDiscordPayload(card, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      }),
+      allowed_mentions: { parse: [] },
+    },
+  };
 }
 
 function createBot() {
