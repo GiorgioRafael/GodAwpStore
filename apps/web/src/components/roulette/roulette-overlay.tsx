@@ -10,13 +10,14 @@ import {
   type DemoRoulettePrizeKey,
   type RouletteWheelPrize,
 } from "@/lib/roulette/demo";
-import { createBrowserSupabaseClient } from "@/lib/supabase/browser";
+import { readRouletteOverlayEvents } from "@/app/roleta/overlay/actions";
 
 const WHEEL_SIZE = 360;
 const WHEEL_CENTER = WHEEL_SIZE / 2;
 const WHEEL_RADIUS = 164;
 const DEFAULT_SPIN_MS = 2_600;
 const DEFAULT_RESULT_MS = 2_200;
+const POLL_MS = 1_500;
 
 export type RouletteOverlayEvent = {
   id: string;
@@ -35,15 +36,19 @@ export type RouletteOverlayEvent = {
  */
 export function RouletteOverlay({
   prizes,
+  token,
   queueLimit = 8,
   spinMs = DEFAULT_SPIN_MS,
   resultMs = DEFAULT_RESULT_MS,
+  pollMs = POLL_MS,
 }: {
   prizes: RouletteWheelPrize[];
+  token: string;
   queueLimit?: number;
-  /** Animation timings, shortened by the tests. */
+  /** Animation and polling timings, shortened by the tests. */
   spinMs?: number;
   resultMs?: number;
+  pollMs?: number;
 }) {
   const [current, setCurrent] = useState<RouletteOverlayEvent | null>(null);
   const [rotation, setRotation] = useState(0);
@@ -56,9 +61,8 @@ export function RouletteOverlay({
   const seen = useRef(new Set<string>());
 
   useEffect(() => {
-    const supabase = createBrowserSupabaseClient();
-    if (!supabase) return;
     let active = true;
+    let since: string | null = null;
 
     async function play() {
       if (busy.current || !active) return;
@@ -99,26 +103,29 @@ export function RouletteOverlay({
       void play();
     }
 
-    const channel = supabase
-      .channel("roulette-overlay-feed")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "roulette_overlay_events" },
-        (payload) => {
-          const event = readEvent(payload.new);
-          if (event) enqueue(event);
-        },
-      )
-      .subscribe((status) => {
+    async function poll() {
+      try {
+        const events = await readRouletteOverlayEvents(token, since);
         if (!active) return;
-        setConnected(status === "SUBSCRIBED");
-      });
+        setConnected(true);
+        for (const raw of events) {
+          if (raw.createdAt > (since ?? "")) since = raw.createdAt;
+          const event = readEvent(raw);
+          if (event) enqueue(event);
+        }
+      } catch {
+        if (active) setConnected(false);
+      }
+    }
+
+    void poll();
+    const timer = window.setInterval(() => void poll(), pollMs);
 
     return () => {
       active = false;
-      void supabase.removeChannel(channel);
+      window.clearInterval(timer);
     };
-  }, [queueLimit, spinMs, resultMs]);
+  }, [queueLimit, spinMs, resultMs, pollMs, token]);
 
   const prize = current ? rouletteWheelPrize(prizes, current.prizeKey) : null;
 
@@ -236,15 +243,15 @@ export function RouletteOverlay({
 function readEvent(row: unknown): RouletteOverlayEvent | null {
   const event = row as Record<string, unknown> | null;
   if (!event || typeof event.id !== "string") return null;
-  if (!isDemoRoulettePrizeKey(event.prize_key)) return null;
+  if (!isDemoRoulettePrizeKey(event.prizeKey)) return null;
   return {
     id: event.id,
-    prizeKey: event.prize_key,
-    productName: typeof event.product_name === "string" ? event.product_name : "",
-    valueCents: typeof event.value_cents === "number" ? event.value_cents : 0,
+    prizeKey: event.prizeKey,
+    productName: typeof event.productName === "string" ? event.productName : "",
+    valueCents: typeof event.valueCents === "number" ? event.valueCents : 0,
     maskedDisplayName:
-      typeof event.masked_display_name === "string" ? event.masked_display_name : "Jog...",
-    isTopPrize: event.is_top_prize === true,
+      typeof event.maskedDisplayName === "string" ? event.maskedDisplayName : "Jog...",
+    isTopPrize: event.isTopPrize === true,
   };
 }
 

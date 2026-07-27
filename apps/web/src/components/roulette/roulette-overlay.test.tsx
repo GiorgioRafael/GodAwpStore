@@ -1,27 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const supabaseMocks = vi.hoisted(() => ({
-  handlers: [] as Array<(payload: { new: unknown }) => void>,
-  removeChannel: vi.fn(),
-}));
+const feed = vi.hoisted(() => ({ pending: [] as unknown[] }));
 
-vi.mock("@/lib/supabase/browser", () => ({
-  createBrowserSupabaseClient: () => ({
-    channel: () => {
-      const channel = {
-        on: (_event: string, _filter: unknown, handler: (p: { new: unknown }) => void) => {
-          supabaseMocks.handlers.push(handler);
-          return channel;
-        },
-        subscribe: (cb: (status: string) => void) => {
-          cb("SUBSCRIBED");
-          return channel;
-        },
-      };
-      return channel;
-    },
-    removeChannel: supabaseMocks.removeChannel,
+vi.mock("@/app/roleta/overlay/actions", () => ({
+  readRouletteOverlayEvents: vi.fn(async () => {
+    const batch = feed.pending;
+    feed.pending = [];
+    return batch;
   }),
 }));
 
@@ -49,40 +35,42 @@ const prizes = buildRouletteWheelPrizes([
   },
 ]);
 
-function emit(event: {
+type FeedEvent = {
   id: string;
-  prize_key: string;
-  product_name: string;
-  value_cents: number;
-  masked_display_name: string;
-  is_top_prize: boolean;
-}) {
-  for (const handler of supabaseMocks.handlers) handler({ new: event });
+  prizeKey: string;
+  productName: string;
+  valueCents: number;
+  maskedDisplayName: string;
+  isTopPrize: boolean;
+  createdAt: string;
+};
+
+function emit(...events: FeedEvent[]) {
+  feed.pending.push(...events);
 }
 
-function spinEvent(id: string, overrides: Partial<Parameters<typeof emit>[0]> = {}) {
+function spinEvent(id: string, overrides: Partial<FeedEvent> = {}): FeedEvent {
   return {
     id,
-    prize_key: "premio_1",
-    product_name: "Rainbow Seed",
-    value_cents: 3,
-    masked_display_name: "Joa...",
-    is_top_prize: false,
+    prizeKey: "premio_1",
+    productName: "Rainbow Seed",
+    valueCents: 3,
+    maskedDisplayName: "Joa...",
+    isTopPrize: false,
+    createdAt: `2026-07-27T00:00:${String(feed.pending.length).padStart(2, "0")}.000Z`,
     ...overrides,
   };
 }
 
 describe("RouletteOverlay", () => {
   beforeEach(() => {
-    supabaseMocks.handlers.length = 0;
-    supabaseMocks.removeChannel.mockReset();
+    feed.pending = [];
     vi.useRealTimers();
   });
 
   it("mostra o nome mascarado e o prêmio de um giro", async () => {
-    render(<RouletteOverlay prizes={prizes} queueLimit={4} spinMs={10} resultMs={40} />);
-
     emit(spinEvent("1"));
+    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={4} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("overlay-result")).toHaveTextContent("Joa...");
@@ -91,11 +79,10 @@ describe("RouletteOverlay", () => {
   });
 
   it("conta os giros acima do limite da fila em vez de animar todos", async () => {
-    render(<RouletteOverlay prizes={prizes} queueLimit={2} spinMs={10} resultMs={40} />);
-
     // O primeiro sai da fila para animar; os dois seguintes a preenchem e o
     // restante só vira contador.
     for (let index = 0; index < 8; index += 1) emit(spinEvent(`fila-${index}`));
+    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={2} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("overlay-skipped")).toBeInTheDocument();
@@ -104,18 +91,17 @@ describe("RouletteOverlay", () => {
   });
 
   it("deixa o prêmio máximo furar o limite da fila", async () => {
-    render(<RouletteOverlay prizes={prizes} queueLimit={1} spinMs={10} resultMs={40} />);
-
     for (let index = 0; index < 6; index += 1) emit(spinEvent(`comum-${index}`));
     emit(
       spinEvent("jackpot", {
-        prize_key: "premio_3",
-        product_name: "X30000 Bamboo",
-        value_cents: 500,
-        masked_display_name: "Mar...",
-        is_top_prize: true,
+        prizeKey: "premio_3",
+        productName: "X30000 Bamboo",
+        valueCents: 500,
+        maskedDisplayName: "Mar...",
+        isTopPrize: true,
       }),
     );
+    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={1} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("overlay-result")).toHaveTextContent("Prêmio máximo");
@@ -125,11 +111,10 @@ describe("RouletteOverlay", () => {
   });
 
   it("ignora um evento repetido do mesmo giro", async () => {
-    render(<RouletteOverlay prizes={prizes} queueLimit={5} spinMs={10} resultMs={40} />);
-
     emit(spinEvent("repetido"));
     emit(spinEvent("repetido"));
     emit(spinEvent("repetido"));
+    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={5} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("overlay-result")).toBeInTheDocument();

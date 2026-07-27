@@ -38,7 +38,7 @@ export default async function RouletteOverlayPage({
   const prizes = buildRouletteWheelPrizes(await readOverlayPrizes());
   const queueLimit = readQueueLimit(single(query.fila));
 
-  return <RouletteOverlay prizes={prizes} queueLimit={queueLimit} />;
+  return <RouletteOverlay prizes={prizes} token={token} queueLimit={queueLimit} />;
 }
 
 async function readOverlayPrizes() {
