@@ -1,13 +1,27 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const feed = vi.hoisted(() => ({ pending: [] as unknown[] }));
+// Faithful stand-in for the server action: it keeps a log and filters strictly
+// after the cursor, so a client that fails to advance the cursor loses events
+// exactly like production did.
+const feed = vi.hoisted(() => ({
+  log: [] as Array<Record<string, unknown> & { createdAt: string }>,
+  clock: 0,
+}));
+
+function stamp(tick: number) {
+  return `2026-07-27T00:00:${String(tick).padStart(2, "0")}.000Z`;
+}
 
 vi.mock("@/app/roleta/overlay/actions", () => ({
-  readRouletteOverlayEvents: vi.fn(async () => {
-    const batch = feed.pending;
-    feed.pending = [];
-    return batch;
+  readRouletteOverlayEvents: vi.fn(async (_token: string, sinceIso: string | null) => {
+    // A cold overlay starts from now instead of replaying the backlog.
+    const since = sinceIso ?? stamp(feed.clock);
+    const events = feed.log.filter((event) => event.createdAt > since);
+    return {
+      events,
+      cursor: events.length ? events[events.length - 1].createdAt : since,
+    };
   }),
 }));
 
@@ -42,11 +56,13 @@ type FeedEvent = {
   valueCents: number;
   maskedDisplayName: string;
   isTopPrize: boolean;
-  createdAt: string;
 };
 
 function emit(...events: FeedEvent[]) {
-  feed.pending.push(...events);
+  for (const event of events) {
+    feed.clock += 1;
+    feed.log.push({ ...event, createdAt: stamp(feed.clock) });
+  }
 }
 
 function spinEvent(id: string, overrides: Partial<FeedEvent> = {}): FeedEvent {
@@ -57,32 +73,68 @@ function spinEvent(id: string, overrides: Partial<FeedEvent> = {}): FeedEvent {
     valueCents: 3,
     maskedDisplayName: "Joa...",
     isTopPrize: false,
-    createdAt: `2026-07-27T00:00:${String(feed.pending.length).padStart(2, "0")}.000Z`,
     ...overrides,
   };
 }
 
+function mount(queueLimit: number) {
+  return render(
+    <RouletteOverlay
+      prizes={prizes}
+      token="teste"
+      queueLimit={queueLimit}
+      spinMs={10}
+      resultMs={200}
+      pollMs={20}
+    />,
+  );
+}
+
+/** The overlay only reacts to spins that land after it connected. */
+async function waitForConnection() {
+  await waitFor(() => {
+    expect(screen.getByTestId("overlay-status")).toHaveAttribute("aria-label", "Conectado");
+  });
+}
+
 describe("RouletteOverlay", () => {
   beforeEach(() => {
-    feed.pending = [];
+    feed.log = [];
+    feed.clock = 0;
     vi.useRealTimers();
   });
 
   it("mostra o nome mascarado e o prêmio de um giro", async () => {
+    mount(4);
+    await waitForConnection();
+
     emit(spinEvent("1"));
-    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={4} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("overlay-result")).toHaveTextContent("Joa...");
+      const result = screen.getByTestId("overlay-result");
+      expect(result).toHaveTextContent("Joa...");
+      expect(result).toHaveTextContent("Rainbow Seed");
     });
-    expect(screen.getByTestId("overlay-result")).toHaveTextContent("Rainbow Seed");
+  });
+
+  it("pega o giro que chega entre dois polls", async () => {
+    // O primeiro poll volta vazio e o giro só existe depois dele. Sem o cursor
+    // do servidor avançando, este evento se perde para sempre.
+    mount(4);
+    await waitForConnection();
+
+    emit(spinEvent("atrasado", { maskedDisplayName: "Ped..." }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-result")).toHaveTextContent("Ped...");
+    });
   });
 
   it("conta os giros acima do limite da fila em vez de animar todos", async () => {
-    // O primeiro sai da fila para animar; os dois seguintes a preenchem e o
-    // restante só vira contador.
+    mount(2);
+    await waitForConnection();
+
     for (let index = 0; index < 8; index += 1) emit(spinEvent(`fila-${index}`));
-    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={2} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
       expect(screen.getByTestId("overlay-skipped")).toBeInTheDocument();
@@ -91,6 +143,9 @@ describe("RouletteOverlay", () => {
   });
 
   it("deixa o prêmio máximo furar o limite da fila", async () => {
+    mount(1);
+    await waitForConnection();
+
     for (let index = 0; index < 6; index += 1) emit(spinEvent(`comum-${index}`));
     emit(
       spinEvent("jackpot", {
@@ -101,20 +156,23 @@ describe("RouletteOverlay", () => {
         isTopPrize: true,
       }),
     );
-    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={1} spinMs={10} resultMs={40} pollMs={20} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId("overlay-result")).toHaveTextContent("Prêmio máximo");
+      const result = screen.getByTestId("overlay-result");
+      expect(result).toHaveTextContent("Prêmio máximo");
+      expect(result).toHaveTextContent("Mar...");
+      expect(result).toHaveTextContent("X30000 Bamboo");
     });
-    expect(screen.getByTestId("overlay-result")).toHaveTextContent("Mar...");
-    expect(screen.getByTestId("overlay-result")).toHaveTextContent("X30000 Bamboo");
   });
 
-  it("ignora um evento repetido do mesmo giro", async () => {
+  it("não anima duas vezes o mesmo giro reentregue", async () => {
+    mount(5);
+    await waitForConnection();
+
+    // O mesmo id chega em duas rodadas diferentes do polling.
     emit(spinEvent("repetido"));
-    emit(spinEvent("repetido"));
-    emit(spinEvent("repetido"));
-    render(<RouletteOverlay prizes={prizes} token="teste" queueLimit={5} spinMs={10} resultMs={40} pollMs={20} />);
+    feed.clock += 1;
+    feed.log.push({ ...spinEvent("repetido"), createdAt: stamp(feed.clock) });
 
     await waitFor(() => {
       expect(screen.getByTestId("overlay-result")).toBeInTheDocument();

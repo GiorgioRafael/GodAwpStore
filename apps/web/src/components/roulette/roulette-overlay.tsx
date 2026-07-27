@@ -105,11 +105,13 @@ export function RouletteOverlay({
 
     async function poll() {
       try {
-        const events = await readRouletteOverlayEvents(token, since);
+        const feed = await readRouletteOverlayEvents(token, since);
         if (!active) return;
         setConnected(true);
-        for (const raw of events) {
-          if (raw.createdAt > (since ?? "")) since = raw.createdAt;
+        // The server owns the cursor, so an empty round still moves it forward
+        // and a spin landing between two polls is never skipped.
+        since = feed.cursor;
+        for (const raw of feed.events) {
           const event = readEvent(raw);
           if (event) enqueue(event);
         }
