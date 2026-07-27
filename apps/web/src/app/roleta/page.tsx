@@ -105,7 +105,6 @@ export default async function RoulettePage({
           displayName: identity.displayName,
           avatarUrl: identity.avatarUrl,
         }}
-        balanceCents={balanceCents}
       />
       <RouletteExperience
         prizes={prizes}

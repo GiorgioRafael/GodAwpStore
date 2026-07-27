@@ -94,6 +94,7 @@ export function RouletteExperience({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, number>>({});
+  const [buyOpen, setBuyOpen] = useState(false);
   const router = useRouter();
   const rotationRef = useRef(0);
   const phaseRef = useRef(phase);
@@ -288,6 +289,114 @@ export function RouletteExperience({
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,rgba(217,70,239,.11),transparent_32%),radial-gradient(circle_at_84%_78%,rgba(126,34,206,.08),transparent_30%)]"
       />
+      <div className="sticky top-0 z-30 border-b border-amber-300/20 bg-[#0b0705]/90 backdrop-blur">
+        <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
+          <span className="flex items-center gap-2 text-sm text-[#c8b49a]">
+            <Coins aria-hidden="true" className="size-4 text-amber-300" />
+            Saldo
+          </span>
+          <strong
+            data-testid="roulette-balance"
+            className="text-xl font-black tracking-[-0.02em] text-amber-100"
+          >
+            {formatCoins(balanceCents)}
+          </strong>
+          <span className="text-sm text-[#9e8a76]">moedas</span>
+          <button
+            type="button"
+            onClick={() => setBuyOpen((open) => !open)}
+            aria-expanded={buyOpen}
+            aria-label="Adicionar moedas"
+            className="ml-auto inline-flex h-10 items-center gap-1.5 rounded-xl border border-amber-300/55 bg-amber-400/20 px-3.5 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-400/30 sm:px-4"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            <span className="hidden sm:inline">Adicionar moedas</span>
+            <span className="sm:hidden">Moedas</span>
+          </button>
+        </div>
+
+        {buyOpen ? (
+          <div className="border-t border-amber-300/15 bg-[#140f0a]/95">
+            <div className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 lg:px-10">
+              <div className="mx-auto flex max-w-[560px] flex-col gap-3">
+                <p className="text-sm text-[#c8b49a]">
+                  Cada moeda custa <strong className="text-amber-100">R$ 1,00</strong> e paga um
+                  giro. O Pix cai no seu saldo automaticamente.
+                </p>
+                <div className="flex items-center gap-2">
+                  <div className="flex h-11 items-center rounded-xl border border-amber-300/25 bg-black/25">
+                    <button
+                      type="button"
+                      aria-label="Menos uma moeda"
+                      onClick={() =>
+                        setCoinQuantity((value) =>
+                          Math.max(MINIMUM_COIN_PURCHASE, value - 1),
+                        )
+                      }
+                      disabled={isBusy || coinQuantity <= MINIMUM_COIN_PURCHASE}
+                      className="grid size-11 place-items-center rounded-l-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
+                    >
+                      <Minus aria-hidden="true" className="size-4" />
+                    </button>
+                    <span
+                      data-testid="coin-quantity"
+                      className="min-w-10 text-center text-base font-bold text-amber-100"
+                    >
+                      {coinQuantity}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Mais uma moeda"
+                      onClick={() =>
+                        setCoinQuantity((value) => Math.min(MAXIMUM_COIN_PURCHASE, value + 1))
+                      }
+                      disabled={isBusy || coinQuantity >= MAXIMUM_COIN_PURCHASE}
+                      className="grid size-11 place-items-center rounded-r-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
+                    >
+                      <Plus aria-hidden="true" className="size-4" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBuyCoins}
+                    disabled={isBusy || !available}
+                    className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-300/55 bg-amber-400/20 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-400/30 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <QrCode aria-hidden="true" className="size-4" />
+                    {phase === "preparing"
+                      ? "Gerando o Pix..."
+                      : `Comprar por R$ ${coinQuantity},00`}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {[1, 5, 10, 25].map((amount) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => setCoinQuantity(amount)}
+                      disabled={isBusy}
+                      className={`h-8 rounded-lg border px-3 text-xs font-bold transition-colors disabled:opacity-40 ${
+                        coinQuantity === amount
+                          ? "border-amber-300/60 bg-amber-400/25 text-amber-100"
+                          : "border-amber-300/20 text-[#c8b49a] hover:bg-amber-300/10"
+                      }`}
+                    >
+                      {amount} {amount === 1 ? "moeda" : "moedas"}
+                    </button>
+                  ))}
+                </div>
+                {isAdmin ? (
+                  <p className="rounded-lg border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-200">
+                    Modo administrador: o giro é grátis, mas a venda de itens credita moedas de
+                    verdade nesta conta.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
       <div className="relative mx-auto grid max-w-[1440px] gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,.85fr)] lg:gap-0 lg:px-10 [@media(max-height:820px)]:py-7">
         <section className="min-w-0 lg:pr-10 xl:pr-14">
           <h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-[#fbf8fc] sm:text-4xl lg:text-[44px] lg:leading-[1.08]">
@@ -380,85 +489,22 @@ export function RouletteExperience({
 
               <button
                 type="button"
-                onClick={handleSpin}
-                disabled={isBusy || !available || !canSpin}
+                onClick={canSpin ? handleSpin : () => setBuyOpen(true)}
+                disabled={isBusy || !available}
                 className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-fuchsia-200/55 bg-gradient-to-b from-fuchsia-500 to-[#b81780] px-6 text-base font-bold text-white shadow-[0_0_0_3px_rgba(217,70,239,.1),0_15px_40px_rgba(217,70,239,.24)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
               >
                 {phase === "spinning" ? (
                   <RotateCw aria-hidden="true" className="size-5 animate-spin" />
-                ) : phase === "idle" ? (
+                ) : phase !== "idle" ? (
+                  <Loader2 aria-hidden="true" className="size-5 animate-spin" />
+                ) : canSpin ? (
                   <RotateCw aria-hidden="true" className="size-5" />
                 ) : (
-                  <Loader2 aria-hidden="true" className="size-5 animate-spin" />
+                  <Plus aria-hidden="true" className="size-5" />
                 )}
                 {spinButtonLabel(phase, isAdmin, canSpin)}
               </button>
 
-              <div className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#140f0a]/80 p-4">
-                {isAdmin ? (
-                  <p className="mb-3 rounded-lg border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-200">
-                    Modo administrador: o giro é grátis, mas a venda de itens credita moedas de
-                    verdade nesta conta.
-                  </p>
-                ) : null}
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-sm font-semibold text-amber-200">
-                      <Coins aria-hidden="true" className="size-4" />
-                      Saldo: {formatCoins(balanceCents)} moedas
-                    </span>
-                    <span className="text-xs text-[#9e8a76]">
-                      1 moeda = R$ 1,00 · mínimo {MINIMUM_COIN_PURCHASE}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 flex items-center gap-2">
-                    <div className="flex h-11 items-center rounded-xl border border-amber-300/25 bg-black/25">
-                      <button
-                        type="button"
-                        aria-label="Menos uma moeda"
-                        onClick={() =>
-                          setCoinQuantity((value) =>
-                            Math.max(MINIMUM_COIN_PURCHASE, value - 1),
-                          )
-                        }
-                        disabled={isBusy || coinQuantity <= MINIMUM_COIN_PURCHASE}
-                        className="grid size-11 place-items-center rounded-l-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
-                      >
-                        <Minus aria-hidden="true" className="size-4" />
-                      </button>
-                      <span
-                        data-testid="coin-quantity"
-                        className="min-w-10 text-center text-base font-bold text-amber-100"
-                      >
-                        {coinQuantity}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Mais uma moeda"
-                        onClick={() =>
-                          setCoinQuantity((value) => Math.min(MAXIMUM_COIN_PURCHASE, value + 1))
-                        }
-                        disabled={isBusy || coinQuantity >= MAXIMUM_COIN_PURCHASE}
-                        className="grid size-11 place-items-center rounded-r-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
-                      >
-                        <Plus aria-hidden="true" className="size-4" />
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleBuyCoins}
-                      disabled={isBusy || !available}
-                      className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-300/50 bg-amber-400/15 px-4 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <QrCode aria-hidden="true" className="size-4" />
-                      {phase === "preparing"
-                        ? "Gerando o Pix..."
-                        : `Comprar por R$ ${coinQuantity},00`}
-                    </button>
-                  </div>
-                </div>
-              </div>
 
               {phase === "awaiting_payment" ? (
                 <div
@@ -734,7 +780,8 @@ function spinButtonLabel(phase: Phase, isAdmin: boolean, canSpin: boolean) {
   if (phase === "selling") return "Vendendo...";
   if (phase === "redeeming") return "Resgatando...";
   if (isAdmin) return "Girar grátis (admin)";
-  return canSpin ? "Girar (1 moeda)" : "Sem moedas suficientes";
+  // Sem saldo o botão não vira beco sem saída: ele abre a compra de moedas.
+  return canSpin ? "Girar (1 moeda)" : "Adicionar moedas para girar";
 }
 
 function wheelSegmentPath(index: number, total: number) {

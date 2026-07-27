@@ -62,9 +62,35 @@ describe("RouletteExperience", () => {
       <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={0} />,
     );
 
-    expect(screen.getByRole("button", { name: "Sem moedas suficientes" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Comprar por R\$ 1,00/ })).toBeEnabled();
+    // Sem saldo o botão principal não trava: ele leva para a compra.
+    expect(screen.getByRole("button", { name: "Adicionar moedas para girar" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Adicionar moedas" })).toBeEnabled();
     expect(actionMocks.spinRoulette).not.toHaveBeenCalled();
+  });
+
+  it("abre a compra pelo próprio botão de girar quando falta moeda", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={0} />,
+    );
+
+    // O painel começa fechado.
+    expect(screen.queryByTestId("coin-quantity")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Adicionar moedas para girar" }));
+
+    expect(screen.getByTestId("coin-quantity")).toBeInTheDocument();
+    expect(actionMocks.spinRoulette).not.toHaveBeenCalled();
+  });
+
+  it("mostra o saldo na barra fixa, sempre visível", () => {
+    render(
+      <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={1234} />,
+    );
+
+    expect(screen.getByTestId("roulette-balance")).toHaveTextContent("12,34");
+    expect(screen.getByRole("button", { name: "Adicionar moedas" })).toBeEnabled();
   });
 
   it("não deixa comprar abaixo de uma moeda", async () => {
@@ -74,6 +100,7 @@ describe("RouletteExperience", () => {
       <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={0} />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Adicionar moedas" }));
     expect(screen.getByTestId("coin-quantity")).toHaveTextContent("1");
     const less = screen.getByRole("button", { name: "Menos uma moeda" });
     expect(less).toBeDisabled();
@@ -104,7 +131,7 @@ describe("RouletteExperience", () => {
     await waitFor(() => {
       expect(screen.getByTestId("roulette-result")).toHaveTextContent("1x Dragonfly");
     });
-    expect(screen.getByText("Saldo: 2,00 moedas")).toBeInTheDocument();
+    expect(screen.getByTestId("roulette-balance")).toHaveTextContent("2,00");
     expect(actionMocks.spinRoulette).toHaveBeenCalledTimes(1);
     // O chip do cabeçalho vem do servidor e precisa ser revalidado.
     expect(routerMocks.refresh).toHaveBeenCalled();
@@ -148,6 +175,7 @@ describe("RouletteExperience", () => {
       <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={0} />,
     );
 
+    await user.click(screen.getByRole("button", { name: "Adicionar moedas" }));
     await user.click(screen.getByRole("button", { name: "Mais uma moeda" }));
     await user.click(screen.getByRole("button", { name: "Mais uma moeda" }));
     expect(screen.getByTestId("coin-quantity")).toHaveTextContent("3");
@@ -182,7 +210,7 @@ describe("RouletteExperience", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Saldo: 3,00 moedas")).toBeInTheDocument();
+      expect(screen.getByTestId("roulette-balance")).toHaveTextContent("3,00");
     });
     expect(screen.getByRole("button", { name: "Girar (1 moeda)" })).toBeEnabled();
   });
@@ -224,7 +252,7 @@ describe("RouletteExperience", () => {
       { prizeKey: "premio_2", quantity: 1 },
       { prizeKey: "premio_5", quantity: 2 },
     ]);
-    expect(screen.getByText("Saldo: 2,50 moedas")).toBeInTheDocument();
+    expect(screen.getByTestId("roulette-balance")).toHaveTextContent("2,50");
   });
 
   it("resgata vários itens num único ticket", async () => {
@@ -337,13 +365,13 @@ describe("RouletteExperience", () => {
     );
 
     // O saldo do admin não pode ficar escondido: ele acumula moeda vendendo.
-    expect(screen.getByText("Saldo: 6,71 moedas")).toBeInTheDocument();
+    expect(screen.getByTestId("roulette-balance")).toHaveTextContent("6,71");
 
     await user.click(screen.getByLabelText("Selecionar 1x Dragonfly"));
     await user.click(screen.getByRole("button", { name: "Vender selecionados" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Saldo: 7,71 moedas")).toBeInTheDocument();
+      expect(screen.getByTestId("roulette-balance")).toHaveTextContent("7,71");
     });
     expect(routerMocks.refresh).toHaveBeenCalled();
   });
