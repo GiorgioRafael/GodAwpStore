@@ -73,6 +73,8 @@ type PlatformSettingsRow = {
   lead_recovery_discount_bps: number;
   lead_recovery_delay_minutes: number;
   roulette_sale_rate_bps: number;
+  roulette_markup_bps: number;
+  livepix_fee_bps: number;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
@@ -1712,6 +1714,38 @@ export type Database = {
         Returns: {
           settled_redemption_id: string;
           settled_status: "pending" | "delivered" | "cancelled";
+        }[];
+      };
+      admin_roulette_metrics: {
+        Args: Record<string, never>;
+        Returns: {
+          deposit_count: number;
+          deposit_gross_cents: number;
+          deposit_payer_count: number;
+          provider_fee_cents: number;
+          coin_liability_cents: number;
+          spin_count: number;
+          paid_spin_count: number;
+          admin_spin_count: number;
+          coins_spent_cents: number;
+          awarded_value_cents: number;
+          admin_awarded_value_cents: number;
+          sold_unit_count: number;
+          sold_credited_cents: number;
+          redeemed_unit_count: number;
+          redeemed_value_cents: number;
+          delivered_unit_count: number;
+          delivered_value_cents: number;
+          pending_redemption_count: number;
+          held_unit_count: number;
+          held_value_cents: number;
+          delivered_cost_cents: number;
+          pending_cost_cents: number;
+          held_cost_cents: number;
+          net_profit_cents: number;
+          markup_bps: number;
+          fee_bps: number;
+          sale_rate_bps: number;
         }[];
       };
       admin_reorder_products: {

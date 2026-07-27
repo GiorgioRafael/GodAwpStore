@@ -51,7 +51,8 @@ begin
     'claim_roulette_redemption_ticket(uuid, uuid)',
     'complete_roulette_redemption_ticket(uuid, text)',
     'fail_roulette_redemption_ticket(uuid, text)',
-    'admin_settle_roulette_redemption(uuid, text)'
+    'admin_settle_roulette_redemption(uuid, text)',
+    'admin_roulette_metrics()'
   ] loop
     if to_regprocedure('public.' || required_function) is null then
       raise exception 'Missing roulette function: %', required_function;
@@ -645,5 +646,112 @@ begin
   end if;
 end
 $$;
+
+-- The panel is admin-only, and its split has to close on the spins.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+begin
+  begin
+    perform * from public.admin_roulette_metrics();
+    raise exception 'A player read the roulette metrics';
+  exception
+    when insufficient_privilege then null;
+  end;
+end
+$$;
+
+reset role;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_metrics record;
+begin
+  select * into v_metrics from public.admin_roulette_metrics();
+
+  -- One 5,00 recharge, taxed at the configured share.
+  if v_metrics.deposit_gross_cents <> 500 or v_metrics.deposit_count <> 1 then
+    raise exception 'The metrics counted % cents in % deposit(s)',
+      v_metrics.deposit_gross_cents, v_metrics.deposit_count;
+  end if;
+  if v_metrics.provider_fee_cents <> (500 * v_metrics.fee_bps) / 10000 then
+    raise exception 'The provider fee does not follow the configured rate';
+  end if;
+
+  -- Three paid spins and one free administrator spin.
+  if v_metrics.spin_count <> 4
+    or v_metrics.paid_spin_count <> 3
+    or v_metrics.admin_spin_count <> 1 then
+    raise exception 'The metrics saw % spin(s), % paid and % free',
+      v_metrics.spin_count, v_metrics.paid_spin_count, v_metrics.admin_spin_count;
+  end if;
+  if v_metrics.coins_spent_cents <> 300 then
+    raise exception 'The paid spins consumed % cents', v_metrics.coins_spent_cents;
+  end if;
+  -- The prize is pinned at 4,00, so the value is frozen even after a rebalance.
+  if v_metrics.awarded_value_cents <> 1600 or v_metrics.admin_awarded_value_cents <> 400 then
+    raise exception 'The metrics awarded % cents, % of them free',
+      v_metrics.awarded_value_cents, v_metrics.admin_awarded_value_cents;
+  end if;
+
+  -- Every prize a spin created has to land in exactly one bucket.
+  if v_metrics.sold_unit_count + v_metrics.redeemed_unit_count + v_metrics.held_unit_count
+    <> v_metrics.spin_count then
+    raise exception 'The prize split does not close: % sold, % redeemed, % held for % spin(s)',
+      v_metrics.sold_unit_count, v_metrics.redeemed_unit_count,
+      v_metrics.held_unit_count, v_metrics.spin_count;
+  end if;
+  if v_metrics.sold_unit_count <> 1
+    or v_metrics.redeemed_unit_count <> 2
+    or v_metrics.held_unit_count <> 1 then
+    raise exception 'Expected 1 sold, 2 redeemed and 1 held, found %, % and %',
+      v_metrics.sold_unit_count, v_metrics.redeemed_unit_count, v_metrics.held_unit_count;
+  end if;
+  if v_metrics.sold_credited_cents <> 200 then
+    raise exception 'The resale credited % cents', v_metrics.sold_credited_cents;
+  end if;
+
+  -- Nothing was handed over yet, so no cost of goods has landed.
+  if v_metrics.delivered_unit_count <> 0 or v_metrics.delivered_cost_cents <> 0 then
+    raise exception 'The metrics delivered % unit(s) costing % cents',
+      v_metrics.delivered_unit_count, v_metrics.delivered_cost_cents;
+  end if;
+  if v_metrics.pending_redemption_count <> 1 then
+    raise exception 'The redemption queue holds % request(s)',
+      v_metrics.pending_redemption_count;
+  end if;
+  if v_metrics.net_profit_cents <> 500 - v_metrics.provider_fee_cents then
+    raise exception 'The net profit is % cents', v_metrics.net_profit_cents;
+  end if;
+
+  -- Coins still in wallets are a liability, never profit.
+  if v_metrics.coin_liability_cents <> 400 then
+    raise exception 'The wallets hold % cents', v_metrics.coin_liability_cents;
+  end if;
+
+  -- The cost of goods is the listed price taken back through the markup.
+  if v_metrics.pending_cost_cents <> (800 * 10000) / (10000 + v_metrics.markup_bps) then
+    raise exception 'The pending cost of % cents ignores the markup',
+      v_metrics.pending_cost_cents;
+  end if;
+  if v_metrics.held_cost_cents <> (400 * 10000) / (10000 + v_metrics.markup_bps) then
+    raise exception 'The held cost of % cents ignores the markup', v_metrics.held_cost_cents;
+  end if;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
 
 rollback;

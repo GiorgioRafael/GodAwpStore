@@ -1,5 +1,6 @@
 import {
   Bot,
+  ChartNoAxesCombined,
   ClipboardList,
   Coins,
   Gamepad2,
@@ -16,6 +17,7 @@ import {
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
+import { STORE_SLUG } from "@/lib/brand";
 
 export interface NavigationItem {
   label: string;
@@ -27,6 +29,15 @@ export interface NavigationGroup {
   label?: string;
   items: NavigationItem[];
 }
+
+/** A roleta roda só na GWStore, então as páginas dela não aparecem nas outras. */
+const rouletteItems: NavigationItem[] =
+  STORE_SLUG === "gwstore"
+    ? [
+        { label: "Resgates", href: "/resgates", icon: PackageCheck },
+        { label: "Métricas da roleta", href: "/metricas-roleta", icon: ChartNoAxesCombined },
+      ]
+    : [];
 
 export const navigationGroups: NavigationGroup[] = [
   {
@@ -52,7 +63,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Gestão",
     items: [
       { label: "Sorteios", href: "/sorteios", icon: Gift },
-      { label: "Resgates", href: "/resgates", icon: PackageCheck },
+      ...rouletteItems,
       { label: "Whitelist", href: "/whitelist", icon: ShieldCheck },
       { label: "Servidores", href: "/servidores", icon: UsersRound },
       { label: "Customização do bot", href: "/customizacao-bot", icon: Bot },
