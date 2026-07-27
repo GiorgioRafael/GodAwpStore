@@ -16,7 +16,8 @@ begin
     'roulette_coin_balances',
     'roulette_coin_purchases',
     'roulette_coin_entries',
-    'roulette_redemptions'
+    'roulette_redemptions',
+    'roulette_redemption_items'
   ] loop
     if to_regclass('public.' || required_table) is null then
       raise exception 'Missing roulette table: %', required_table;
@@ -44,8 +45,8 @@ begin
     'confirm_roulette_coin_purchase(text, text, text, integer, text, timestamptz, text)',
     'spin_roulette(text)',
     'spin_roulette_as_admin(uuid, text)',
-    'sell_roulette_prize(text)',
-    'redeem_roulette_prize(text)',
+    'sell_roulette_prizes(jsonb)',
+    'redeem_roulette_prizes(jsonb)',
     'claim_roulette_redemption_ticket(uuid, uuid)',
     'complete_roulette_redemption_ticket(uuid, text)',
     'fail_roulette_redemption_ticket(uuid, text)',
@@ -105,7 +106,7 @@ begin
   end if;
 
   if not has_function_privilege('authenticated', 'public.spin_roulette(text)', 'EXECUTE')
-    or not has_function_privilege('authenticated', 'public.sell_roulette_prize(text)', 'EXECUTE')
+    or not has_function_privilege('authenticated', 'public.sell_roulette_prizes(jsonb)', 'EXECUTE')
     or not has_function_privilege(
       'authenticated',
       'public.start_roulette_coin_purchase(text, integer)',
@@ -120,12 +121,12 @@ begin
   end if;
 
   if has_function_privilege('anon', 'public.spin_roulette(text)', 'EXECUTE')
-    or has_function_privilege('anon', 'public.sell_roulette_prize(text)', 'EXECUTE')
-    or has_function_privilege('anon', 'public.redeem_roulette_prize(text)', 'EXECUTE') then
+    or has_function_privilege('anon', 'public.sell_roulette_prizes(jsonb)', 'EXECUTE')
+    or has_function_privilege('anon', 'public.redeem_roulette_prizes(jsonb)', 'EXECUTE') then
     raise exception 'The roulette must stay closed to anonymous visitors';
   end if;
 
-  if not has_function_privilege('authenticated', 'public.redeem_roulette_prize(text)', 'EXECUTE') then
+  if not has_function_privilege('authenticated', 'public.redeem_roulette_prizes(jsonb)', 'EXECUTE') then
     raise exception 'A player must be able to redeem a prize';
   end if;
 
@@ -416,22 +417,34 @@ begin
     when sqlstate 'P0001' then null;
   end;
 
-  select * into v_sale from public.sell_roulette_prize('premio_1');
-  if v_sale.credited_amount_cents <> 200 then
-    raise exception 'Selling must return half the value, credited %', v_sale.credited_amount_cents;
+  select * into v_sale
+  from public.sell_roulette_prizes('[{"prize_key":"premio_1","quantity":1}]'::jsonb);
+  if v_sale.sold_total_credited_cents <> 200 then
+    raise exception 'Selling must return half the value, credited %',
+      v_sale.sold_total_credited_cents;
   end if;
-  if v_sale.remaining_quantity <> 0 then
-    raise exception 'The sold item should leave the inventory, found %', v_sale.remaining_quantity;
+  if v_sale.sold_item_count <> 1 then
+    raise exception 'The sale settled % units', v_sale.sold_item_count;
   end if;
   if v_sale.coin_balance_cents <> 600 then
     raise exception 'Expected a 600 cent balance after the sale, found %', v_sale.coin_balance_cents;
   end if;
 
   begin
-    perform * from public.sell_roulette_prize('premio_1');
+    perform * from public.sell_roulette_prizes('[{"prize_key":"premio_1","quantity":1}]'::jsonb);
     raise exception 'A prize was sold twice';
   exception
     when sqlstate 'P0008' then null;
+  end;
+
+  -- A selection cannot repeat the same prize twice.
+  begin
+    perform * from public.sell_roulette_prizes(
+      '[{"prize_key":"premio_1","quantity":1},{"prize_key":"premio_1","quantity":1}]'::jsonb
+    );
+    raise exception 'A repeated prize was accepted in one selection';
+  exception
+    when sqlstate '22023' then null;
   end;
 end
 $$;
@@ -447,21 +460,45 @@ begin
   if v_spin.won_prize_key <> 'premio_1' then
     raise exception 'The pinned wheel returned %', v_spin.won_prize_key;
   end if;
-
-  select * into v_redemption from public.redeem_roulette_prize('premio_1');
-  if v_redemption.redeemed_product_name <> 'Roulette Verification Prize' then
-    raise exception 'The redemption named the prize %', v_redemption.redeemed_product_name;
-  end if;
-  if v_redemption.redeemed_value_cents <> 400 then
-    raise exception 'The redemption valued the prize at %', v_redemption.redeemed_value_cents;
-  end if;
-  if v_redemption.remaining_quantity <> 0 then
-    raise exception 'The redeemed prize stayed in the inventory';
+  perform pg_sleep(2.1);
+  select * into v_spin from public.spin_roulette('900000000000000001');
+  if v_spin.won_inventory_quantity <> 2 then
+    raise exception 'Two spins should stack to two units, found %',
+      v_spin.won_inventory_quantity;
   end if;
 
-  -- The prize left the inventory, so it cannot be redeemed or sold again.
+  -- More units than the player owns is refused before anything moves.
   begin
-    perform * from public.redeem_roulette_prize('premio_1');
+    perform * from public.redeem_roulette_prizes(
+      '[{"prize_key":"premio_1","quantity":3}]'::jsonb
+    );
+    raise exception 'A redemption took more units than the player owned';
+  exception
+    when sqlstate 'P0008' then null;
+  end;
+
+  select * into v_redemption
+  from public.redeem_roulette_prizes('[{"prize_key":"premio_1","quantity":2}]'::jsonb);
+  if v_redemption.redeemed_item_count <> 2 then
+    raise exception 'The redemption bundled % units', v_redemption.redeemed_item_count;
+  end if;
+  if v_redemption.redeemed_total_value_cents <> 800 then
+    raise exception 'The redemption valued the bundle at %',
+      v_redemption.redeemed_total_value_cents;
+  end if;
+  if (
+    select count(*)
+    from public.roulette_redemption_items
+    where redemption_id = v_redemption.created_redemption_id
+  ) <> 1 then
+    raise exception 'The redemption did not record one line per prize';
+  end if;
+
+  -- The prizes left the inventory, so they cannot be redeemed again.
+  begin
+    perform * from public.redeem_roulette_prizes(
+      '[{"prize_key":"premio_1","quantity":1}]'::jsonb
+    );
     raise exception 'A prize was redeemed twice';
   exception
     when sqlstate 'P0008' then null;
@@ -546,16 +583,16 @@ begin
     select balance_cents
     from public.roulette_coin_balances
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 500 then
+  ) <> 400 then
     raise exception 'The player balance does not match the ledger path';
   end if;
 
-  -- purchase +500, spin -100, sale +200, spin -100 (the redeemed prize).
+  -- purchase +500, spin -100, sale +200, spin -100, spin -100 (redeemed pair).
   if (
     select count(*)
     from public.roulette_coin_entries
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 4 then
+  ) <> 5 then
     raise exception 'The coin ledger did not record every movement';
   end if;
 
@@ -563,7 +600,7 @@ begin
     select sum(amount_cents)
     from public.roulette_coin_entries
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 500 then
+  ) <> 400 then
     raise exception 'The coin ledger does not add up to the balance';
   end if;
 

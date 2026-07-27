@@ -4,8 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const actionMocks = vi.hoisted(() => ({
   spinRoulette: vi.fn(),
-  sellRoulettePrize: vi.fn(),
-  redeemRoulettePrize: vi.fn(),
+  sellRoulettePrizes: vi.fn(),
+  redeemRoulettePrizes: vi.fn(),
   startRouletteCoinPurchase: vi.fn(),
   getRouletteCoinPurchaseStatus: vi.fn(),
 }));
@@ -31,8 +31,8 @@ const purchaseId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
 describe("RouletteExperience", () => {
   beforeEach(() => {
     actionMocks.spinRoulette.mockReset();
-    actionMocks.sellRoulettePrize.mockReset();
-    actionMocks.redeemRoulettePrize.mockReset();
+    actionMocks.sellRoulettePrizes.mockReset();
+    actionMocks.redeemRoulettePrizes.mockReset();
     actionMocks.startRouletteCoinPurchase.mockReset();
     actionMocks.getRouletteCoinPurchaseStatus.mockReset();
     vi.stubGlobal("open", vi.fn());
@@ -178,40 +178,52 @@ describe("RouletteExperience", () => {
     expect(screen.getByRole("button", { name: "Girar (1 moeda)" })).toBeEnabled();
   });
 
-  it("vende um item do inventário e credita as moedas", async () => {
-    actionMocks.sellRoulettePrize.mockResolvedValue({
+  it("vende vários itens selecionados de uma vez", async () => {
+    actionMocks.sellRoulettePrizes.mockResolvedValue({
       ok: true,
-      prizeKey: "premio_2",
-      remainingQuantity: 0,
-      creditedCents: 100,
-      balanceCents: 100,
+      lines: [
+        { prizeKey: "premio_2", remainingQuantity: 0 },
+        { prizeKey: "premio_5", remainingQuantity: 1 },
+      ],
+      itemCount: 3,
+      creditedCents: 250,
+      balanceCents: 250,
     });
     const user = userEvent.setup();
 
     render(
       <RouletteExperience
         prizes={prizes}
-        initialInventory={[{ prizeKey: "premio_2", quantity: 1 }]}
+        initialInventory={[
+          { prizeKey: "premio_2", quantity: 1 },
+          { prizeKey: "premio_5", quantity: 3 },
+        ]}
         initialBalanceCents={0}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Vender por 1,00/ }));
+    await user.click(screen.getByLabelText("Selecionar 1x Dragonfly"));
+    await user.click(screen.getByLabelText("Selecionar Prêmio 5"));
+    await user.click(screen.getByRole("button", { name: "Mais um Prêmio 5" }));
+
+    await user.click(screen.getByRole("button", { name: "Vender selecionados" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Item vendido por 1,00 moedas.")).toBeInTheDocument();
+      expect(screen.getByText("3 itens vendidos por 2,50 moedas.")).toBeInTheDocument();
     });
-    expect(actionMocks.sellRoulettePrize).toHaveBeenCalledWith("premio_2");
-    expect(screen.getByText("Saldo: 1,00 moedas")).toBeInTheDocument();
-    expect(screen.getByText("Seu inventário está vazio")).toBeInTheDocument();
+    expect(actionMocks.sellRoulettePrizes).toHaveBeenCalledWith([
+      { prizeKey: "premio_2", quantity: 1 },
+      { prizeKey: "premio_5", quantity: 2 },
+    ]);
+    expect(screen.getByText("Saldo: 2,50 moedas")).toBeInTheDocument();
   });
 
-  it("resgata o item e avisa que o ticket do Discord foi aberto", async () => {
-    actionMocks.redeemRoulettePrize.mockResolvedValue({
+  it("resgata vários itens num único ticket", async () => {
+    actionMocks.redeemRoulettePrizes.mockResolvedValue({
       ok: true,
-      prizeKey: "premio_2",
-      productName: "1x Dragonfly",
-      remainingQuantity: 1,
+      lines: [{ prizeKey: "premio_2", remainingQuantity: 0 }],
+      itemCount: 2,
+      productNames: ["2x 1x Dragonfly"],
       ticketOpened: true,
     });
     const user = userEvent.setup();
@@ -224,27 +236,22 @@ describe("RouletteExperience", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Resgatar item/ }));
+    await user.click(screen.getByLabelText("Selecionar 1x Dragonfly"));
+    await user.click(screen.getByRole("button", { name: "Tudo" }));
+    await user.click(screen.getByRole("button", { name: "Resgatar selecionados" }));
 
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent(
         "Um ticket privado foi criado no Discord",
       );
     });
-    expect(actionMocks.redeemRoulettePrize).toHaveBeenCalledWith("premio_2");
-    expect(screen.getByLabelText("Quantidade: 1")).toBeInTheDocument();
+    expect(actionMocks.redeemRoulettePrizes).toHaveBeenCalledWith([
+      { prizeKey: "premio_2", quantity: 2 },
+    ]);
+    expect(screen.getByText("Seu inventário está vazio")).toBeInTheDocument();
   });
 
-  it("avisa quando o resgate entra mas o ticket ainda não abriu", async () => {
-    actionMocks.redeemRoulettePrize.mockResolvedValue({
-      ok: true,
-      prizeKey: "premio_2",
-      productName: "1x Dragonfly",
-      remainingQuantity: 0,
-      ticketOpened: false,
-    });
-    const user = userEvent.setup();
-
+  it("mantém as ações em lote desligadas sem seleção", () => {
     render(
       <RouletteExperience
         prizes={prizes}
@@ -253,14 +260,11 @@ describe("RouletteExperience", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: /Resgatar item/ }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent(
-        "O ticket no Discord será aberto em instantes",
-      );
-    });
-    expect(screen.getByText("Seu inventário está vazio")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Vender selecionados" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Resgatar selecionados" })).toBeDisabled();
+    expect(
+      screen.getByText("Marque os itens que quer vender ou resgatar"),
+    ).toBeInTheDocument();
   });
 
   it("mostra o valor de cada item no inventário", () => {

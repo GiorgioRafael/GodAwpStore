@@ -25,8 +25,8 @@ export default async function RouletteRedemptionsPage() {
       />
       <Notice>
         O resgate não desconta o estoque do catálogo: a roleta pode sortear um item que está
-        zerado. A coluna <strong>Estoque</strong> mostra a quantidade disponível agora para a
-        equipe saber o que consegue entregar.
+        zerado. Cada item mostra o estoque disponível agora, para a equipe saber o que consegue
+        entregar.
         {pending > 0 ? ` Há ${pending} resgate(s) aguardando entrega.` : ""}
       </Notice>
       <RouletteRedemptionManager redemptions={redemptions} />
@@ -41,7 +41,7 @@ async function listRouletteRedemptions(): Promise<AdminRouletteRedemption[]> {
   const { data, error } = await supabase
     .from("roulette_redemptions")
     .select(
-      "id,discord_user_id,product_name,value_cents,status,discord_ticket_status,discord_ticket_channel_id,discord_ticket_error,created_at,guilds(discord_guild_id),products(stock_quantity)",
+      "id,discord_user_id,item_count,total_value_cents,status,discord_ticket_status,discord_ticket_channel_id,discord_ticket_error,created_at,guilds(discord_guild_id),roulette_redemption_items(prize_key,product_name,quantity,value_cents,products(stock_quantity))",
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -53,14 +53,20 @@ async function listRouletteRedemptions(): Promise<AdminRouletteRedemption[]> {
   return data.map((row) => ({
     id: row.id,
     discordUserId: row.discord_user_id,
-    productName: row.product_name,
-    valueCents: row.value_cents,
+    itemCount: row.item_count,
+    totalValueCents: row.total_value_cents,
+    items: (row.roulette_redemption_items ?? []).map((line) => ({
+      prizeKey: line.prize_key,
+      productName: line.product_name,
+      quantity: line.quantity,
+      valueCents: line.value_cents,
+      productStock: line.products?.stock_quantity ?? null,
+    })),
     status: row.status,
     ticketStatus: row.discord_ticket_status,
     ticketChannelId: row.discord_ticket_channel_id,
     ticketError: row.discord_ticket_error,
     guildDiscordId: row.guilds?.discord_guild_id ?? null,
-    productStock: row.products?.stock_quantity ?? null,
     createdAt: row.created_at,
   }));
 }

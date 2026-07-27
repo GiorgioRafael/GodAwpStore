@@ -13,17 +13,25 @@ import { TableEmptyRow, TableShell } from "@/components/ui/table-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatCoins } from "@/lib/roulette/demo";
 
+export type AdminRouletteRedemptionItem = {
+  prizeKey: string;
+  productName: string;
+  quantity: number;
+  valueCents: number;
+  productStock: number | null;
+};
+
 export type AdminRouletteRedemption = {
   id: string;
   discordUserId: string;
-  productName: string;
-  valueCents: number;
+  itemCount: number;
+  totalValueCents: number;
+  items: AdminRouletteRedemptionItem[];
   status: "pending" | "delivered" | "cancelled";
   ticketStatus: "pending" | "creating" | "open" | "failed";
   ticketChannelId: string | null;
   ticketError: string | null;
   guildDiscordId: string | null;
-  productStock: number | null;
   createdAt: string;
 };
 
@@ -83,35 +91,41 @@ export function RouletteRedemptionManager({
 
       <TableShell
         caption="Resgates da roleta"
-        columns={["Item", "Jogador", "Estoque", "Situação", "Ticket", "Ações"]}
+        columns={["Itens", "Jogador", "Situação", "Ticket", "Ações"]}
       >
         {redemptions.length === 0 ? (
-          <TableEmptyRow colSpan={6}>Nenhum resgate.</TableEmptyRow>
+          <TableEmptyRow colSpan={5}>Nenhum resgate.</TableEmptyRow>
         ) : null}
         {redemptions.map((redemption) => (
           <tr key={redemption.id} className="border-b border-border last:border-b-0">
             <td className="px-5 py-4">
-              <p className="font-medium text-foreground">{redemption.productName}</p>
-              <p className="mt-0.5 text-xs text-muted">
-                {formatCoins(redemption.valueCents)} moedas ·{" "}
+              <ul className="space-y-1">
+                {redemption.items.map((item) => (
+                  <li key={item.prizeKey} className="flex items-baseline gap-2">
+                    <span className="font-medium text-foreground">
+                      {item.quantity}x {item.productName}
+                    </span>
+                    <span
+                      className={`text-xs ${
+                        item.productStock === null
+                          ? "text-muted"
+                          : item.productStock >= item.quantity
+                            ? "text-muted"
+                            : "text-rose-300"
+                      }`}
+                    >
+                      estoque {item.productStock ?? "—"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1 text-xs text-muted">
+                {redemption.itemCount} un · {formatCoins(redemption.totalValueCents)} moedas ·{" "}
                 {new Date(redemption.createdAt).toLocaleString("pt-BR")}
               </p>
             </td>
             <td className="px-5 py-4 text-sm text-muted-strong">
               <code className="text-xs">{redemption.discordUserId}</code>
-            </td>
-            <td className="px-5 py-4 text-sm">
-              {redemption.productStock === null ? (
-                <span className="text-muted">—</span>
-              ) : (
-                <span
-                  className={
-                    redemption.productStock > 0 ? "text-foreground" : "text-rose-300"
-                  }
-                >
-                  {redemption.productStock} un
-                </span>
-              )}
             </td>
             <td className="px-5 py-4">
               <Badge tone={redemption.status === "delivered" ? "success" : redemption.status === "cancelled" ? "neutral" : "warning"}>

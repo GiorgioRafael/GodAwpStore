@@ -29,8 +29,8 @@ export async function openRouletteRedemptionTicket(redemptionId: string) {
       redemptionId: data.claimed_redemption_id,
       guildDiscordId: data.claimed_guild_discord_id,
       playerDiscordId: data.claimed_discord_user_id,
-      productName: data.claimed_product_name,
-      valueCents: data.claimed_value_cents,
+      itemSummary: data.claimed_item_summary,
+      totalValueCents: data.claimed_total_value_cents,
     });
     const { error: completeError } = await client.rpc(
       "complete_roulette_redemption_ticket",

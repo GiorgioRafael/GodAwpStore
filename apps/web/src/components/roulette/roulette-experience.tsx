@@ -25,10 +25,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getRouletteCoinPurchaseStatus,
-  redeemRoulettePrize,
-  sellRoulettePrize,
+  redeemRoulettePrizes,
+  sellRoulettePrizes,
   spinRoulette,
   startRouletteCoinPurchase,
+  type RouletteSelection,
+  type RouletteSettledLine,
 } from "@/app/roleta/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
 import {
@@ -90,11 +92,41 @@ export function RouletteExperience({
   const [coinQuantity, setCoinQuantity] = useState(MINIMUM_COIN_PURCHASE);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<string, number>>({});
   const rotationRef = useRef(0);
   const phaseRef = useRef(phase);
   const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
   const isBusy = phase !== "idle";
   const canSpin = isAdmin || balanceCents >= SPIN_COST_CENTS;
+  const selection: RouletteSelection[] = inventory.flatMap((item) => {
+    const quantity = Math.min(selected[item.prizeKey] ?? 0, item.quantity);
+    return quantity > 0 ? [{ prizeKey: item.prizeKey, quantity }] : [];
+  });
+  const selectedUnits = selection.reduce((total, line) => total + line.quantity, 0);
+  const selectedSaleCents = selection.reduce(
+    (total, line) => total + rouletteWheelPrize(prizes, line.prizeKey).saleValueCents * line.quantity,
+    0,
+  );
+  const hasSelection = selection.length > 0;
+
+  function toggleSelected(prizeKey: DemoRoulettePrizeKey, quantity: number) {
+    setSelected((current) => {
+      const next = { ...current };
+      if (quantity <= 0) delete next[prizeKey];
+      else next[prizeKey] = quantity;
+      return next;
+    });
+  }
+
+  function applySettledLines(lines: RouletteSettledLine[]) {
+    setInventory((current) =>
+      lines.reduce(
+        (inv, line) => mergeDemoRouletteInventory(inv, line.prizeKey, line.remainingQuantity),
+        current,
+      ),
+    );
+    setSelected({});
+  }
 
   useEffect(() => {
     phaseRef.current = phase;
@@ -197,13 +229,13 @@ export function RouletteExperience({
     }
   }
 
-  async function handleSell(prizeKey: DemoRoulettePrizeKey) {
-    if (isBusy || !available) return;
+  async function handleSell() {
+    if (isBusy || !available || !hasSelection) return;
     setError(null);
     setNotice(null);
     setPhase("selling");
 
-    const sale = await sellRoulettePrize(prizeKey);
+    const sale = await sellRoulettePrizes(selection);
     if (!sale.ok) {
       setError(sale.message);
       setPhase("idle");
@@ -211,40 +243,35 @@ export function RouletteExperience({
     }
 
     setBalanceCents(sale.balanceCents);
-    setInventory((current) =>
-      mergeDemoRouletteInventory(current, sale.prizeKey, sale.remainingQuantity),
+    applySettledLines(sale.lines);
+    setNotice(
+      `${sale.itemCount} ${sale.itemCount === 1 ? "item vendido" : "itens vendidos"} por ${formatCoins(sale.creditedCents)} moedas.`,
     );
-    setNotice(`Item vendido por ${formatCoins(sale.creditedCents)} moedas.`);
-    if (lastPrizeKey === sale.prizeKey && sale.remainingQuantity === 0) {
-      setLastPrizeKey(null);
-    }
+    setLastPrizeKey(null);
     setPhase("idle");
   }
 
-  async function handleRedeem(prizeKey: DemoRoulettePrizeKey) {
-    if (isBusy || !available) return;
+  async function handleRedeem() {
+    if (isBusy || !available || !hasSelection) return;
     setError(null);
     setNotice(null);
     setPhase("redeeming");
 
-    const redemption = await redeemRoulettePrize(prizeKey);
+    const redemption = await redeemRoulettePrizes(selection);
     if (!redemption.ok) {
       setError(redemption.message);
       setPhase("idle");
       return;
     }
 
-    setInventory((current) =>
-      mergeDemoRouletteInventory(current, redemption.prizeKey, redemption.remainingQuantity),
-    );
+    applySettledLines(redemption.lines);
+    const names = redemption.productNames.join(", ");
     setNotice(
       redemption.ticketOpened
-        ? `Resgate aberto: ${redemption.productName}. Um ticket privado foi criado no Discord para a entrega.`
-        : `Resgate de ${redemption.productName} registrado. O ticket no Discord será aberto em instantes.`,
+        ? `Resgate aberto (${names}). Um ticket privado foi criado no Discord para a entrega.`
+        : `Resgate de ${names} registrado. O ticket no Discord será aberto em instantes.`,
     );
-    if (lastPrizeKey === redemption.prizeKey && redemption.remainingQuantity === 0) {
-      setLastPrizeKey(null);
-    }
+    setLastPrizeKey(null);
     setPhase("idle");
   }
 
@@ -539,12 +566,27 @@ export function RouletteExperience({
               {inventory.map((item) => {
                 const prize = rouletteWheelPrize(prizes, item.prizeKey);
                 const Icon = PRIZE_ICONS[item.prizeKey];
+                const picked = Math.min(selected[item.prizeKey] ?? 0, item.quantity);
                 return (
                   <li
                     key={item.prizeKey}
-                    className="overflow-hidden rounded-2xl border border-fuchsia-300/20 bg-[#100a15]/90 p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)]"
+                    className={`overflow-hidden rounded-2xl border p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)] transition-colors ${
+                      picked > 0
+                        ? "border-amber-300/50 bg-[#191207]/90"
+                        : "border-fuchsia-300/20 bg-[#100a15]/90"
+                    }`}
                   >
-                    <div className="grid grid-cols-[52px_1fr_auto] items-center gap-4">
+                    <div className="grid grid-cols-[auto_52px_1fr_auto] items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={picked > 0}
+                        onChange={(event) =>
+                          toggleSelected(item.prizeKey, event.target.checked ? 1 : 0)
+                        }
+                        disabled={isBusy || !available}
+                        aria-label={`Selecionar ${prize.displayName}`}
+                        className="size-4 accent-amber-400"
+                      />
                       <span
                         className="grid size-[52px] place-items-center overflow-hidden rounded-xl border bg-black/20"
                         style={{
@@ -568,35 +610,47 @@ export function RouletteExperience({
                         </span>
                       </span>
                       <span
-                        className="min-w-10 border-l border-fuchsia-300/15 pl-4 text-center text-xl font-bold"
+                        className="min-w-10 border-l border-fuchsia-300/15 pl-3 text-center text-xl font-bold"
                         style={{ color: prize.accent }}
                         aria-label={`Quantidade: ${item.quantity}`}
                       >
                         {item.quantity}
                       </span>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleSell(item.prizeKey)}
-                        disabled={isBusy || !available || prize.saleValueCents <= 0}
-                        className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-300/35 bg-amber-400/10 px-2 text-xs font-bold text-amber-100 transition-colors hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <Coins aria-hidden="true" className="size-3.5 shrink-0" />
-                        {prize.saleValueCents > 0
-                          ? `Vender por ${formatCoins(prize.saleValueCents)}`
-                          : "Sem recompra"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRedeem(item.prizeKey)}
-                        disabled={isBusy || !available || !prize.productId}
-                        className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-300/40 bg-emerald-400/10 px-2 text-xs font-bold text-emerald-100 transition-colors hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <PackageCheck aria-hidden="true" className="size-3.5 shrink-0" />
-                        Resgatar item
-                      </button>
-                    </div>
+                    {picked > 0 && item.quantity > 1 ? (
+                      <div className="mt-2.5 flex items-center justify-end gap-2 text-xs text-[#c8b49a]">
+                        <span>Quantidade:</span>
+                        <button
+                          type="button"
+                          aria-label={`Menos um ${prize.displayName}`}
+                          onClick={() => toggleSelected(item.prizeKey, picked - 1)}
+                          disabled={isBusy || picked <= 1}
+                          className="grid size-7 place-items-center rounded-lg border border-amber-300/30 text-amber-200 disabled:opacity-40"
+                        >
+                          <Minus aria-hidden="true" className="size-3" />
+                        </button>
+                        <span className="min-w-6 text-center font-bold text-amber-100">
+                          {picked}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`Mais um ${prize.displayName}`}
+                          onClick={() => toggleSelected(item.prizeKey, picked + 1)}
+                          disabled={isBusy || picked >= item.quantity}
+                          className="grid size-7 place-items-center rounded-lg border border-amber-300/30 text-amber-200 disabled:opacity-40"
+                        >
+                          <Plus aria-hidden="true" className="size-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => toggleSelected(item.prizeKey, item.quantity)}
+                          disabled={isBusy || picked >= item.quantity}
+                          className="rounded-lg border border-amber-300/30 px-2 py-1 font-semibold text-amber-200 disabled:opacity-40"
+                        >
+                          Tudo
+                        </button>
+                      </div>
+                    ) : null}
                   </li>
                 );
               })}
@@ -618,6 +672,36 @@ export function RouletteExperience({
               </div>
             </div>
           )}
+
+          {inventory.length ? (
+            <div className="sticky bottom-3 mt-5 rounded-2xl border border-amber-300/30 bg-[#161008]/95 p-3.5 backdrop-blur">
+              <p className="text-xs text-[#c8b49a]">
+                {hasSelection
+                  ? `${selectedUnits} ${selectedUnits === 1 ? "item selecionado" : "itens selecionados"} · venda rende ${formatCoins(selectedSaleCents)} moedas`
+                  : "Marque os itens que quer vender ou resgatar"}
+              </p>
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleSell}
+                  disabled={isBusy || !available || !hasSelection || selectedSaleCents <= 0}
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/45 bg-amber-400/15 px-3 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <Coins aria-hidden="true" className="size-4 shrink-0" />
+                  {phase === "selling" ? "Vendendo..." : "Vender selecionados"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRedeem}
+                  disabled={isBusy || !available || !hasSelection}
+                  className="flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/45 bg-emerald-400/15 px-3 text-sm font-bold text-emerald-100 transition-colors hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <PackageCheck aria-hidden="true" className="size-4 shrink-0" />
+                  {phase === "redeeming" ? "Resgatando..." : "Resgatar selecionados"}
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-5 flex gap-3 border-t border-fuchsia-300/10 pt-5 text-xs leading-5 text-[#87728f]">
             <ShieldCheck

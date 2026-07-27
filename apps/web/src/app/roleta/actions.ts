@@ -31,11 +31,22 @@ export type SpinRouletteResult =
     }
   | { ok: false; message: string };
 
+/** One inventory line the player selected, with how many units to act on. */
+export type RouletteSelection = {
+  prizeKey: DemoRoulettePrizeKey;
+  quantity: number;
+};
+
+export type RouletteSettledLine = {
+  prizeKey: DemoRoulettePrizeKey;
+  remainingQuantity: number;
+};
+
 export type SellRoulettePrizeResult =
   | {
       ok: true;
-      prizeKey: DemoRoulettePrizeKey;
-      remainingQuantity: number;
+      lines: RouletteSettledLine[];
+      itemCount: number;
       creditedCents: number;
       balanceCents: number;
     }
@@ -44,9 +55,9 @@ export type SellRoulettePrizeResult =
 export type RedeemRoulettePrizeResult =
   | {
       ok: true;
-      prizeKey: DemoRoulettePrizeKey;
-      productName: string;
-      remainingQuantity: number;
+      lines: RouletteSettledLine[];
+      itemCount: number;
+      productNames: string[];
       ticketOpened: boolean;
     }
   | { ok: false; message: string };
@@ -207,76 +218,76 @@ export async function spinRoulette(): Promise<SpinRouletteResult> {
   return readSpinResult(data?.[0], error);
 }
 
-/** Sells one unit of an inventory prize back for coins. */
-export async function sellRoulettePrize(
-  prizeKey: string,
+/** Sells the selected inventory prizes back for coins in one transaction. */
+export async function sellRoulettePrizes(
+  selection: RouletteSelection[],
 ): Promise<SellRoulettePrizeResult> {
-  if (!isDemoRoulettePrizeKey(prizeKey)) {
-    return { ok: false, message: "Prêmio inválido." };
-  }
+  const items = normalizeSelection(selection);
+  if (!items) return { ok: false, message: "Escolha ao menos um item válido." };
+
   const session = await readRouletteSession();
   if ("message" in session) return { ok: false, message: session.message };
 
-  const { data, error } = await session.supabase.rpc("sell_roulette_prize", {
-    p_prize_key: prizeKey,
+  const { data, error } = await session.supabase.rpc("sell_roulette_prizes", {
+    p_items: items,
   });
   const sale = data?.[0];
   if (error?.code === "P0008") {
-    return { ok: false, message: "Você não tem mais esse item no inventário." };
+    return { ok: false, message: "Você não tem essa quantidade no inventário." };
   }
   if (error?.code === "P0010" || error?.code === "P0011") {
-    return { ok: false, message: "Este item não tem valor de recompra no momento." };
+    return { ok: false, message: "Um dos itens não tem valor de recompra no momento." };
   }
-  if (error || !sale || !isDemoRoulettePrizeKey(sale.sold_prize_key)) {
+  if (error || !sale) {
     if (error) console.error(`[roleta:venda] ${error.code ?? "sem código"} ${error.message}`);
-    return { ok: false, message: "Não foi possível vender o item. Tente novamente." };
+    return { ok: false, message: "Não foi possível vender os itens. Tente novamente." };
   }
 
   return {
     ok: true,
-    prizeKey: sale.sold_prize_key,
-    remainingQuantity: safeCount(sale.remaining_quantity),
-    creditedCents: safeCount(sale.credited_amount_cents),
+    lines: readSettledLines(sale.sold_items),
+    itemCount: safeCount(sale.sold_item_count),
+    creditedCents: safeCount(sale.sold_total_credited_cents),
     balanceCents: safeCount(sale.coin_balance_cents),
   };
 }
 
 /**
- * Takes one prize out of the inventory for hand delivery: it lands in the admin
- * panel and opens a private Discord ticket for the player.
+ * Takes the selected prizes out of the inventory for hand delivery: they land
+ * in the admin panel as one request and open one private Discord ticket.
  */
-export async function redeemRoulettePrize(
-  prizeKey: string,
+export async function redeemRoulettePrizes(
+  selection: RouletteSelection[],
 ): Promise<RedeemRoulettePrizeResult> {
-  if (!isDemoRoulettePrizeKey(prizeKey)) {
-    return { ok: false, message: "Prêmio inválido." };
-  }
+  const items = normalizeSelection(selection);
+  if (!items) return { ok: false, message: "Escolha ao menos um item válido." };
+
   const session = await readRouletteSession();
   if ("message" in session) return { ok: false, message: session.message };
 
-  const { data, error } = await session.supabase.rpc("redeem_roulette_prize", {
-    p_prize_key: prizeKey,
+  const { data, error } = await session.supabase.rpc("redeem_roulette_prizes", {
+    p_items: items,
   });
   const redemption = data?.[0];
   if (error?.code === "P0008") {
-    return { ok: false, message: "Você não tem mais esse item no inventário." };
+    return { ok: false, message: "Você não tem essa quantidade no inventário." };
   }
   if (error?.code === "P0010") {
-    return { ok: false, message: "Este item saiu do catálogo e não pode ser resgatado." };
+    return { ok: false, message: "Um dos itens saiu do catálogo e não pode ser resgatado." };
   }
   if (error?.code === "P0012") {
     return { ok: false, message: "O servidor de entrega está indisponível. Fale com a equipe." };
   }
-  if (error || !redemption || !isDemoRoulettePrizeKey(redemption.redeemed_prize_key)) {
+  if (error || !redemption) {
     if (error) console.error(`[roleta:resgate] ${error.code ?? "sem código"} ${error.message}`);
     return { ok: false, message: "Não foi possível abrir o resgate. Tente novamente." };
   }
 
-  // The prize already left the inventory, so a Discord failure must not undo
+  // The prizes already left the inventory, so a Discord failure must not undo
   // the request: the reconciliation cron retries the ticket.
   let ticketOpened = false;
   try {
-    const ticket = await openRouletteRedemptionTicket(redemption.redemption_id);
+    const ticket = await openRouletteRedemptionTicket(redemption.created_redemption_id);
     ticketOpened = Boolean(ticket.channelId);
   } catch (error) {
     console.error(
@@ -286,9 +297,9 @@ export async function redeemRoulettePrize(
 
   return {
     ok: true,
-    prizeKey: redemption.redeemed_prize_key,
-    productName: redemption.redeemed_product_name,
-    remainingQuantity: safeCount(redemption.remaining_quantity),
+    lines: readSettledLines(redemption.redeemed_items),
+    itemCount: safeCount(redemption.redeemed_item_count),
+    productNames: readProductNames(redemption.redeemed_items),
     ticketOpened,
   };
 }
@@ -375,6 +386,44 @@ function readSpinResult(
     balanceCents: safeCount(result.coin_balance_cents),
     spinId: result.recorded_spin_id,
   };
+}
+
+/** Validates the browser selection before it reaches the database. */
+function normalizeSelection(selection: RouletteSelection[]) {
+  if (!Array.isArray(selection) || selection.length < 1 || selection.length > 5) return null;
+  const seen = new Set<string>();
+  const items: Array<{ prize_key: string; quantity: number }> = [];
+  for (const line of selection) {
+    if (!isDemoRoulettePrizeKey(line?.prizeKey)) return null;
+    if (!Number.isSafeInteger(line.quantity) || line.quantity < 1 || line.quantity > 10_000) {
+      return null;
+    }
+    if (seen.has(line.prizeKey)) return null;
+    seen.add(line.prizeKey);
+    items.push({ prize_key: line.prizeKey, quantity: line.quantity });
+  }
+  return items;
+}
+
+function readSettledLines(value: unknown): RouletteSettledLine[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const line = entry as { prize_key?: unknown; remaining_quantity?: unknown };
+    return isDemoRoulettePrizeKey(line.prize_key) &&
+      Number.isSafeInteger(line.remaining_quantity)
+      ? [{ prizeKey: line.prize_key, remainingQuantity: Number(line.remaining_quantity) }]
+      : [];
+  });
+}
+
+function readProductNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const line = entry as { product_name?: unknown; quantity?: unknown };
+    return typeof line.product_name === "string" && line.product_name.trim()
+      ? [`${Number(line.quantity) || 1}x ${line.product_name.trim()}`]
+      : [];
+  });
 }
 
 function safeCount(value: number | null | undefined) {

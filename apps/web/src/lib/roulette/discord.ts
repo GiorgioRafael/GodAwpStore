@@ -29,8 +29,9 @@ export type RouletteRedemptionTicketInput = {
   redemptionId: string;
   guildDiscordId: string;
   playerDiscordId: string;
-  productName: string;
-  valueCents: number;
+  /** One line per prize, already formatted as "2x Rainbow Seed". */
+  itemSummary: string;
+  totalValueCents: number;
 };
 
 /** Marker kept on the channel topic so a retry finds the channel it created. */
@@ -38,8 +39,8 @@ export function rouletteRedemptionTicketMarker(redemptionId: string) {
   return `gwstore:roulette-redemption:${redemptionId}`;
 }
 
-function ticketChannelName(productName: string, redemptionId: string) {
-  const slug = productName
+function ticketChannelName(itemSummary: string, redemptionId: string) {
+  const slug = itemSummary.split("\n")[0]
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -105,7 +106,7 @@ export async function ensureRouletteRedemptionTicket(
           ),
         },
         body: JSON.stringify({
-          name: ticketChannelName(input.productName, input.redemptionId),
+          name: ticketChannelName(input.itemSummary, input.redemptionId),
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
@@ -145,10 +146,10 @@ export async function ensureRouletteRedemptionTicket(
                 `O prêmio saiu do seu inventário e a equipe da ${STORE_NAME} entrega por aqui.`,
               color: 0xd946ef,
               fields: [
-                { name: "Item", value: input.productName, inline: true },
+                { name: "Itens", value: input.itemSummary.slice(0, 1024), inline: false },
                 {
-                  name: "Valor",
-                  value: `${formatCoins(input.valueCents)} moedas`,
+                  name: "Valor total",
+                  value: `${formatCoins(input.totalValueCents)} moedas`,
                   inline: true,
                 },
               ],
