@@ -36,7 +36,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Catálogo",
     items: [
       { label: "Jogos", href: "/catalogo/jogos", icon: Gamepad2 },
-      { label: "Sublojas", href: "/catalogo/sublojas", icon: Store },
+      { label: "Categorias", href: "/catalogo/sublojas", icon: Store },
       { label: "Produtos", href: "/catalogo/produtos", icon: Tags },
     ],
   },

@@ -36,6 +36,7 @@ vi.mock("@/lib/bot/discord-storefront", () => ({
   listDiscordTextChannels: vi.fn(),
   publishDiscordStorefront: vi.fn(),
   readStorefrontConfiguration: vi.fn(),
+  readStorefrontConfigurations: vi.fn(),
   withStorefrontConfiguration: vi.fn(),
 }));
 vi.mock("@/lib/bot/booster-discount", () => ({
@@ -306,6 +307,22 @@ describe("action de produtos", () => {
       error: null,
     });
     const activeProductsQuery = awaitableQuery({ count: 0, error: null });
+    const targetSubstoreQuery = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      is: vi.fn(),
+      maybeSingle: vi.fn(async () => ({
+        data: { game_id: "02c90c5b-6ea7-4508-b9da-79f39c10f314" },
+        error: null,
+      })),
+    };
+    targetSubstoreQuery.select.mockReturnValue(targetSubstoreQuery);
+    targetSubstoreQuery.eq.mockReturnValue(targetSubstoreQuery);
+    targetSubstoreQuery.is.mockReturnValue(targetSubstoreQuery);
+    const gameSubstoresQuery = awaitableQuery({
+      data: [{ id: "338e5b0d-90e3-48aa-8f8e-aa090d777c64" }],
+      error: null,
+    });
     const single = vi.fn(async () => ({
       data: { id: "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae" },
       error: null,
@@ -315,6 +332,8 @@ describe("action de produtos", () => {
     const from = vi
       .fn()
       .mockReturnValueOnce(existingSlugsQuery)
+      .mockReturnValueOnce(targetSubstoreQuery)
+      .mockReturnValueOnce(gameSubstoresQuery)
       .mockReturnValueOnce(activeProductsQuery)
       .mockReturnValueOnce({ insert });
     mocks.createServerSupabaseClient.mockResolvedValue({ from });
@@ -392,7 +411,7 @@ describe("action de sublojas", () => {
     expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
     expect(result).toEqual({
       ok: true,
-      message: "Subloja atualizada. Vitrine do Discord sincronizada.",
+      message: "Categoria atualizada. Vitrine do Discord sincronizada.",
     });
   });
 });
@@ -431,6 +450,7 @@ function awaitableQuery<TResult>(result: TResult) {
     select: vi.fn(),
     eq: vi.fn(),
     is: vi.fn(),
+    in: vi.fn(),
     neq: vi.fn(),
     then: (
       resolve: (value: TResult) => unknown,
@@ -440,6 +460,7 @@ function awaitableQuery<TResult>(result: TResult) {
   query.select.mockReturnValue(query);
   query.eq.mockReturnValue(query);
   query.is.mockReturnValue(query);
+  query.in.mockReturnValue(query);
   query.neq.mockReturnValue(query);
   return query;
 }

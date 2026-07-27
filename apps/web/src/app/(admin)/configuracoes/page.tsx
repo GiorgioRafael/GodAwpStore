@@ -12,10 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   listDiscordTextChannels,
-  readStorefrontConfiguration,
+  readStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { readBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
-import { getPlatformSettings, listOperationalRows } from "@/lib/data/admin-repository";
+import {
+  getPlatformSettings,
+  listGames,
+  listOperationalRows,
+  listProducts,
+  listSubstores,
+} from "@/lib/data/admin-repository";
 
 export const metadata: Metadata = { title: "Configurações" };
 
@@ -38,10 +44,36 @@ const securityRequirements = [
 ];
 
 export default async function SettingsPage() {
-  const [settings, guildRows] = await Promise.all([
+  const [settings, guildRows, gameRows, substoreRows, productRows] = await Promise.all([
     getPlatformSettings(),
     listOperationalRows("guilds", 500),
+    listGames(),
+    listSubstores(),
+    listProducts(),
   ]);
+  const storefrontGames = gameRows
+    .filter((game) => game.status === "active" && !game.archived_at)
+    .map((game) => {
+      const activeSubstores = substoreRows.filter(
+        (substore) =>
+          substore.game_id === game.id &&
+          substore.status === "active" &&
+          !substore.archived_at,
+      );
+      const substoreIds = new Set(activeSubstores.map((substore) => substore.id));
+      return {
+        id: game.id,
+        name: game.name,
+        categoryCount: activeSubstores.length,
+        productCount: productRows.filter(
+          (product) =>
+            substoreIds.has(product.substore_id) &&
+            product.status === "active" &&
+            !product.archived_at,
+        ).length,
+      };
+    })
+    .filter((game) => game.productCount > 0);
   const guilds = await Promise.all(
     guildRows
       .filter((guild) => guild.status === "active" && !guild.archived_at)
@@ -52,7 +84,7 @@ export default async function SettingsPage() {
             discordGuildId: guild.discord_guild_id,
             name: guild.name,
             channels: await listDiscordTextChannels(guild.discord_guild_id),
-            current: readStorefrontConfiguration(guild.configuration),
+            current: readStorefrontConfigurations(guild.configuration),
             boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError: null,
           };
@@ -65,7 +97,7 @@ export default async function SettingsPage() {
             discordGuildId: guild.discord_guild_id,
             name: guild.name,
             channels: [],
-            current: readStorefrontConfiguration(guild.configuration),
+            current: readStorefrontConfigurations(guild.configuration),
             boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError:
               "Não foi possível carregar os canais. Confira se o bot está no servidor e possui acesso aos canais de texto.",
@@ -102,13 +134,15 @@ export default async function SettingsPage() {
     <div className="space-y-7">
       <PageHeader
         eyebrow="Sistema"
-        title="Configurações globais"
-        description="Defina regras comerciais e confira os requisitos de segurança do ambiente."
+        title="Configurações da loja"
+        description="Publique as vitrines por jogo e ajuste as regras gerais do bot."
       />
 
       <Notice>
         Valores sensíveis devem ser preenchidos apenas no arquivo local de ambiente ou no provedor de hospedagem. Nunca cole chaves neste painel.
       </Notice>
+
+      <DiscordStorefrontForm guilds={guilds} games={storefrontGames} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,.95fr)]">
         <PlatformSettingsForm
@@ -157,8 +191,6 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       </div>
-
-      <DiscordStorefrontForm guilds={guilds} />
     </div>
   );
 }

@@ -163,7 +163,7 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
       <ResourceManagerShell
         eyebrow="Catálogo"
         title="Jogos"
-        description="Organize a raiz do catálogo que será compartilhado com as sublojas e o futuro bot."
+        description="Cada jogo pode ter sua própria vitrine e seu próprio canal no Discord."
         actionLabel="Novo jogo"
         onCreate={() => setEditor({ mode: "create" })}
         search={search}
@@ -171,12 +171,12 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
         filter={filter}
         onFilterChange={setFilter}
         filterOptions={catalogStatusOptions}
-        columns={["Jogo", "Sublojas", "Produtos", "Ordem", "Status", "Atualizado em", "Ações"]}
+        columns={["Jogo", "Categorias", "Produtos", "Ordem", "Status", "Atualizado em", "Ações"]}
         totalCount={games.length}
         visibleCount={filteredGames.length}
         emptyIcon={Gamepad2}
         emptyTitle="Nenhum jogo cadastrado"
-        emptyDescription="Crie o primeiro jogo para começar a estruturar o catálogo. Nada será publicado automaticamente."
+        emptyDescription="Crie o primeiro jogo. Depois, adicione categorias e produtos antes de publicar a vitrine."
       >
         {filteredGames.map((game) => {
           const counts = relatedCounts[game.id] ?? { substores: 0, products: 0 };

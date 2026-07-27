@@ -69,14 +69,14 @@ function ProductForm({
         <input type="hidden" name="sortOrder" value={product?.sort_order ?? nextSortOrder} />
         <ActionFeedback state={state} />
 
-        <Field label="Subloja" htmlFor={`${formId}-substore`} error={fieldError(state, "substoreId")}>
+        <Field label="Categoria" htmlFor={`${formId}-substore`} error={fieldError(state, "substoreId")}>
           <Select
             id={`${formId}-substore`}
             name="substoreId"
             defaultValue={product?.substore_id ?? selectableSubstores[0]?.id ?? ""}
             required
           >
-            <option value="" disabled>Selecione uma subloja</option>
+            <option value="" disabled>Selecione uma categoria</option>
             {selectableSubstores.map((substore) => (
               <option key={substore.id} value={substore.id}>
                 {substore.games?.name ? `${substore.games.name} — ` : ""}{substore.name}
@@ -276,7 +276,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
       <ResourceManagerShell
         eyebrow="Catálogo"
         title="Produtos"
-        description="Gerencie produto, preço e estoque agregado. Ao salvar, a vitrine publicada no Discord é atualizada."
+        description="Cada produto aparece somente na vitrine do jogo ao qual sua categoria pertence."
         actionLabel="Novo produto"
         onCreate={() => setEditor({ mode: "create" })}
         additionalActions={
@@ -294,7 +294,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
           </Button>
         }
         createDisabled={!hasAvailableSubstore}
-        createDisabledReason="Crie ou reative uma subloja antes de cadastrar um produto."
+        createDisabledReason="Crie ou reative uma categoria antes de cadastrar um produto."
         search={search}
         onSearchChange={setSearch}
         filter={filter}
@@ -305,14 +305,14 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         visibleCount={filteredProducts.length}
         emptyIcon={PackageOpen}
         emptyTitle="Nenhum produto cadastrado"
-        emptyDescription="Cadastre jogos e sublojas antes de incluir o primeiro produto no catálogo."
+        emptyDescription="Cadastre um jogo e uma categoria antes de incluir o primeiro produto."
         contextualContent={
           <div className="space-y-3">
             <div
               id="product-order-instructions"
               className="flex flex-col gap-1 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted sm:flex-row sm:items-center sm:justify-between"
             >
-              <span>Arraste pelo ícone de três linhas ou use as setas ↑ e ↓. A vitrine só muda ao salvar.</span>
+              <span>Arraste pelo ícone de três linhas ou use as setas ↑ e ↓. As vitrines publicadas são atualizadas ao salvar.</span>
               {filtersActive ? (
                 <span className="text-xs text-gold">Limpe a busca e os filtros para reordenar.</span>
               ) : null}

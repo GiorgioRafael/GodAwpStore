@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
+import { STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import {
   assertConfiguredDiscordBotIdentity,
@@ -22,11 +23,14 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const INTERACTION_TOKEN_PATTERN = /^[A-Za-z0-9._-]{20,500}$/;
+const DELIVERED_CHANNEL_PREFIX = "✅・entregue-";
+const DISCORD_CHANNEL_NAME_MAX_LENGTH = 100;
 
 export const TICKET_DELIVERY_INTERACTION_PREFIX = "gwstore_ticket_delivery:";
 
 type DiscordChannel = {
   id?: unknown;
+  guild_id?: unknown;
   type?: unknown;
   name?: unknown;
 };
@@ -51,6 +55,17 @@ export type PaidTicketDeliveryOrder = {
 
 export interface DiscordTicketDeliveryRepository {
   find(orderId: string): Promise<PaidTicketDeliveryOrder | null>;
+  complete(input: {
+    orderId: string;
+    discordGuildId: string;
+    ticketChannelId: string;
+    deliveredByDiscordUserId: string;
+  }): Promise<{
+    orderId: string;
+    wasCompleted: boolean;
+    deliveryCompletedAt: string;
+    autoCloseAt: string;
+  }>;
 }
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
@@ -88,6 +103,45 @@ export class SupabaseDiscordTicketDeliveryRepository
       orderStatus: order.status,
       paymentStatus: order.payment_status,
       paidAt: order.paid_at,
+    };
+  }
+
+  async complete(input: {
+    orderId: string;
+    discordGuildId: string;
+    ticketChannelId: string;
+    deliveredByDiscordUserId: string;
+  }) {
+    const { data, error } = await this.client
+      .rpc("complete_paid_order_discord_delivery", {
+        p_order_id: input.orderId,
+        p_discord_guild_id: input.discordGuildId,
+        p_ticket_channel_id: input.ticketChannelId,
+        p_delivered_by_discord_user_id: input.deliveredByDiscordUserId,
+      })
+      .single();
+    if (error) throw new Error(error.message);
+    if (
+      data.completed_order_id !== input.orderId ||
+      data.order_status !== "delivered" ||
+      data.ticket_status !== "open" ||
+      data.ticket_channel_id !== input.ticketChannelId ||
+      data.delivered_by_discord_user_id !== input.deliveredByDiscordUserId ||
+      typeof data.was_completed !== "boolean" ||
+      typeof data.delivery_completed_at !== "string" ||
+      Number.isNaN(Date.parse(data.delivery_completed_at)) ||
+      typeof data.auto_close_at !== "string" ||
+      Number.isNaN(Date.parse(data.auto_close_at)) ||
+      Date.parse(data.auto_close_at) - Date.parse(data.delivery_completed_at) !==
+        30 * 60 * 1_000
+    ) {
+      throw new Error("Supabase retornou uma conclusão de entrega inválida.");
+    }
+    return {
+      orderId: data.completed_order_id,
+      wasCompleted: data.was_completed,
+      deliveryCompletedAt: data.delivery_completed_at,
+      autoCloseAt: data.auto_close_at,
     };
   }
 }
@@ -177,41 +231,55 @@ export async function completeDiscordTicketDelivery(
       feedbackChannelId,
     );
 
-    if (
-      await channelHasDeliveryMessage(
-        context.channelId,
-        order.orderId,
-        order.buyerDiscordId,
-        botUserId,
-        fetcher,
-      )
-    ) {
-      await updateOriginalInteractionSafely(raw, message.deliveryAlreadySentText, fetcher);
-      return { status: "already_sent" as const };
-    }
-
-    const sent = await discordBotJson<DiscordMessage>(
-      `/channels/${context.channelId}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          content,
-          allowed_mentions: {
-            parse: [],
-            users: [order.buyerDiscordId],
-            replied_user: false,
-          },
-          nonce: deliveryMessageNonce(order.orderId),
-          enforce_nonce: true,
-        }),
-      },
+    const alreadySent = await channelHasDeliveryMessage(
+      context.channelId,
+      order.orderId,
+      order.buyerDiscordId,
+      botUserId,
       fetcher,
     );
-    if (typeof sent.id !== "string" || !SNOWFLAKE_PATTERN.test(sent.id)) {
-      throw new Error("Discord retornou uma mensagem de entrega inválida.");
+    if (!alreadySent) {
+      const sent = await discordBotJson<DiscordMessage>(
+        `/channels/${context.channelId}/messages`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            content,
+            allowed_mentions: {
+              parse: [],
+              users: [order.buyerDiscordId],
+              replied_user: false,
+            },
+            nonce: deliveryMessageNonce(order.orderId),
+            enforce_nonce: true,
+          }),
+        },
+        fetcher,
+      );
+      if (typeof sent.id !== "string" || !SNOWFLAKE_PATTERN.test(sent.id)) {
+        throw new Error("Discord retornou uma mensagem de entrega inválida.");
+      }
     }
 
-    await updateOriginalInteractionSafely(raw, message.deliverySuccessText, fetcher);
+    await renameDeliveredTicketChannel(
+      context.channelId,
+      context.guildId,
+      order.orderId,
+      fetcher,
+    );
+    await repository.complete({
+      orderId: order.orderId,
+      discordGuildId: context.guildId,
+      ticketChannelId: context.channelId,
+      deliveredByDiscordUserId: context.userId,
+    });
+
+    await updateOriginalInteractionSafely(
+      raw,
+      alreadySent ? message.deliveryAlreadySentText : message.deliverySuccessText,
+      fetcher,
+    );
+    if (alreadySent) return { status: "already_sent" as const };
     return {
       status: "sent" as const,
       buyerDiscordId: order.buyerDiscordId,
@@ -238,6 +306,58 @@ export function buildDeliveryMessage(
     ? `<#${feedbackChannelId}>`
     : "Procure o canal de feedbacks no servidor.";
   return `<@${buyerDiscordId}>\n${body}\n${feedbackLine}`;
+}
+
+export function buildDeliveredTicketChannelName(currentName: string) {
+  const trimmed = currentName.trim();
+  if (!trimmed) throw new Error("Canal Discord sem nome para marcar como entregue.");
+  const baseName =
+    trimmed.replace(/^(?:✅[\s・|┊_-]*)?entregue[\s・|┊_-]*/iu, "") || "ticket";
+  const availableLength =
+    DISCORD_CHANNEL_NAME_MAX_LENGTH - Array.from(DELIVERED_CHANNEL_PREFIX).length;
+  return `${DELIVERED_CHANNEL_PREFIX}${Array.from(baseName)
+    .slice(0, availableLength)
+    .join("")}`;
+}
+
+async function renameDeliveredTicketChannel(
+  channelId: string,
+  guildId: string,
+  orderId: string,
+  fetcher: typeof fetch,
+) {
+  const channel = await discordBotJson<DiscordChannel>(
+    `/channels/${channelId}`,
+    {},
+    fetcher,
+  );
+  if (
+    channel.id !== channelId ||
+    channel.guild_id !== guildId ||
+    channel.type !== 0 ||
+    typeof channel.name !== "string"
+  ) {
+    throw new Error("Discord retornou um canal de ticket inválido.");
+  }
+  const name = buildDeliveredTicketChannelName(channel.name);
+  if (channel.name === name) return;
+
+  const renamed = await discordBotJson<DiscordChannel>(
+    `/channels/${channelId}`,
+    {
+      method: "PATCH",
+      headers: {
+        "X-Audit-Log-Reason": encodeURIComponent(
+          `${STORE_NAME} ticket ${orderId} marked delivered`,
+        ),
+      },
+      body: JSON.stringify({ name }),
+    },
+    fetcher,
+  );
+  if (renamed.id !== channelId || renamed.name !== name) {
+    throw new Error("Discord não confirmou o novo nome do ticket entregue.");
+  }
 }
 
 async function findFeedbackChannelId(guildId: string, fetcher: typeof fetch) {

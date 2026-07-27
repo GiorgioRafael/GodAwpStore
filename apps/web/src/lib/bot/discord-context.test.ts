@@ -13,6 +13,7 @@ describe("Discord interaction context", () => {
         {
           id: "123456789012345678",
           guild_id: "223456789012345678",
+          channel_id: "523456789012345678",
           member: { user: { id: "323456789012345678" } },
         },
         "423456789012345678",
@@ -20,6 +21,7 @@ describe("Discord interaction context", () => {
     ).toEqual({
       interactionId: "123456789012345678",
       guildId: "223456789012345678",
+      channelId: "523456789012345678",
       userId: "423456789012345678",
       isServerBooster: false,
     });
@@ -29,6 +31,7 @@ describe("Discord interaction context", () => {
     expect(readDiscordInteraction({ id: "x", guild_id: "../../etc" }, "admin")).toEqual({
       interactionId: null,
       guildId: null,
+      channelId: null,
       userId: null,
       isServerBooster: false,
     });

@@ -458,6 +458,8 @@ type OrderRow = {
   discord_ticket_close_claimed_by_discord_user_id: string | null;
   discord_ticket_closed_at: string | null;
   discord_ticket_closed_by_discord_user_id: string | null;
+  discord_ticket_delivery_completed_at: string | null;
+  discord_ticket_delivery_completed_by_discord_user_id: string | null;
   game_nickname: string | null;
   game_nickname_submitted_at: string | null;
   paid_at: string | null;
@@ -2267,6 +2269,16 @@ export type Database = {
           closed_by_discord_user_id: string | null;
         }[];
       };
+      claim_due_delivered_discord_ticket_closes: {
+        Args: { p_limit: number };
+        Returns: {
+          claimed_order_id: string;
+          discord_guild_id: string;
+          ticket_channel_id: string;
+          claim_token: string;
+          claimed_at: string;
+        }[];
+      };
       complete_discord_ticket: {
         Args: { p_order_id: string; p_channel_id: string };
         Returns: {
@@ -2297,6 +2309,24 @@ export type Database = {
           ticket_channel_id: string;
           closed_at: string;
           closed_by_discord_user_id: string | null;
+        }[];
+      };
+      complete_paid_order_discord_delivery: {
+        Args: {
+          p_order_id: string;
+          p_discord_guild_id: string;
+          p_ticket_channel_id: string;
+          p_delivered_by_discord_user_id: string;
+        };
+        Returns: {
+          completed_order_id: string;
+          was_completed: boolean;
+          order_status: Database["public"]["Enums"]["order_status"];
+          ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+          ticket_channel_id: string;
+          delivery_completed_at: string;
+          auto_close_at: string;
+          delivered_by_discord_user_id: string;
         }[];
       };
       fail_discord_ticket: {

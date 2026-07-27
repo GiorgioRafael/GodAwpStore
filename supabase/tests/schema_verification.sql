@@ -90,7 +90,9 @@ begin
     'public.complete_discord_ticket_close(uuid,text,uuid,text)',
     'public.renew_discord_ticket_close_claim(uuid,text,uuid)',
     'public.release_discord_ticket_close(uuid,uuid)',
-    'public.reconcile_missing_discord_ticket(uuid,text)'
+    'public.reconcile_missing_discord_ticket(uuid,text)',
+    'public.complete_paid_order_discord_delivery(uuid,text,text,text)',
+    'public.claim_due_delivered_discord_ticket_closes(integer)'
     ,'public.admin_create_giveaway(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,timestamp with time zone,integer,integer,integer,jsonb)'
     ,'public.admin_create_giveaway_v2(text,uuid,text,text,text,text,text,text,text,timestamp with time zone,integer,integer,integer,jsonb)'
     ,'public.admin_cancel_giveaway(uuid)'
@@ -273,6 +275,38 @@ begin
 
   if (
     select count(*)
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'orders'
+      and (
+        (
+          column_name = 'discord_ticket_delivery_completed_at'
+          and data_type = 'timestamp with time zone'
+        )
+        or (
+          column_name = 'discord_ticket_delivery_completed_by_discord_user_id'
+          and data_type = 'text'
+        )
+      )
+      and is_nullable = 'YES'
+  ) <> 2 then
+    raise exception 'orders Discord ticket delivery completion columns are missing or invalid';
+  end if;
+
+  if (
+    select count(*)
+    from pg_constraint
+    where conrelid = 'public.orders'::regclass
+      and conname in (
+        'orders_discord_ticket_delivery_completed_by_format',
+        'orders_discord_ticket_delivery_completion_state'
+      )
+  ) <> 2 then
+    raise exception 'orders Discord ticket delivery completion constraints are missing';
+  end if;
+
+  if (
+    select count(*)
     from pg_constraint
     where conrelid = 'public.orders'::regclass
       and conname in (
@@ -293,6 +327,16 @@ begin
       and indexname = 'orders_discord_ticket_close_reconciliation_idx'
   ) then
     raise exception 'Discord ticket close reconciliation index is missing';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'orders'
+      and indexname = 'orders_discord_ticket_delivery_auto_close_idx'
+  ) then
+    raise exception 'Discord delivered-ticket automatic close index is missing';
   end if;
 
   if exists (
@@ -514,6 +558,45 @@ begin
       and privilege.privilege_type = 'EXECUTE'
   ) <> 5 then
     raise exception 'Discord ticket close RPC execute privileges are invalid';
+  end if;
+
+  if (
+    select count(*)
+    from pg_proc as procedure
+    join pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'public'
+      and procedure.proname in (
+        'complete_paid_order_discord_delivery',
+        'claim_due_delivered_discord_ticket_closes'
+      )
+      and procedure.prosecdef
+      and procedure.proconfig @> array['search_path=pg_catalog']::text[]
+  ) <> 2 then
+    raise exception 'Discord ticket delivery automation RPCs must be SECURITY DEFINER with a safe search_path';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.routine_privileges as privilege
+    where privilege.routine_schema = 'public'
+      and privilege.routine_name in (
+        'complete_paid_order_discord_delivery',
+        'claim_due_delivered_discord_ticket_closes'
+      )
+      and privilege.grantee in ('PUBLIC', 'anon', 'authenticated')
+      and privilege.privilege_type = 'EXECUTE'
+  ) or (
+    select count(distinct privilege.routine_name)
+    from information_schema.routine_privileges as privilege
+    where privilege.routine_schema = 'public'
+      and privilege.routine_name in (
+        'complete_paid_order_discord_delivery',
+        'claim_due_delivered_discord_ticket_closes'
+      )
+      and privilege.grantee = 'service_role'
+      and privilege.privilege_type = 'EXECUTE'
+  ) <> 2 then
+    raise exception 'Discord ticket delivery automation RPC execute privileges are invalid';
   end if;
 
   if exists (

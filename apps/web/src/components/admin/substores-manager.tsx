@@ -45,8 +45,8 @@ function SubstoreForm({
       open
       onClose={onClose}
       size="lg"
-      title={substore ? "Editar subloja" : "Nova subloja"}
-      description="Configure a vitrine-base que o futuro bot usará no Discord."
+      title={substore ? "Editar categoria" : "Nova categoria"}
+      description="Agrupe produtos parecidos dentro de um jogo, como sementes, pets ou moedas."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={pending}>
@@ -54,7 +54,7 @@ function SubstoreForm({
           </Button>
           <Button type="submit" form={formId} disabled={pending}>
             {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : null}
-            {pending ? "Salvando..." : "Salvar subloja"}
+            {pending ? "Salvando..." : "Salvar categoria"}
           </Button>
         </>
       }
@@ -80,7 +80,7 @@ function SubstoreForm({
         </Field>
 
         <div className="grid gap-5 sm:grid-cols-2">
-          <Field label="Nome interno" htmlFor={`${formId}-name`} error={fieldError(state, "name")}>
+          <Field label="Nome da categoria" htmlFor={`${formId}-name`} error={fieldError(state, "name")}>
             <Input
               id={`${formId}-name`}
               name="name"
@@ -109,7 +109,7 @@ function SubstoreForm({
           </Field>
         </div>
 
-        <Field label="Título da vitrine" htmlFor={`${formId}-title`} error={fieldError(state, "title")}>
+        <Field label="Título mostrado ao cliente" htmlFor={`${formId}-title`} error={fieldError(state, "title")}>
           <Input
             id={`${formId}-title`}
             name="title"
@@ -119,7 +119,7 @@ function SubstoreForm({
           />
         </Field>
 
-        <Field label="Descrição da vitrine" htmlFor={`${formId}-description`} error={fieldError(state, "description")}>
+        <Field label="Descrição mostrada ao cliente" htmlFor={`${formId}-description`} error={fieldError(state, "description")}>
           <Textarea
             id={`${formId}-description`}
             name="description"
@@ -178,9 +178,9 @@ function SubstoreForm({
         />
 
         <div className="rounded-xl border border-border bg-white/[0.018] p-4">
-          <h3 className="text-sm font-semibold text-foreground">Identidade do embed</h3>
+          <h3 className="text-sm font-semibold text-foreground">Aparência avançada</h3>
           <p className="mt-1 text-xs leading-5 text-muted">
-            Os ícones podem usar uma URL pública. Author e footer são opcionais.
+            Opcional. Use somente se quiser personalizar autor, rodapé e ícones no Discord.
           </p>
           <div className="mt-4 grid gap-5 sm:grid-cols-2">
             <Field label="Author" htmlFor={`${formId}-author`} hint="Opcional" error={fieldError(state, "authorName")}>
@@ -231,23 +231,23 @@ export function SubstoresManager({ games, substores, productCounts }: SubstoresM
     <>
       <ResourceManagerShell
         eyebrow="Catálogo"
-        title="Sublojas"
-        description="Defina as vitrines por jogo, incluindo conteúdo-base e identidade visual usada no Discord."
-        actionLabel="Nova subloja"
+        title="Categorias de produtos"
+        description="Categorias só organizam os produtos dentro de um jogo. A vitrine e o canal são configurados em Configurações."
+        actionLabel="Nova categoria"
         onCreate={() => setEditor({ mode: "create" })}
         createDisabled={!hasAvailableGame}
-        createDisabledReason="Crie ou reative um jogo antes de cadastrar uma subloja."
+        createDisabledReason="Crie ou reative um jogo antes de cadastrar uma categoria."
         search={search}
         onSearchChange={setSearch}
         filter={filter}
         onFilterChange={setFilter}
         filterOptions={catalogStatusOptions}
-        columns={["Subloja", "Jogo", "Produtos", "Cor", "Status", "Atualizado em", "Ações"]}
+        columns={["Categoria", "Jogo", "Produtos", "Cor", "Status", "Atualizado em", "Ações"]}
         totalCount={substores.length}
         visibleCount={filteredSubstores.length}
         emptyIcon={Store}
-        emptyTitle="Nenhuma subloja cadastrada"
-        emptyDescription="As sublojas aparecerão aqui depois que um jogo for criado e a primeira vitrine for configurada."
+        emptyTitle="Nenhuma categoria cadastrada"
+        emptyDescription="Crie uma categoria dentro de um jogo antes de cadastrar os produtos."
       >
         {filteredSubstores.map((substore) => (
           <tr key={substore.id} className="border-b border-border/80 last:border-0">
@@ -283,7 +283,7 @@ export function SubstoresManager({ games, substores, productCounts }: SubstoresM
                   size="icon"
                   className="size-9 text-danger"
                   aria-label={`Arquivar ${substore.name}`}
-                  title={substore.status === "archived" ? "Subloja já arquivada" : "Arquivar subloja"}
+                  title={substore.status === "archived" ? "Categoria já arquivada" : "Arquivar categoria"}
                   disabled={substore.status === "archived"}
                   onClick={() => setArchiveRecord({ id: substore.id, label: substore.name })}
                 >
@@ -307,7 +307,7 @@ export function SubstoresManager({ games, substores, productCounts }: SubstoresM
         key={archiveRecord?.id ?? "archive-substore"}
         target="substore"
         record={archiveRecord}
-        noun="subloja"
+        noun="categoria"
         onClose={() => setArchiveRecord(null)}
       />
     </>

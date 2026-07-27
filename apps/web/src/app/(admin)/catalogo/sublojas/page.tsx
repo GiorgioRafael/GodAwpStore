@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { SubstoresManager } from "@/components/admin/substores-manager";
 import { listGames, listProducts, listSubstores } from "@/lib/data/admin-repository";
 
-export const metadata: Metadata = { title: "Sublojas" };
+export const metadata: Metadata = { title: "Categorias de produtos" };
 
 export default async function SubstoresPage() {
   const [games, substores, products] = await Promise.all([

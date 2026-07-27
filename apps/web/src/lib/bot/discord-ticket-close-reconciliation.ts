@@ -285,6 +285,21 @@ async function reconcileClaim(
   fetcher: typeof fetch,
   result: DiscordTicketCloseReconciliationResult,
 ) {
+  const outcome = await closeClaimedDiscordTicket(claim, repository, fetcher, {
+    onChannelRemoved: () => {
+      result.resumed += 1;
+    },
+  });
+  if (outcome.wasClosed) result.completed += 1;
+  else result.alreadyClosed += 1;
+}
+
+export async function closeClaimedDiscordTicket(
+  claim: DiscordTicketCloseReconciliationCandidate,
+  repository: Pick<DiscordTicketCloseReconciliationRepository, "complete">,
+  fetcher: typeof fetch,
+  options: { onChannelRemoved?: () => void } = {},
+) {
   const channelResponse = await discordBotRequest(
     `/channels/${claim.ticketChannelId}`,
     {},
@@ -294,9 +309,7 @@ async function reconcileClaim(
   if (await isDiscordUnknownChannelResponse(channelResponse)) {
     await assertDiscordBotGuildAccess(claim.discordGuildId, fetcher);
     const wasClosed = await repository.complete(claim);
-    if (wasClosed) result.completed += 1;
-    else result.alreadyClosed += 1;
-    return;
+    return { wasClosed, channelRemoved: false };
   }
 
   if (!channelResponse.ok) {
@@ -332,10 +345,9 @@ async function reconcileClaim(
     }
   }
 
-  result.resumed += 1;
+  options.onChannelRemoved?.();
   const wasClosed = await repository.complete(claim);
-  if (wasClosed) result.completed += 1;
-  else result.alreadyClosed += 1;
+  return { wasClosed, channelRemoved: true };
 }
 
 function emptyResult(scanned: number): DiscordTicketCloseReconciliationResult {

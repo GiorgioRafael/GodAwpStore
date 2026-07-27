@@ -4,8 +4,8 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { BotCommerceService } from "./commerce-service";
 import {
   publishDiscordStorefront,
-  readStorefrontConfiguration,
-  withStorefrontConfiguration,
+  readStorefrontConfigurations,
+  withStorefrontConfigurations,
 } from "./discord-storefront";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
 import { loadBotMessageCustomization } from "./message-customization-server";
@@ -34,8 +34,8 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
   if (error) throw new Error("Não foi possível consultar as vitrines publicadas.");
 
   const publishedGuilds = (guilds ?? []).flatMap((guild) => {
-    const storefront = readStorefrontConfiguration(guild.configuration);
-    return storefront ? [{ guild, storefront }] : [];
+    const storefronts = readStorefrontConfigurations(guild.configuration);
+    return storefronts.length > 0 ? [{ guild, storefronts }] : [];
   });
   if (publishedGuilds.length === 0) {
     return { published: 0, failed: 0, productEmojiFailures: 0 };
@@ -55,35 +55,68 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
     loadBotMessageCustomization(client),
   ]);
   const results = await Promise.all(
-    publishedGuilds.map(async ({ guild, storefront }) => {
+    publishedGuilds.map(async ({ guild, storefronts }) => {
+      const publicationResults = await Promise.all(
+        storefronts.map(async (storefront) => {
+          try {
+            const game = storefront.game_id
+              ? catalog.find((item) => item.id === storefront.game_id) ?? null
+              : null;
+            const publication = await publishDiscordStorefront({
+              channel: { id: storefront.channel_id, name: storefront.channel_name },
+              catalog: storefront.game_id ? (game ? [game] : []) : catalog,
+              customization,
+              previous: storefront,
+              game:
+                game ??
+                (storefront.game_id
+                  ? { id: storefront.game_id, name: storefront.game_name }
+                  : null),
+            });
+            return { ok: true as const, configuration: publication.configuration };
+          } catch (syncError) {
+            const message =
+              syncError instanceof Error ? syncError.message : "erro desconhecido";
+            console.error(
+              `[discord-storefront:sync:${guild.id}:${storefront.game_id ?? "legacy"}] ${message}`,
+            );
+            return { ok: false as const, configuration: storefront };
+          }
+        }),
+      );
+      const published = publicationResults.filter((result) => result.ok).length;
+      if (published === 0) {
+        return { published: 0, failed: publicationResults.length };
+      }
+
       try {
-        const publication = await publishDiscordStorefront({
-          channel: { id: storefront.channel_id, name: storefront.channel_name },
-          catalog,
-          customization,
-          previous: storefront,
-        });
         const { data: updated, error: updateError } = await client
           .from("guilds")
           .update({
-            configuration: withStorefrontConfiguration(
+            configuration: withStorefrontConfigurations(
               guild.configuration,
-              publication.configuration,
+              publicationResults.map((result) => result.configuration),
             ),
           })
           .eq("id", guild.id)
           .select("id")
           .maybeSingle();
         if (updateError || !updated) throw new Error("Configuração da vitrine não foi salva.");
-        return true;
+        return {
+          published,
+          failed: publicationResults.length - published,
+        };
       } catch (syncError) {
         const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
         console.error(`[discord-storefront:sync:${guild.id}] ${message}`);
-        return false;
+        return { published: 0, failed: publicationResults.length };
       }
     }),
   );
 
-  const published = results.filter(Boolean).length;
-  return { published, failed: results.length - published, productEmojiFailures };
+  return {
+    published: results.reduce((sum, result) => sum + result.published, 0),
+    failed: results.reduce((sum, result) => sum + result.failed, 0),
+    productEmojiFailures,
+  };
 }

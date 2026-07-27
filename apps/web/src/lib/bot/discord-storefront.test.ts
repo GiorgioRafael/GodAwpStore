@@ -8,6 +8,7 @@ vi.mock("server-only", () => ({}));
 let listDiscordTextChannels: typeof import("./discord-storefront").listDiscordTextChannels;
 let publishDiscordStorefront: typeof import("./discord-storefront").publishDiscordStorefront;
 let readStorefrontConfiguration: typeof import("./discord-storefront").readStorefrontConfiguration;
+let readStorefrontConfigurations: typeof import("./discord-storefront").readStorefrontConfigurations;
 let withStorefrontConfiguration: typeof import("./discord-storefront").withStorefrontConfiguration;
 
 const guildId = "123456789012345678";
@@ -19,6 +20,7 @@ beforeAll(async () => {
     listDiscordTextChannels,
     publishDiscordStorefront,
     readStorefrontConfiguration,
+    readStorefrontConfigurations,
     withStorefrontConfiguration,
   } = await import("./discord-storefront"));
 });
@@ -91,6 +93,8 @@ describe("Discord storefront", () => {
     );
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(result.configuration).toMatchObject({
+      game_id: null,
+      game_name: "Catálogo completo",
       channel_id: channelId,
       channel_name: "compras",
       message_ids: [messageId],
@@ -240,9 +244,42 @@ describe("Discord storefront", () => {
     const merged = withStorefrontConfiguration({ tickets: { category_id: channelId } }, storefront);
     expect(merged).toEqual({
       tickets: { category_id: channelId },
-      storefront,
+      storefronts: [storefront],
     });
     expect(readStorefrontConfiguration(merged)).toEqual(storefront);
+  });
+
+  it("migra a vitrine antiga e mantém uma configuração separada por jogo", () => {
+    const legacy = {
+      channel_id: channelId,
+      channel_name: "compras",
+      message_ids: [messageId],
+      published_at: "2026-07-16T12:00:00.000Z",
+    };
+    expect(readStorefrontConfigurations({ storefront: legacy })).toEqual([
+      {
+        ...legacy,
+        game_id: null,
+        game_name: "Catálogo completo",
+      },
+    ]);
+
+    const firstGame = storefrontConfiguration();
+    const migrated = withStorefrontConfiguration({ storefront: legacy }, firstGame);
+    const secondGame = {
+      ...firstGame,
+      game_id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+      game_name: "Outro jogo",
+      channel_id: "823456789012345678",
+      channel_name: "outro-jogo",
+    };
+    const withTwoGames = withStorefrontConfiguration(migrated, secondGame);
+
+    expect(readStorefrontConfigurations(withTwoGames)).toEqual([
+      firstGame,
+      secondGame,
+    ]);
+    expect(withTwoGames).not.toHaveProperty("storefront");
   });
 });
 
@@ -299,6 +336,8 @@ function catalog(): BotCatalogGame[] {
 
 function storefrontConfiguration() {
   return {
+    game_id: "a5b82d6f-a324-47fa-a861-a046559e3a11",
+    game_name: "Grow a Garden 2",
     channel_id: channelId,
     channel_name: "compras",
     message_ids: [messageId],

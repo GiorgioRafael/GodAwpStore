@@ -4,9 +4,11 @@ vi.mock("server-only", () => ({}));
 
 import {
   buildDeliveryMessage,
+  buildDeliveredTicketChannelName,
   completeDiscordTicketDelivery,
   createNativeDiscordTicketDeliveryResponse,
   parseNativeDiscordTicketDeliveryInteraction,
+  SupabaseDiscordTicketDeliveryRepository,
   ticketDeliveryInteractionId,
   type DiscordTicketDeliveryRepository,
 } from "./discord-ticket-delivery";
@@ -53,6 +55,58 @@ describe("Discord paid-ticket delivery message", () => {
     ).toBeNull();
   });
 
+  it("prefixa o canal entregue uma unica vez e respeita o limite do Discord", () => {
+    expect(buildDeliveredTicketChannelName("pedido-speedy")).toBe(
+      "✅・entregue-pedido-speedy",
+    );
+    expect(buildDeliveredTicketChannelName("✅・entregue-pedido-speedy")).toBe(
+      "✅・entregue-pedido-speedy",
+    );
+    expect(Array.from(buildDeliveredTicketChannelName("x".repeat(150)))).toHaveLength(
+      100,
+    );
+  });
+
+  it("registra no RPC a entrega e a janela exata de trinta minutos", async () => {
+    const single = vi.fn(async () => ({
+      data: {
+        completed_order_id: orderId,
+        was_completed: true,
+        order_status: "delivered",
+        ticket_status: "open",
+        ticket_channel_id: channelId,
+        delivery_completed_at: "2026-07-22T12:05:00.000Z",
+        auto_close_at: "2026-07-22T12:35:00.000Z",
+        delivered_by_discord_user_id: adminId,
+      },
+      error: null,
+    }));
+    const rpc = vi.fn(() => ({ single }));
+    const deliveryRepository = new SupabaseDiscordTicketDeliveryRepository({
+      rpc,
+    } as never);
+
+    await expect(
+      deliveryRepository.complete({
+        orderId,
+        discordGuildId: guildId,
+        ticketChannelId: channelId,
+        deliveredByDiscordUserId: adminId,
+      }),
+    ).resolves.toEqual({
+      orderId,
+      wasCompleted: true,
+      deliveryCompletedAt: "2026-07-22T12:05:00.000Z",
+      autoCloseAt: "2026-07-22T12:35:00.000Z",
+    });
+    expect(rpc).toHaveBeenCalledWith("complete_paid_order_discord_delivery", {
+      p_order_id: orderId,
+      p_discord_guild_id: guildId,
+      p_ticket_channel_id: channelId,
+      p_delivered_by_discord_user_id: adminId,
+    });
+  });
+
   it("difere o clique autorizado e recusa os demais de forma privada", () => {
     expect(createNativeDiscordTicketDeliveryResponse(interaction(), settings)).toEqual({
       authorized: true,
@@ -78,10 +132,11 @@ describe("Discord paid-ticket delivery message", () => {
   it("envia a mensagem da entrega, menciona somente o comprador e aponta feedbacks", async () => {
     const requests: Array<{ url: string; method: string; body: unknown }> = [];
     const fetcher = deliveryFetcher(requests);
+    const deliveryRepository = repository();
 
     await expect(
       completeDiscordTicketDelivery(interaction(), settings, {
-        repository: repository(),
+        repository: deliveryRepository,
         fetcher,
       }),
     ).resolves.toEqual({
@@ -114,6 +169,19 @@ describe("Discord paid-ticket delivery message", () => {
       enforce_nonce: true,
     });
     expect(String((sent?.body as { nonce?: string })?.nonce)).toHaveLength(25);
+
+    const renamed = requests.find(
+      (request) =>
+        request.method === "PATCH" &&
+        request.url.endsWith(`/channels/${channelId}`),
+    );
+    expect(renamed?.body).toEqual({ name: "✅・entregue-pedido-speedy" });
+    expect(deliveryRepository.complete).toHaveBeenCalledWith({
+      orderId,
+      discordGuildId: guildId,
+      ticketChannelId: channelId,
+      deliveredByDiscordUserId: adminId,
+    });
 
     const confirmation = requests.find((request) =>
       request.url.includes("/messages/@original"),
@@ -191,7 +259,9 @@ function interaction(userId = adminId) {
 
 function repository(
   overrides: Partial<Awaited<ReturnType<DiscordTicketDeliveryRepository["find"]>>> = {},
-): DiscordTicketDeliveryRepository {
+): DiscordTicketDeliveryRepository & {
+  complete: ReturnType<typeof vi.fn<DiscordTicketDeliveryRepository["complete"]>>;
+} {
   return {
     find: vi.fn(async () => ({
       orderId,
@@ -203,6 +273,12 @@ function repository(
       paymentStatus: "paid",
       paidAt: "2026-07-22T12:00:00.000Z",
       ...overrides,
+    })),
+    complete: vi.fn(async () => ({
+      orderId,
+      wasCompleted: true,
+      deliveryCompletedAt: "2026-07-22T12:05:00.000Z",
+      autoCloseAt: "2026-07-22T12:35:00.000Z",
     })),
   };
 }
@@ -228,6 +304,22 @@ function deliveryFetcher(
         { id: "723456789012345678", type: 0, name: "geral" },
         { id: feedbackChannelId, type: 0, name: "✅┊feedbacks" },
       ]);
+    }
+    if (url.endsWith(`/channels/${channelId}`) && method === "GET") {
+      return Response.json({
+        id: channelId,
+        guild_id: guildId,
+        type: 0,
+        name: "pedido-speedy",
+      });
+    }
+    if (url.endsWith(`/channels/${channelId}`) && method === "PATCH") {
+      return Response.json({
+        id: channelId,
+        guild_id: guildId,
+        type: 0,
+        name: (body as { name: string }).name,
+      });
     }
     if (
       url.endsWith(`/channels/${channelId}/messages?limit=100`) &&

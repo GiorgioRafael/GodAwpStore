@@ -1,3 +1,4 @@
+import { reconcileDeliveredDiscordTicketAutoCloses } from "@/lib/bot/discord-ticket-auto-close";
 import { reconcileDiscordTicketCloseClaims } from "@/lib/bot/discord-ticket-close-reconciliation";
 import { reconcileGiveaways } from "@/lib/giveaways/reconciliation";
 import { reconcileLeadRecoveryOffers } from "@/lib/bot/lead-recovery";
@@ -17,14 +18,23 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [tickets, giveaways, leadRecovery, rouletteRedemptions] = await Promise.all([
-      reconcileDiscordTicketCloseClaims(),
-      reconcileGiveaways(),
-      reconcileLeadRecoveryOffers(),
-      reconcileRouletteRedemptionTickets(),
-    ]);
+    const [tickets, deliveredTicketAutoClose, giveaways, leadRecovery, rouletteRedemptions] =
+      await Promise.all([
+        reconcileDiscordTicketCloseClaims(),
+        reconcileDeliveredDiscordTicketAutoCloses(),
+        reconcileGiveaways(),
+        reconcileLeadRecoveryOffers(),
+        reconcileRouletteRedemptionTickets(),
+      ]);
     return Response.json(
-      { ok: true, tickets, giveaways, leadRecovery, rouletteRedemptions },
+      {
+        ok: true,
+        tickets,
+        deliveredTicketAutoClose,
+        giveaways,
+        leadRecovery,
+        rouletteRedemptions,
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

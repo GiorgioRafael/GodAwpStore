@@ -43,6 +43,7 @@ import { SupabaseCustomerRankRepository } from "./customer-rank-repository";
 import { synchronizeDiscordCustomerRankRole } from "./discord-customer-rank";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { encodeDiscordCartSelection } from "./discord-cart-selection";
+import { scopeCatalogToDiscordChannel } from "./discord-storefront-scope";
 import {
   DISCORD_STOREFRONT_PRODUCT_LIMIT,
   type DiscordProductEmoji,
@@ -152,7 +153,12 @@ function createBot() {
         registrationTask,
       ]);
       customization = loadedCustomization;
-      const cards = catalogCards(catalog, customization);
+      const visibleCatalog = await scopeCatalogToDiscordChannel(
+        catalog,
+        context.guildId,
+        context.channelId,
+      );
+      const cards = catalogCards(visibleCatalog, customization);
       for (const card of cards) await event.channel.post(card);
     } catch (error) {
       logBotError("catalog", error);

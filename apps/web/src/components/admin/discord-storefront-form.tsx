@@ -1,7 +1,14 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { Gem, LoaderCircle, MessageSquareText, RefreshCw, ShieldCheck, Waypoints } from "lucide-react";
+import {
+  CheckCircle2,
+  Gem,
+  LoaderCircle,
+  MessageSquareText,
+  RefreshCw,
+  Store,
+} from "lucide-react";
 
 import { publishDiscordStorefrontAction } from "@/app/actions/admin";
 import {
@@ -25,25 +32,36 @@ import type {
   DiscordStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 
+export type DiscordStorefrontGameOption = {
+  id: string;
+  name: string;
+  categoryCount: number;
+  productCount: number;
+};
+
 export type DiscordStorefrontGuildOption = {
   id: string;
   discordGuildId: string;
   name: string;
   channels: DiscordStorefrontChannel[];
-  current: DiscordStorefrontConfiguration | null;
+  current: DiscordStorefrontConfiguration[];
   boosterDiscount: BoosterDiscountConfiguration;
   channelLoadError: string | null;
 };
 
 export function DiscordStorefrontForm({
   guilds,
+  games,
 }: {
   guilds: DiscordStorefrontGuildOption[];
+  games: DiscordStorefrontGameOption[];
 }) {
-  const initialGuild = guilds.find((guild) => guild.current) ?? guilds[0] ?? null;
+  const initialGuild = guilds.find((guild) => guild.current.length > 0) ?? guilds[0] ?? null;
+  const initialGameId = preferredGameId(initialGuild, games);
   const [selectedGuildId, setSelectedGuildId] = useState(initialGuild?.id ?? "");
+  const [selectedGameId, setSelectedGameId] = useState(initialGameId);
   const [selectedChannelId, setSelectedChannelId] = useState(
-    preferredChannelId(initialGuild),
+    preferredChannelId(initialGuild, initialGameId),
   );
   const initialDiscount = discountFormValues(initialGuild);
   const [boosterDiscountEnabled, setBoosterDiscountEnabled] = useState(initialDiscount.enabled);
@@ -58,18 +76,43 @@ export function DiscordStorefrontForm({
     () => guilds.find((guild) => guild.id === selectedGuildId) ?? null,
     [guilds, selectedGuildId],
   );
+  const selectedGame = games.find((game) => game.id === selectedGameId) ?? null;
+  const selectedStorefront =
+    selectedGuild?.current.find((storefront) => storefront.game_id === selectedGameId) ?? null;
+  const legacyStorefront =
+    selectedGuild?.current.length === 1 && selectedGuild.current[0]?.game_id === null
+      ? selectedGuild.current[0]
+      : null;
 
   function changeGuild(guildId: string) {
     const guild = guilds.find((item) => item.id === guildId) ?? null;
+    const gameId = preferredGameId(guild, games);
     setSelectedGuildId(guildId);
-    setSelectedChannelId(preferredChannelId(guild));
+    setSelectedGameId(gameId);
+    setSelectedChannelId(preferredChannelId(guild, gameId));
     const discount = discountFormValues(guild);
     setBoosterDiscountEnabled(discount.enabled);
     setBoosterDiscountPercent(discount.percent);
     setBoosterMinimumSubtotal(discount.minimum);
   }
 
-  const canPublish = Boolean(selectedGuild && selectedChannelId && !selectedGuild.channelLoadError);
+  function changeGame(gameId: string) {
+    setSelectedGameId(gameId);
+    setSelectedChannelId(preferredChannelId(selectedGuild, gameId));
+  }
+
+  function editStorefront(storefront: DiscordStorefrontConfiguration) {
+    const gameId = storefront.game_id ?? games[0]?.id ?? "";
+    setSelectedGameId(gameId);
+    setSelectedChannelId(storefront.channel_id);
+  }
+
+  const canPublish = Boolean(
+    selectedGuild &&
+      selectedGame &&
+      selectedChannelId &&
+      !selectedGuild.channelLoadError,
+  );
 
   return (
     <Card>
@@ -77,11 +120,12 @@ export function DiscordStorefrontForm({
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-semibold tracking-tight">Vitrine no Discord</h2>
-              <Badge tone="gold">Bot</Badge>
+              <h2 className="text-base font-semibold tracking-tight">Vitrines do Discord</h2>
+              <Badge tone="gold">Por jogo</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              Escolha o canal onde o bot publicará a lista de produtos com estoque.
+              Crie uma vitrine para cada jogo. Cada uma fica no seu próprio canal e mostra
+              somente os produtos daquele jogo.
             </p>
           </div>
           <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-gold/20 bg-gold/[0.06] text-gold">
@@ -93,172 +137,267 @@ export function DiscordStorefrontForm({
       {guilds.length === 0 ? (
         <CardContent>
           <Notice>
-            Nenhum servidor ativo foi registrado ainda. Use <strong>/loja</strong> no servidor
-            autorizado para o bot reconhecê-lo e volte a esta tela.
+            Nenhum servidor ativo foi encontrado. Use <strong>/loja</strong> no Discord
+            autorizado e volte a esta tela.
+          </Notice>
+        </CardContent>
+      ) : games.length === 0 ? (
+        <CardContent>
+          <Notice>
+            Cadastre um jogo, uma categoria e pelo menos um produto ativo antes de publicar a
+            primeira vitrine.
           </Notice>
         </CardContent>
       ) : (
         <form action={formAction}>
-          <CardContent className="space-y-5 pt-5">
+          <CardContent className="space-y-6 pt-5">
             <ActionFeedback state={state} />
             <input type="hidden" name="guildId" value={selectedGuildId} />
+            <input type="hidden" name="gameId" value={selectedGameId} />
 
-            <div className="grid gap-5 lg:grid-cols-2">
-              <Field
-                label="Servidor Discord"
-                htmlFor={`${formId}-guild`}
-                error={fieldError(state, "guildId")}
-              >
-                <Select
-                  id={`${formId}-guild`}
-                  value={selectedGuildId}
-                  onChange={(event) => changeGuild(event.target.value)}
-                >
-                  {guilds.map((guild) => (
-                    <option key={guild.id} value={guild.id}>
-                      {guild.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-
-              <Field
-                label="Canal da loja"
-                htmlFor={`${formId}-channel`}
-                hint="Canal de texto"
-                error={fieldError(state, "channelId")}
-              >
-                <Select
-                  id={`${formId}-channel`}
-                  name="channelId"
-                  value={selectedChannelId}
-                  onChange={(event) => setSelectedChannelId(event.target.value)}
-                  disabled={!selectedGuild || selectedGuild.channels.length === 0}
-                  required
-                >
-                  {selectedGuild?.channels.length ? null : (
-                    <option value="">Nenhum canal disponível</option>
-                  )}
-                  {selectedGuild?.channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
+            <div className="rounded-xl border border-success/20 bg-success/[0.045] p-4">
+              <p className="text-sm font-semibold text-foreground">Como funciona</p>
+              <ol className="mt-3 grid gap-3 text-sm text-muted-strong md:grid-cols-3">
+                <Step number="1" text="Escolha o jogo." />
+                <Step number="2" text="Escolha o canal desse jogo." />
+                <Step number="3" text="Publique. O bot separa os produtos sozinho." />
+              </ol>
             </div>
+
+            {selectedGuild?.current.length ? (
+              <section aria-labelledby={`${formId}-published-title`} className="space-y-3">
+                <div>
+                  <h3 id={`${formId}-published-title`} className="text-sm font-semibold text-foreground">
+                    Vitrines já publicadas
+                  </h3>
+                  <p className="mt-1 text-xs leading-5 text-muted">
+                    Para mover ou atualizar uma delas, clique em Configurar.
+                  </p>
+                </div>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {selectedGuild.current.map((storefront) => (
+                    <div
+                      key={storefront.game_id ?? "legacy"}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted p-4"
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-success/20 bg-success/[0.07] text-success">
+                          <CheckCircle2 aria-hidden="true" className="size-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">
+                            {storefront.game_id ? storefront.game_name : "Vitrine antiga"}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-muted">
+                            #{storefront.channel_name} · atualizada em{" "}
+                            {formatDateTime(storefront.published_at)}
+                          </p>
+                          {!storefront.game_id ? (
+                            <p className="mt-1 text-xs font-medium text-warning">
+                              Escolha um jogo para separar os produtos desta vitrine.
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => editStorefront(storefront)}
+                      >
+                        Configurar
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <section aria-labelledby={`${formId}-setup-title`} className="space-y-4">
+              <div>
+                <h3 id={`${formId}-setup-title`} className="text-sm font-semibold text-foreground">
+                  {selectedStorefront || legacyStorefront
+                    ? "Atualizar uma vitrine"
+                    : "Adicionar nova vitrine"}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted">
+                  Um mesmo jogo possui uma única vitrine. Publicar novamente atualiza a mensagem,
+                  sem criar cópias.
+                </p>
+              </div>
+
+              <div className="grid gap-5 lg:grid-cols-3">
+                <Field
+                  label="Servidor"
+                  htmlFor={`${formId}-guild`}
+                  error={fieldError(state, "guildId")}
+                >
+                  <Select
+                    id={`${formId}-guild`}
+                    value={selectedGuildId}
+                    onChange={(event) => changeGuild(event.target.value)}
+                  >
+                    {guilds.map((guild) => (
+                      <option key={guild.id} value={guild.id}>
+                        {guild.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field
+                  label="1. Jogo desta vitrine"
+                  htmlFor={`${formId}-game`}
+                  error={fieldError(state, "gameId")}
+                >
+                  <Select
+                    id={`${formId}-game`}
+                    value={selectedGameId}
+                    onChange={(event) => changeGame(event.target.value)}
+                  >
+                    {games.map((game) => (
+                      <option key={game.id} value={game.id}>
+                        {game.name} · {game.productCount} produto
+                        {game.productCount === 1 ? "" : "s"}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field
+                  label="2. Canal no Discord"
+                  htmlFor={`${formId}-channel`}
+                  error={fieldError(state, "channelId")}
+                >
+                  <Select
+                    id={`${formId}-channel`}
+                    name="channelId"
+                    value={selectedChannelId}
+                    onChange={(event) => setSelectedChannelId(event.target.value)}
+                    disabled={!selectedGuild || selectedGuild.channels.length === 0}
+                    required
+                  >
+                    {selectedGuild?.channels.length ? null : (
+                      <option value="">Nenhum canal disponível</option>
+                    )}
+                    {selectedGuild?.channels.map((channel) => {
+                      const usedBy = selectedGuild.current.find(
+                        (storefront) =>
+                          storefront.game_id !== null &&
+                          storefront.game_id !== selectedGameId &&
+                          storefront.channel_id === channel.id,
+                      );
+                      return (
+                        <option key={channel.id} value={channel.id} disabled={Boolean(usedBy)}>
+                          {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
+                          {usedBy ? ` · usado por ${usedBy.game_name}` : ""}
+                        </option>
+                      );
+                    })}
+                  </Select>
+                </Field>
+              </div>
+
+              {selectedGame ? (
+                <div className="flex items-start gap-3 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
+                    <Store aria-hidden="true" className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      O que aparecerá em {selectedGame.name}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      {selectedGame.productCount} produto
+                      {selectedGame.productCount === 1 ? "" : "s"} de{" "}
+                      {selectedGame.categoryCount} categoria
+                      {selectedGame.categoryCount === 1 ? "" : "s"}. Produtos de outros jogos
+                      não aparecerão neste canal.
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </section>
 
             {selectedGuild?.channelLoadError ? (
               <Notice>{selectedGuild.channelLoadError}</Notice>
             ) : null}
 
-            <div className="space-y-4 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
-                    <Gem aria-hidden="true" className="size-4" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Desconto para Nitro Boosters</p>
-                    <p className="mt-1 text-xs leading-5 text-muted">
-                      O bot confirma o boost diretamente no servidor antes de calcular o Pix.
-                    </p>
-                  </div>
-                </div>
-                <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-muted-strong">
-                  <input
-                    type="checkbox"
-                    name="boosterDiscountEnabled"
-                    checked={boosterDiscountEnabled}
-                    onChange={(event) => setBoosterDiscountEnabled(event.target.checked)}
-                    className="size-4 accent-[#d7ad42]"
-                  />
-                  Ativo
-                </label>
-              </div>
-
-              <div className="grid gap-5 md:grid-cols-2">
-                <Field
-                  label="Percentual de desconto"
-                  htmlFor={`${formId}-booster-percent`}
-                  hint="Até 90%"
-                  error={
-                    fieldError(state, "boosterDiscountPercent") ??
-                    fieldError(state, "boosterDiscountBps")
-                  }
-                >
-                  <div className="relative">
-                    <Input
-                      id={`${formId}-booster-percent`}
-                      name="boosterDiscountPercent"
-                      inputMode="decimal"
-                      value={boosterDiscountPercent}
-                      onChange={(event) => setBoosterDiscountPercent(event.target.value)}
-                      className="pr-10"
-                      required
-                    />
-                    <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">%</span>
-                  </div>
-                </Field>
-                <Field
-                  label="Compra mínima para desconto"
-                  htmlFor={`${formId}-booster-minimum`}
-                  hint="Subtotal antes do desconto"
-                  error={
-                    fieldError(state, "boosterMinimumSubtotal") ??
-                    fieldError(state, "boosterMinimumSubtotalCents")
-                  }
-                >
-                  <div className="relative">
-                    <span aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">R$</span>
-                    <Input
-                      id={`${formId}-booster-minimum`}
-                      name="boosterMinimumSubtotal"
-                      inputMode="decimal"
-                      value={boosterMinimumSubtotal}
-                      onChange={(event) => setBoosterMinimumSubtotal(event.target.value)}
-                      className="pl-10"
-                      required
-                    />
-                  </div>
-                </Field>
-              </div>
-              <p className="text-xs leading-5 text-muted">
-                Regra inicial: <strong>5% acima de R$ 50,00</strong>. O subtotal, o desconto e o total final ficam registrados no pedido.
-              </p>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <FlowItem
-                icon={MessageSquareText}
-                title="Lista no canal"
-                description="O bot publica todos os produtos disponíveis em um dropdown."
-              />
-              <FlowItem
-                icon={ShieldCheck}
-                title="Compra privada"
-                description="Detalhes, botão de compra e pagamento aparecem só para o cliente."
-              />
-              <FlowItem
-                icon={Waypoints}
-                title="Canal alterável"
-                description="Troque o canal quando quiser; a vitrine é movida sem duplicar."
-              />
-            </div>
-
-            {selectedGuild?.current ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted p-3.5 text-sm">
-                <div>
-                  <p className="font-medium text-foreground">
-                    Publicada em #{selectedGuild.current.channel_name}
+            <details className="rounded-xl border border-border bg-surface-muted">
+              <summary className="flex cursor-pointer list-none items-center gap-3 p-4 text-sm font-semibold text-foreground">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
+                  <Gem aria-hidden="true" className="size-4" />
+                </span>
+                Desconto para Nitro Boosters
+                <span className="ml-auto text-xs font-normal text-muted">
+                  Opcional · vale em todas as vitrines
+                </span>
+              </summary>
+              <div className="space-y-4 border-t border-border p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <p className="max-w-2xl text-xs leading-5 text-muted">
+                    O bot confirma o boost no servidor antes de calcular o Pix. Esta regra é única
+                    para todos os jogos.
                   </p>
-                  <p className="mt-1 text-xs text-muted">
-                    Última atualização: {formatDateTime(selectedGuild.current.published_at)}
-                  </p>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-muted-strong">
+                    <input
+                      type="checkbox"
+                      name="boosterDiscountEnabled"
+                      checked={boosterDiscountEnabled}
+                      onChange={(event) => setBoosterDiscountEnabled(event.target.checked)}
+                      className="size-4 accent-[#d7ad42]"
+                    />
+                    Ativo
+                  </label>
                 </div>
-                <Badge tone="success">Publicada</Badge>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <Field
+                    label="Percentual de desconto"
+                    htmlFor={`${formId}-booster-percent`}
+                    hint="Até 90%"
+                    error={
+                      fieldError(state, "boosterDiscountPercent") ??
+                      fieldError(state, "boosterDiscountBps")
+                    }
+                  >
+                    <div className="relative">
+                      <Input
+                        id={`${formId}-booster-percent`}
+                        name="boosterDiscountPercent"
+                        inputMode="decimal"
+                        value={boosterDiscountPercent}
+                        onChange={(event) => setBoosterDiscountPercent(event.target.value)}
+                        className="pr-10"
+                        required
+                      />
+                      <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">%</span>
+                    </div>
+                  </Field>
+                  <Field
+                    label="Compra mínima"
+                    htmlFor={`${formId}-booster-minimum`}
+                    hint="Antes do desconto"
+                    error={
+                      fieldError(state, "boosterMinimumSubtotal") ??
+                      fieldError(state, "boosterMinimumSubtotalCents")
+                    }
+                  >
+                    <div className="relative">
+                      <span aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">R$</span>
+                      <Input
+                        id={`${formId}-booster-minimum`}
+                        name="boosterMinimumSubtotal"
+                        inputMode="decimal"
+                        value={boosterMinimumSubtotal}
+                        onChange={(event) => setBoosterMinimumSubtotal(event.target.value)}
+                        className="pl-10"
+                        required
+                      />
+                    </div>
+                  </Field>
+                </div>
               </div>
-            ) : null}
+            </details>
           </CardContent>
 
           <CardFooter className="flex flex-wrap items-center justify-between gap-3">
@@ -273,14 +412,25 @@ export function DiscordStorefrontForm({
               )}
               {pending
                 ? "Publicando..."
-                : selectedGuild?.current
-                  ? "Salvar e atualizar"
-                  : "Salvar e publicar"}
+                : selectedStorefront || legacyStorefront
+                  ? "Atualizar vitrine"
+                  : "Publicar nova vitrine"}
             </Button>
           </CardFooter>
         </form>
       )}
     </Card>
+  );
+}
+
+function Step({ number, text }: { number: string; text: string }) {
+  return (
+    <li className="flex items-center gap-2">
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-success/15 text-xs font-bold text-success">
+        {number}
+      </span>
+      {text}
+    </li>
   );
 }
 
@@ -293,32 +443,43 @@ function discountFormValues(guild: DiscordStorefrontGuildOption | null) {
   };
 }
 
-function preferredChannelId(guild: DiscordStorefrontGuildOption | null) {
-  if (!guild) return "";
-  const currentId = guild.current?.channel_id;
-  return guild.channels.some((channel) => channel.id === currentId)
-    ? currentId ?? ""
-    : guild.channels[0]?.id ?? "";
+function preferredGameId(
+  guild: DiscordStorefrontGuildOption | null,
+  games: DiscordStorefrontGameOption[],
+) {
+  if (!games.length) return "";
+  const configuredGameIds = new Set(
+    guild?.current
+      .map((storefront) => storefront.game_id)
+      .filter((gameId): gameId is string => Boolean(gameId)) ?? [],
+  );
+  return (
+    games.find((game) => !configuredGameIds.has(game.id))?.id ??
+    guild?.current.find((storefront) => storefront.game_id)?.game_id ??
+    games[0]?.id ??
+    ""
+  );
 }
 
-function FlowItem({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: typeof MessageSquareText;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex gap-3 rounded-xl border border-border bg-surface-muted p-3.5">
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/15 bg-gold/[0.05] text-gold">
-        <Icon aria-hidden="true" className="size-4" />
-      </span>
-      <div>
-        <p className="text-sm font-medium text-foreground">{title}</p>
-        <p className="mt-1 text-xs leading-5 text-muted">{description}</p>
-      </div>
-    </div>
-  );
+function preferredChannelId(
+  guild: DiscordStorefrontGuildOption | null,
+  gameId: string,
+) {
+  if (!guild) return "";
+  const current =
+    guild.current.find((storefront) => storefront.game_id === gameId) ??
+    (guild.current.length === 1 && guild.current[0]?.game_id === null
+      ? guild.current[0]
+      : null);
+  return guild.channels.some((channel) => channel.id === current?.channel_id)
+    ? current?.channel_id ?? ""
+    : guild.channels.find(
+        (channel) =>
+          !guild.current.some(
+            (storefront) =>
+              storefront.game_id !== null &&
+              storefront.game_id !== gameId &&
+              storefront.channel_id === channel.id,
+          ),
+      )?.id ?? "";
 }

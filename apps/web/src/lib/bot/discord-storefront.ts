@@ -17,6 +17,8 @@ import type { BotMessageCustomization } from "./message-customization";
 import type { BotCatalogGame } from "./types";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DISCORD_TEXT_CHANNEL_TYPES = new Set([0, 5]);
 const DISCORD_CATEGORY_CHANNEL_TYPE = 4;
 
@@ -41,6 +43,8 @@ export type DiscordGuildChannels = {
 };
 
 export type DiscordStorefrontConfiguration = {
+  game_id: string | null;
+  game_name: string;
   channel_id: string;
   channel_name: string;
   message_ids: string[];
@@ -128,10 +132,46 @@ export async function listDiscordGuildChannels(
 export function readStorefrontConfiguration(
   configuration: Json,
 ): DiscordStorefrontConfiguration | null {
-  if (!isObject(configuration) || !isObject(configuration.storefront)) return null;
-  const storefront = configuration.storefront;
+  return readStorefrontConfigurations(configuration)[0] ?? null;
+}
+
+export function readStorefrontConfigurations(
+  configuration: Json,
+): DiscordStorefrontConfiguration[] {
+  if (!isObject(configuration)) return [];
+  if (Array.isArray(configuration.storefronts)) {
+    const seenGameIds = new Set<string>();
+    return configuration.storefronts
+      .map((storefront) => normalizeStorefrontConfiguration(storefront))
+      .filter((storefront): storefront is DiscordStorefrontConfiguration => {
+        if (!storefront?.game_id || seenGameIds.has(storefront.game_id)) return false;
+        seenGameIds.add(storefront.game_id);
+        return true;
+      });
+  }
+
+  const legacy = normalizeStorefrontConfiguration(configuration.storefront, {
+    gameId: null,
+    gameName: "Catálogo completo",
+  });
+  return legacy ? [legacy] : [];
+}
+
+function normalizeStorefrontConfiguration(
+  storefront: unknown,
+  fallbackGame?: { gameId: null; gameName: string },
+): DiscordStorefrontConfiguration | null {
+  if (!isObject(storefront)) return null;
   const channelId = asSnowflake(storefront.channel_id);
   const channelName = asChannelName(storefront.channel_name);
+  const gameId =
+    typeof storefront.game_id === "string" && UUID_PATTERN.test(storefront.game_id)
+      ? storefront.game_id
+      : fallbackGame?.gameId;
+  const gameName =
+    typeof storefront.game_name === "string" && storefront.game_name.trim()
+      ? storefront.game_name.trim().slice(0, 120)
+      : fallbackGame?.gameName;
   const publishedAt = typeof storefront.published_at === "string"
     ? storefront.published_at.trim()
     : "";
@@ -139,8 +179,19 @@ export function readStorefrontConfiguration(
     ? storefront.message_ids.map(asSnowflake).filter((id): id is string => id !== null)
     : [];
 
-  if (!channelId || !channelName || !publishedAt || messageIds.length === 0) return null;
+  if (
+    gameId === undefined ||
+    !gameName ||
+    !channelId ||
+    !channelName ||
+    !publishedAt ||
+    messageIds.length === 0
+  ) {
+    return null;
+  }
   return {
+    game_id: gameId,
+    game_name: gameName,
     channel_id: channelId,
     channel_name: channelName,
     message_ids: messageIds,
@@ -152,9 +203,33 @@ export function withStorefrontConfiguration(
   configuration: Json,
   storefront: DiscordStorefrontConfiguration,
 ): JsonObject {
-  return {
+  const current = readStorefrontConfigurations(configuration);
+  const existingIndex = current.findIndex(
+    (item) => item.game_id === storefront.game_id,
+  );
+  const isLegacyMigration =
+    storefront.game_id !== null &&
+    current.length === 1 &&
+    current[0]?.game_id === null;
+  const next = isLegacyMigration
+    ? [storefront]
+    : existingIndex >= 0
+      ? current.map((item, index) => (index === existingIndex ? storefront : item))
+      : [...current, storefront];
+  return withStorefrontConfigurations(configuration, next);
+}
+
+export function withStorefrontConfigurations(
+  configuration: Json,
+  storefronts: DiscordStorefrontConfiguration[],
+): JsonObject {
+  const next: JsonObject = {
     ...(isObject(configuration) ? configuration : {}),
-    storefront,
+    storefronts,
+  };
+  delete next.storefront;
+  return {
+    ...next,
   };
 }
 
@@ -163,12 +238,14 @@ export async function publishDiscordStorefront({
   catalog,
   customization,
   previous,
+  game,
   fetcher = fetch,
 }: {
   channel: Pick<DiscordStorefrontChannel, "id" | "name">;
   catalog: BotCatalogGame[];
   customization?: BotMessageCustomization;
   previous: DiscordStorefrontConfiguration | null;
+  game?: Pick<BotCatalogGame, "id" | "name"> | null;
   fetcher?: typeof fetch;
 }): Promise<PublishDiscordStorefrontResult> {
   assertSnowflake(channel.id, "canal");
@@ -199,6 +276,8 @@ export async function publishDiscordStorefront({
 
   return {
     configuration: {
+      game_id: game?.id ?? previous?.game_id ?? null,
+      game_name: game?.name ?? previous?.game_name ?? "Catálogo completo",
       channel_id: channel.id,
       channel_name: channelName,
       message_ids: messageIds,

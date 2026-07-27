@@ -162,7 +162,7 @@ describe("gestores do catálogo", () => {
     const substoreView = render(
       <SubstoresManager games={[]} substores={[]} productCounts={{}} />,
     );
-    expect(screen.getByRole("button", { name: "Nova subloja" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nova categoria" })).toBeDisabled();
     substoreView.unmount();
 
     const productView = render(
@@ -174,8 +174,8 @@ describe("gestores do catálogo", () => {
     const enabledSubstoreView = render(
       <SubstoresManager games={[activeGame]} substores={[]} productCounts={{}} />,
     );
-    await user.click(screen.getByRole("button", { name: "Nova subloja" }));
-    expect(screen.getByRole("heading", { name: "Nova subloja" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Nova categoria" }));
+    expect(screen.getByRole("heading", { name: "Nova categoria" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Jogo" })).toHaveValue(activeGame.id);
     expect(screen.getByLabelText("Imagem principal")).toHaveAttribute(
       "accept",
@@ -191,7 +191,7 @@ describe("gestores do catálogo", () => {
     );
     await user.click(screen.getByRole("button", { name: "Novo produto" }));
     expect(screen.getByRole("heading", { name: "Novo produto" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Subloja" })).toHaveValue(activeSubstore.id);
+    expect(screen.getByRole("combobox", { name: "Categoria" })).toHaveValue(activeSubstore.id);
     expect(screen.queryByRole("textbox", { name: "Slug" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Preço mínimo" })).toBeRequired();
     expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(0);

@@ -5,6 +5,7 @@ const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 type DiscordInteractionPayload = {
   id?: unknown;
   guild_id?: unknown;
+  channel_id?: unknown;
   member?: { user?: { id?: unknown }; premium_since?: unknown };
   user?: { id?: unknown };
 };
@@ -13,11 +14,12 @@ export function readDiscordInteraction(raw: unknown, normalizedUserId: string) {
   const interaction = isObject(raw) ? (raw as DiscordInteractionPayload) : null;
   const interactionId = asSnowflake(interaction?.id);
   const guildId = asSnowflake(interaction?.guild_id);
+  const channelId = asSnowflake(interaction?.channel_id);
   const rawUserId = asSnowflake(interaction?.member?.user?.id) ?? asSnowflake(interaction?.user?.id);
   const userId = asSnowflake(normalizedUserId) ?? rawUserId;
   const isServerBooster = isIsoDateTime(interaction?.member?.premium_since);
 
-  return { interactionId, guildId, userId, isServerBooster };
+  return { interactionId, guildId, channelId, userId, isServerBooster };
 }
 
 export async function fetchDiscordGuildIdentity(

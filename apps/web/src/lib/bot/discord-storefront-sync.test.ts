@@ -4,8 +4,8 @@ const mocks = vi.hoisted(() => ({
   createAdminSupabaseClient: vi.fn(),
   listCatalog: vi.fn(),
   publishDiscordStorefront: vi.fn(),
-  readStorefrontConfiguration: vi.fn(),
-  withStorefrontConfiguration: vi.fn(),
+  readStorefrontConfigurations: vi.fn(),
+  withStorefrontConfigurations: vi.fn(),
   loadBotMessageCustomization: vi.fn(),
   synchronizeDiscordProductEmojis: vi.fn(),
 }));
@@ -24,8 +24,8 @@ vi.mock("./supabase-repository", () => ({
 }));
 vi.mock("./discord-storefront", () => ({
   publishDiscordStorefront: mocks.publishDiscordStorefront,
-  readStorefrontConfiguration: mocks.readStorefrontConfiguration,
-  withStorefrontConfiguration: mocks.withStorefrontConfiguration,
+  readStorefrontConfigurations: mocks.readStorefrontConfigurations,
+  withStorefrontConfigurations: mocks.withStorefrontConfigurations,
 }));
 vi.mock("./message-customization-server", () => ({
   loadBotMessageCustomization: mocks.loadBotMessageCustomization,
@@ -37,6 +37,8 @@ vi.mock("./discord-product-emojis", () => ({
 import { synchronizePublishedDiscordStorefronts } from "./discord-storefront-sync";
 
 const storefront = {
+  game_id: "a5b82d6f-a324-47fa-a861-a046559e3a11",
+  game_name: "Grow a Garden 2",
   channel_id: "223456789012345678",
   channel_name: "compras",
   message_ids: ["323456789012345678"],
@@ -47,9 +49,11 @@ const customization = { version: 1, storefront: { title: "Loja personalizada" } 
 describe("sincronização automática da vitrine Discord", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.listCatalog.mockResolvedValue([]);
-    mocks.readStorefrontConfiguration.mockReturnValue(storefront);
-    mocks.withStorefrontConfiguration.mockReturnValue({ storefront });
+    mocks.listCatalog.mockResolvedValue([
+      { id: storefront.game_id, name: storefront.game_name, substores: [] },
+    ]);
+    mocks.readStorefrontConfigurations.mockReturnValue([storefront]);
+    mocks.withStorefrontConfigurations.mockReturnValue({ storefronts: [storefront] });
     mocks.loadBotMessageCustomization.mockResolvedValue(customization);
     mocks.publishDiscordStorefront.mockResolvedValue({ configuration: storefront });
     mocks.synchronizeDiscordProductEmojis.mockResolvedValue({ failed: 0 });
@@ -66,11 +70,55 @@ describe("sincronização automática da vitrine Discord", () => {
     });
     expect(mocks.publishDiscordStorefront).toHaveBeenCalledWith({
       channel: { id: storefront.channel_id, name: storefront.channel_name },
-      catalog: [],
+      catalog: [
+        { id: storefront.game_id, name: storefront.game_name, substores: [] },
+      ],
       customization,
       previous: storefront,
+      game: expect.objectContaining({
+        id: storefront.game_id,
+        name: storefront.game_name,
+      }),
     });
-    expect(client.update).toHaveBeenCalledWith({ configuration: { storefront } });
+    expect(client.update).toHaveBeenCalledWith({
+      configuration: { storefronts: [storefront] },
+    });
+  });
+
+  it("sincroniza duas vitrines do mesmo servidor e salva sem corrida de atualização", async () => {
+    const second = {
+      ...storefront,
+      game_id: "b5b82d6f-a324-47fa-a861-a046559e3a11",
+      game_name: "Outro jogo",
+      channel_id: "423456789012345678",
+      channel_name: "outro-jogo",
+      message_ids: ["523456789012345678"],
+    };
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.readStorefrontConfigurations.mockReturnValue([storefront, second]);
+    mocks.listCatalog.mockResolvedValue([
+      { id: storefront.game_id, name: storefront.game_name, substores: [] },
+      { id: second.game_id, name: second.game_name, substores: [] },
+    ]);
+    mocks.publishDiscordStorefront
+      .mockResolvedValueOnce({ configuration: storefront })
+      .mockResolvedValueOnce({ configuration: second });
+    mocks.withStorefrontConfigurations.mockReturnValue({
+      storefronts: [storefront, second],
+    });
+
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
+      published: 2,
+      failed: 0,
+      productEmojiFailures: 0,
+    });
+    expect(mocks.publishDiscordStorefront).toHaveBeenCalledTimes(2);
+    expect(client.update).toHaveBeenCalledTimes(1);
+    expect(mocks.withStorefrontConfigurations).toHaveBeenCalledWith(
+      expect.anything(),
+      [storefront, second],
+    );
   });
 
   it("informa falha sem impedir as outras vitrines", async () => {
@@ -91,7 +139,7 @@ function clientMock() {
   const guildQuery = {
     eq: vi.fn(),
     is: vi.fn(async () => ({
-      data: [{ id: "guild-row", configuration: { storefront } }],
+      data: [{ id: "guild-row", configuration: { storefronts: [storefront] } }],
       error: null,
     })),
   };
