@@ -13,6 +13,7 @@ import {
   MINIMUM_COIN_PURCHASE,
   type DemoRoulettePrizeKey,
 } from "@/lib/roulette/demo";
+import { openRouletteRedemptionTicket } from "@/lib/roulette/redemptions";
 import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -37,6 +38,16 @@ export type SellRoulettePrizeResult =
       remainingQuantity: number;
       creditedCents: number;
       balanceCents: number;
+    }
+  | { ok: false; message: string };
+
+export type RedeemRoulettePrizeResult =
+  | {
+      ok: true;
+      prizeKey: DemoRoulettePrizeKey;
+      productName: string;
+      remainingQuantity: number;
+      ticketOpened: boolean;
     }
   | { ok: false; message: string };
 
@@ -227,6 +238,58 @@ export async function sellRoulettePrize(
     remainingQuantity: safeCount(sale.remaining_quantity),
     creditedCents: safeCount(sale.credited_amount_cents),
     balanceCents: safeCount(sale.coin_balance_cents),
+  };
+}
+
+/**
+ * Takes one prize out of the inventory for hand delivery: it lands in the admin
+ * panel and opens a private Discord ticket for the player.
+ */
+export async function redeemRoulettePrize(
+  prizeKey: string,
+): Promise<RedeemRoulettePrizeResult> {
+  if (!isDemoRoulettePrizeKey(prizeKey)) {
+    return { ok: false, message: "Prêmio inválido." };
+  }
+  const session = await readRouletteSession();
+  if ("message" in session) return { ok: false, message: session.message };
+
+  const { data, error } = await session.supabase.rpc("redeem_roulette_prize", {
+    p_prize_key: prizeKey,
+  });
+  const redemption = data?.[0];
+  if (error?.code === "P0008") {
+    return { ok: false, message: "Você não tem mais esse item no inventário." };
+  }
+  if (error?.code === "P0010") {
+    return { ok: false, message: "Este item saiu do catálogo e não pode ser resgatado." };
+  }
+  if (error?.code === "P0012") {
+    return { ok: false, message: "O servidor de entrega está indisponível. Fale com a equipe." };
+  }
+  if (error || !redemption || !isDemoRoulettePrizeKey(redemption.redeemed_prize_key)) {
+    if (error) console.error(`[roleta:resgate] ${error.code ?? "sem código"} ${error.message}`);
+    return { ok: false, message: "Não foi possível abrir o resgate. Tente novamente." };
+  }
+
+  // The prize already left the inventory, so a Discord failure must not undo
+  // the request: the reconciliation cron retries the ticket.
+  let ticketOpened = false;
+  try {
+    const ticket = await openRouletteRedemptionTicket(redemption.redemption_id);
+    ticketOpened = Boolean(ticket.channelId);
+  } catch (error) {
+    console.error(
+      `[roleta:resgate:ticket] ${error instanceof Error ? error.message : "erro desconhecido"}`,
+    );
+  }
+
+  return {
+    ok: true,
+    prizeKey: redemption.redeemed_prize_key,
+    productName: redemption.redeemed_product_name,
+    remainingQuantity: safeCount(redemption.remaining_quantity),
+    ticketOpened,
   };
 }
 

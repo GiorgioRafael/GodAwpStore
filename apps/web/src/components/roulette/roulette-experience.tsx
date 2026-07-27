@@ -10,6 +10,7 @@ import {
   Gift,
   Loader2,
   Minus,
+  PackageCheck,
   PackageOpen,
   Plus,
   QrCode,
@@ -24,6 +25,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getRouletteCoinPurchaseStatus,
+  redeemRoulettePrize,
   sellRoulettePrize,
   spinRoulette,
   startRouletteCoinPurchase,
@@ -55,7 +57,13 @@ const WHEEL_CENTER = WHEEL_SIZE / 2;
 const WHEEL_RADIUS = 164;
 const PAYMENT_POLL_INTERVAL_MS = 4_000;
 
-type Phase = "idle" | "preparing" | "awaiting_payment" | "spinning" | "selling";
+type Phase =
+  | "idle"
+  | "preparing"
+  | "awaiting_payment"
+  | "spinning"
+  | "selling"
+  | "redeeming";
 
 export function RouletteExperience({
   prizes,
@@ -208,6 +216,33 @@ export function RouletteExperience({
     );
     setNotice(`Item vendido por ${formatCoins(sale.creditedCents)} moedas.`);
     if (lastPrizeKey === sale.prizeKey && sale.remainingQuantity === 0) {
+      setLastPrizeKey(null);
+    }
+    setPhase("idle");
+  }
+
+  async function handleRedeem(prizeKey: DemoRoulettePrizeKey) {
+    if (isBusy || !available) return;
+    setError(null);
+    setNotice(null);
+    setPhase("redeeming");
+
+    const redemption = await redeemRoulettePrize(prizeKey);
+    if (!redemption.ok) {
+      setError(redemption.message);
+      setPhase("idle");
+      return;
+    }
+
+    setInventory((current) =>
+      mergeDemoRouletteInventory(current, redemption.prizeKey, redemption.remainingQuantity),
+    );
+    setNotice(
+      redemption.ticketOpened
+        ? `Resgate aberto: ${redemption.productName}. Um ticket privado foi criado no Discord para a entrega.`
+        : `Resgate de ${redemption.productName} registrado. O ticket no Discord será aberto em instantes.`,
+    );
+    if (lastPrizeKey === redemption.prizeKey && redemption.remainingQuantity === 0) {
       setLastPrizeKey(null);
     }
     setPhase("idle");
@@ -540,17 +575,28 @@ export function RouletteExperience({
                         {item.quantity}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleSell(item.prizeKey)}
-                      disabled={isBusy || !available || prize.saleValueCents <= 0}
-                      className="mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-300/35 bg-amber-400/10 px-3 text-xs font-bold text-amber-100 transition-colors hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      <Coins aria-hidden="true" className="size-3.5" />
-                      {prize.saleValueCents > 0
-                        ? `Vender 1 por ${formatCoins(prize.saleValueCents)} moedas`
-                        : "Sem valor de recompra"}
-                    </button>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSell(item.prizeKey)}
+                        disabled={isBusy || !available || prize.saleValueCents <= 0}
+                        className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-300/35 bg-amber-400/10 px-2 text-xs font-bold text-amber-100 transition-colors hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <Coins aria-hidden="true" className="size-3.5 shrink-0" />
+                        {prize.saleValueCents > 0
+                          ? `Vender por ${formatCoins(prize.saleValueCents)}`
+                          : "Sem recompra"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRedeem(item.prizeKey)}
+                        disabled={isBusy || !available || !prize.productId}
+                        className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-300/40 bg-emerald-400/10 px-2 text-xs font-bold text-emerald-100 transition-colors hover:bg-emerald-400/20 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        <PackageCheck aria-hidden="true" className="size-3.5 shrink-0" />
+                        Resgatar item
+                      </button>
+                    </div>
                   </li>
                 );
               })}
@@ -595,6 +641,7 @@ function spinButtonLabel(phase: Phase, isAdmin: boolean, canSpin: boolean) {
   if (phase === "preparing") return "Gerando o Pix...";
   if (phase === "awaiting_payment") return "Aguardando o Pix...";
   if (phase === "selling") return "Vendendo...";
+  if (phase === "redeeming") return "Resgatando...";
   if (isAdmin) return "Girar grátis (admin)";
   return canSpin ? "Girar (1 moeda)" : "Sem moedas suficientes";
 }

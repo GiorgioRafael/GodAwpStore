@@ -52,6 +52,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Gestão",
     items: [
       { label: "Sorteios", href: "/sorteios", icon: Gift },
+      { label: "Resgates", href: "/resgates", icon: PackageCheck },
       { label: "Whitelist", href: "/whitelist", icon: ShieldCheck },
       { label: "Servidores", href: "/servidores", icon: UsersRound },
       { label: "Customização do bot", href: "/customizacao-bot", icon: Bot },

@@ -616,6 +616,27 @@ type RouletteCoinPurchaseRow = {
   updated_at: string;
 };
 
+type RouletteRedemptionRow = {
+  id: string;
+  auth_user_id: string;
+  discord_user_id: string;
+  guild_id: string;
+  prize_key: string;
+  product_id: string | null;
+  product_name: string;
+  value_cents: number;
+  status: "pending" | "delivered" | "cancelled";
+  discord_ticket_status: "pending" | "creating" | "open" | "failed";
+  discord_ticket_channel_id: string | null;
+  discord_ticket_claim_token: string | null;
+  discord_ticket_claimed_at: string | null;
+  discord_ticket_error: string | null;
+  delivered_at: string | null;
+  delivered_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type RouletteCoinEntryRow = {
   id: string;
   auth_user_id: string;
@@ -1332,6 +1353,28 @@ export type Database = {
         Update: UpdateRow<RouletteCoinPurchaseRow>;
         Relationships: [];
       };
+      roulette_redemptions: {
+        Row: RouletteRedemptionRow;
+        Insert: InsertRow<
+          RouletteRedemptionRow,
+          | "auth_user_id"
+          | "discord_user_id"
+          | "guild_id"
+          | "prize_key"
+          | "product_name"
+          | "value_cents"
+        >;
+        Update: UpdateRow<RouletteRedemptionRow>;
+        Relationships: [
+          Relationship<"roulette_redemptions_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
+          Relationship<
+            "roulette_redemptions_product_id_fkey",
+            ["product_id"],
+            "products",
+            ["id"]
+          >,
+        ];
+      };
       roulette_coin_entries: {
         Row: RouletteCoinEntryRow;
         Insert: InsertRow<
@@ -1540,6 +1583,44 @@ export type Database = {
           remaining_quantity: number;
           credited_amount_cents: number;
           coin_balance_cents: number;
+        }[];
+      };
+      redeem_roulette_prize: {
+        Args: { p_prize_key: string };
+        Returns: {
+          redemption_id: string;
+          redeemed_prize_key: string;
+          redeemed_product_name: string;
+          redeemed_value_cents: number;
+          remaining_quantity: number;
+        }[];
+      };
+      claim_roulette_redemption_ticket: {
+        Args: { p_redemption_id: string; p_claim_token: string };
+        Returns: {
+          claimed_redemption_id: string;
+          claim_succeeded: boolean;
+          claimed_guild_discord_id: string;
+          claimed_discord_user_id: string;
+          claimed_product_name: string;
+          claimed_value_cents: number;
+          claimed_channel_id: string | null;
+          claimed_ticket_status: "pending" | "creating" | "open" | "failed";
+        }[];
+      };
+      complete_roulette_redemption_ticket: {
+        Args: { p_redemption_id: string; p_channel_id: string };
+        Returns: undefined;
+      };
+      fail_roulette_redemption_ticket: {
+        Args: { p_redemption_id: string; p_error: string };
+        Returns: undefined;
+      };
+      admin_settle_roulette_redemption: {
+        Args: { p_redemption_id: string; p_status: string };
+        Returns: {
+          settled_redemption_id: string;
+          settled_status: "pending" | "delivered" | "cancelled";
         }[];
       };
       admin_reorder_products: {

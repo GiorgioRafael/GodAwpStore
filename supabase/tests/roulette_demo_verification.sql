@@ -15,7 +15,8 @@ begin
     'roulette_prize_products',
     'roulette_coin_balances',
     'roulette_coin_purchases',
-    'roulette_coin_entries'
+    'roulette_coin_entries',
+    'roulette_redemptions'
   ] loop
     if to_regclass('public.' || required_table) is null then
       raise exception 'Missing roulette table: %', required_table;
@@ -43,7 +44,12 @@ begin
     'confirm_roulette_coin_purchase(text, text, text, integer, text, timestamptz, text)',
     'spin_roulette(text)',
     'spin_roulette_as_admin(uuid, text)',
-    'sell_roulette_prize(text)'
+    'sell_roulette_prize(text)',
+    'redeem_roulette_prize(text)',
+    'claim_roulette_redemption_ticket(uuid, uuid)',
+    'complete_roulette_redemption_ticket(uuid, text)',
+    'fail_roulette_redemption_ticket(uuid, text)',
+    'admin_settle_roulette_redemption(uuid, text)'
   ] loop
     if to_regprocedure('public.' || required_function) is null then
       raise exception 'Missing roulette function: %', required_function;
@@ -114,8 +120,32 @@ begin
   end if;
 
   if has_function_privilege('anon', 'public.spin_roulette(text)', 'EXECUTE')
-    or has_function_privilege('anon', 'public.sell_roulette_prize(text)', 'EXECUTE') then
+    or has_function_privilege('anon', 'public.sell_roulette_prize(text)', 'EXECUTE')
+    or has_function_privilege('anon', 'public.redeem_roulette_prize(text)', 'EXECUTE') then
     raise exception 'The roulette must stay closed to anonymous visitors';
+  end if;
+
+  if not has_function_privilege('authenticated', 'public.redeem_roulette_prize(text)', 'EXECUTE') then
+    raise exception 'A player must be able to redeem a prize';
+  end if;
+
+  -- Only the server-side worker opens or closes the delivery ticket.
+  if has_function_privilege(
+    'authenticated',
+    'public.claim_roulette_redemption_ticket(uuid, uuid)',
+    'EXECUTE'
+  ) or has_function_privilege(
+    'authenticated',
+    'public.complete_roulette_redemption_ticket(uuid, text)',
+    'EXECUTE'
+  ) then
+    raise exception 'authenticated must not drive the redemption ticket directly';
+  end if;
+
+  if has_table_privilege('authenticated', 'public.roulette_redemptions', 'INSERT')
+    or has_table_privilege('authenticated', 'public.roulette_redemptions', 'UPDATE')
+    or has_table_privilege('anon', 'public.roulette_redemptions', 'SELECT') then
+    raise exception 'Redemptions must be written only through the RPCs';
   end if;
 end
 $$;
@@ -222,6 +252,14 @@ insert into public.products (
   10,
   'active',
   '9a000000-0000-4000-8000-000000000002'
+);
+
+insert into public.guilds (id, discord_guild_id, owner_discord_id, name, status) values (
+  '9c000000-0000-4000-8000-000000000004',
+  '401264061101899820',
+  '900000000000000002',
+  'Roulette Verification Guild',
+  'active'
 );
 
 -- Pin the wheel to a single prize worth 4,00 coins so every assertion below is
@@ -398,9 +436,87 @@ begin
 end
 $$;
 
+-- O jogador ganha outro item e pede o resgate em vez de vender.
+do $$
+declare
+  v_spin record;
+  v_redemption record;
+begin
+  perform pg_sleep(2.1);
+  select * into v_spin from public.spin_roulette('900000000000000001');
+  if v_spin.won_prize_key <> 'premio_1' then
+    raise exception 'The pinned wheel returned %', v_spin.won_prize_key;
+  end if;
+
+  select * into v_redemption from public.redeem_roulette_prize('premio_1');
+  if v_redemption.redeemed_product_name <> 'Roulette Verification Prize' then
+    raise exception 'The redemption named the prize %', v_redemption.redeemed_product_name;
+  end if;
+  if v_redemption.redeemed_value_cents <> 400 then
+    raise exception 'The redemption valued the prize at %', v_redemption.redeemed_value_cents;
+  end if;
+  if v_redemption.remaining_quantity <> 0 then
+    raise exception 'The redeemed prize stayed in the inventory';
+  end if;
+
+  -- The prize left the inventory, so it cannot be redeemed or sold again.
+  begin
+    perform * from public.redeem_roulette_prize('premio_1');
+    raise exception 'A prize was redeemed twice';
+  exception
+    when sqlstate 'P0008' then null;
+  end;
+end
+$$;
+
 reset role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 set local role service_role;
+
+-- The delivery ticket is leased exactly once.
+do $$
+declare
+  v_redemption_id uuid;
+  v_first record;
+  v_second record;
+begin
+  select id into v_redemption_id
+  from public.roulette_redemptions
+  where auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  order by created_at desc
+  limit 1;
+
+  select * into v_first
+  from public.claim_roulette_redemption_ticket(
+    v_redemption_id,
+    '9b000000-0000-4000-8000-000000000002'
+  );
+  if not v_first.claim_succeeded then
+    raise exception 'The first redemption ticket lease was refused';
+  end if;
+  if v_first.claimed_product_name <> 'Roulette Verification Prize' then
+    raise exception 'The lease returned the wrong prize';
+  end if;
+
+  select * into v_second
+  from public.claim_roulette_redemption_ticket(
+    v_redemption_id,
+    '9b000000-0000-4000-8000-000000000003'
+  );
+  if v_second.claim_succeeded then
+    raise exception 'Two workers leased the same redemption ticket';
+  end if;
+
+  perform public.complete_roulette_redemption_ticket(v_redemption_id, '401264061101899821');
+  if (
+    select discord_ticket_status
+    from public.roulette_redemptions
+    where id = v_redemption_id
+  ) <> 'open' then
+    raise exception 'The redemption ticket did not reach the open state';
+  end if;
+end
+$$;
 
 do $$
 declare
