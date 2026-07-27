@@ -25,6 +25,11 @@ import {
   parseNativeDiscordLeadRecoveryInteraction,
 } from "@/lib/bot/lead-recovery";
 import {
+  completeDiscordOrderCancellation,
+  createNativeDiscordOrderRebuildResponse,
+  parseNativeDiscordOrderCancellationInteraction,
+} from "@/lib/bot/discord-order-cancellation";
+import {
   completeDiscordGameNicknameSubmission,
   createNativeDiscordGameNicknameResponse,
   parseNativeDiscordGameNicknameInteraction,
@@ -79,7 +84,11 @@ export async function POST(request: Request) {
           native.scope === "ticket_close" ||
           native.scope === "ticket_delivery" ||
           native.scope === "upsell" ||
-          native.scope === "lead_recovery"
+          native.scope === "lead_recovery" ||
+          (
+            native.scope === "order_cancellation" &&
+            native.interaction.kind === "cancel"
+          )
         ) &&
         !isFreshDestructiveInteractionTimestamp(timestamp)
       ) {
@@ -213,6 +222,38 @@ export async function POST(request: Request) {
             const message =
               error instanceof Error ? error.message : "erro desconhecido";
             console.error(`[lead-recovery] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "order_cancellation") {
+        if (native.interaction.kind !== "cancel") {
+          return Response.json(
+            await createNativeDiscordOrderRebuildResponse(
+              native.raw,
+              native.interaction,
+            ),
+          );
+        }
+
+        after(async () => {
+          try {
+            const stockChanged = await completeDiscordOrderCancellation(
+              native.raw,
+            );
+            if (stockChanged) {
+              const storefronts = await synchronizePublishedDiscordStorefronts();
+              if (storefronts.failed > 0) {
+                console.error(
+                  `[discord-order-cancellation] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
+                );
+              }
+            }
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-order-cancellation] ${message}`);
           }
         });
         return Response.json(native.interaction.response);
@@ -389,6 +430,17 @@ async function readNativeDiscordInteraction(request: Request) {
       raw,
       scope: "lead_recovery" as const,
       interaction: leadRecovery,
+    };
+  }
+
+  const orderCancellation =
+    parseNativeDiscordOrderCancellationInteraction(raw);
+  if (orderCancellation) {
+    return {
+      body,
+      raw,
+      scope: "order_cancellation" as const,
+      interaction: orderCancellation,
     };
   }
 

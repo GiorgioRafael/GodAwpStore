@@ -81,6 +81,31 @@ export async function discordBotJson<T>(
   return (await response.json()) as T;
 }
 
+export async function deleteDiscordBotMessage(
+  channelId: string,
+  messageId: string,
+  fetcher: typeof fetch = fetch,
+) {
+  if (!SNOWFLAKE_PATTERN.test(channelId) || !SNOWFLAKE_PATTERN.test(messageId)) {
+    throw new Error("Mensagem Discord inválida.");
+  }
+  const response = await discordBotRequest(
+    `/channels/${channelId}/messages/${messageId}`,
+    { method: "DELETE" },
+    fetcher,
+  );
+  if (response.status === 404) return false;
+  if (!response.ok) {
+    throw new DiscordApiError(
+      response.status,
+      `/channels/${channelId}/messages/${messageId}`,
+      "DELETE",
+      readDiscordErrorCode(await response.clone().json().catch(() => null)),
+    );
+  }
+  return true;
+}
+
 export async function isDiscordUnknownChannelResponse(response: Response) {
   if (response.status !== 404) return false;
   const payload: unknown = await response.clone().json().catch(() => null);

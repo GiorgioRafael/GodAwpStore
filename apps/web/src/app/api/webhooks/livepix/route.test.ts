@@ -7,10 +7,18 @@ const mocks = vi.hoisted(() => ({
   failTicket: vi.fn(),
   ensurePaidOrderTicket: vi.fn(),
   synchronizeDiscordCustomerRankRole: vi.fn(),
+  requestDiscordStorefrontSync: vi.fn(),
+  drainDiscordStorefrontSyncQueue: vi.fn(),
   reconcileRouletteSpin: vi.fn(),
+  afterTasks: [] as Array<() => void | Promise<void>>,
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("next/server", () => ({
+  after: (callback: () => void | Promise<void>) => {
+    mocks.afterTasks.push(callback);
+  },
+}));
 vi.mock("@/lib/livepix/runtime", () => ({
   getLivePixPaymentService: () => ({
     reconcilePayment: mocks.reconcilePayment,
@@ -24,6 +32,10 @@ vi.mock("@/lib/bot/discord-ticket", () => ({
 }));
 vi.mock("@/lib/bot/discord-customer-rank", () => ({
   synchronizeDiscordCustomerRankRole: mocks.synchronizeDiscordCustomerRankRole,
+}));
+vi.mock("@/lib/bot/discord-storefront-sync-queue", () => ({
+  requestDiscordStorefrontSync: mocks.requestDiscordStorefrontSync,
+  drainDiscordStorefrontSyncQueue: mocks.drainDiscordStorefrontSyncQueue,
 }));
 vi.mock("@/lib/roulette/runtime", () => ({
   getRouletteCoinPurchaseService: () => ({
@@ -39,6 +51,13 @@ const orderId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
 afterEach(() => {
   vi.resetAllMocks();
   vi.unstubAllEnvs();
+  mocks.afterTasks.length = 0;
+  mocks.requestDiscordStorefrontSync.mockResolvedValue(true);
+  mocks.drainDiscordStorefrontSyncQueue.mockResolvedValue({
+    claimed: 1,
+    passes: 1,
+    published: 1,
+  });
 });
 
 describe("LivePix webhook route", () => {
@@ -95,6 +114,11 @@ describe("LivePix webhook route", () => {
       discordGuildId: "123456789012345678",
       buyerDiscordId: "223456789012345678",
     });
+    expect(mocks.requestDiscordStorefrontSync).toHaveBeenCalledWith(orderId);
+    expect(mocks.drainDiscordStorefrontSyncQueue).not.toHaveBeenCalled();
+
+    await runAfterTasks();
+    expect(mocks.drainDiscordStorefrontSyncQueue).toHaveBeenCalledOnce();
   });
 
   it("aceita o webhook tardio sem abrir ticket para o pedido cancelado", async () => {
@@ -114,6 +138,8 @@ describe("LivePix webhook route", () => {
     });
     expect(mocks.claimTicket).not.toHaveBeenCalled();
     expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
+    expect(mocks.requestDiscordStorefrontSync).not.toHaveBeenCalled();
+    expect(mocks.drainDiscordStorefrontSyncQueue).not.toHaveBeenCalled();
   });
 
   it("continua abrindo o ticket quando só a sincronização do cargo falha", async () => {
@@ -145,6 +171,93 @@ describe("LivePix webhook route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ received: true, ticket: "open" });
     expect(mocks.completeTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
+  });
+
+  it("usa replay do webhook para tentar novamente uma fila ainda pendente", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({
+      orderId,
+      orderStatus: "paid",
+      firstConfirmation: false,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
+    mocks.claimTicket.mockResolvedValue({
+      orderId,
+      claimed: false,
+      ticketStatus: "open",
+    });
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      received: true,
+      ticket: "open",
+    });
+    expect(mocks.requestDiscordStorefrontSync).toHaveBeenCalledWith(orderId);
+    await runAfterTasks();
+    expect(mocks.drainDiscordStorefrontSyncQueue).toHaveBeenCalledOnce();
+  });
+
+  it("não repete o fanout quando a solicitação deste pedido já foi concluída", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({
+      orderId,
+      orderStatus: "paid",
+      firstConfirmation: false,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
+    mocks.requestDiscordStorefrontSync.mockResolvedValue(false);
+    mocks.claimTicket.mockResolvedValue({
+      orderId,
+      claimed: false,
+      ticketStatus: "open",
+    });
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    expect(mocks.afterTasks).toHaveLength(0);
+    expect(mocks.drainDiscordStorefrontSyncQueue).not.toHaveBeenCalled();
+  });
+
+  it("não bloqueia o ticket se a persistência da fila estiver indisponível", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({
+      orderId,
+      orderStatus: "paid",
+      firstConfirmation: true,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
+    mocks.requestDiscordStorefrontSync.mockRejectedValue(
+      new Error("Supabase indisponível"),
+    );
+    mocks.claimTicket.mockResolvedValue({
+      orderId,
+      claimed: true,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+      productName: "Unicórnio",
+      quantity: 1,
+      paidAmountCents: 100,
+      ticketStatus: "creating",
+      existingChannelId: null,
+    });
+    mocks.ensurePaidOrderTicket.mockResolvedValue({
+      channelId: "323456789012345678",
+    });
+
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      received: true,
+      ticket: "open",
+    });
+    expect(mocks.afterTasks).toHaveLength(0);
   });
 
   it("credita as moedas da roleta quando a referência não é de um pedido", async () => {
@@ -225,4 +338,9 @@ function webhookRequest(body: string) {
     headers: { "Content-Type": "application/json" },
     body,
   });
+}
+
+async function runAfterTasks() {
+  const tasks = mocks.afterTasks.splice(0);
+  await Promise.all(tasks.map((task) => task()));
 }

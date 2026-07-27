@@ -20,7 +20,7 @@ import { getSiteUrl } from "@/lib/env";
 import { getLivePixClient } from "@/lib/livepix/client";
 import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
-import { discordBotJson } from "./discord-api";
+import { deleteDiscordBotMessage, discordBotJson } from "./discord-api";
 import { readDiscordInteraction } from "./discord-context";
 import {
   cartPurchaseResultCard,
@@ -103,8 +103,9 @@ export async function reconcileLeadRecoveryOffers(
   };
 
   for (const claim of claims) {
+    let delivery: { channelId: string; messageId: string } | null = null;
     try {
-      const delivery = await sendLeadRecoveryDm(claim, fetcher);
+      delivery = await sendLeadRecoveryDm(claim, fetcher);
       const completed = await repository.completeDelivery({
         offerId: claim.id,
         claimToken,
@@ -117,6 +118,13 @@ export async function reconcileLeadRecoveryOffers(
       result.sent += 1;
     } catch (error) {
       result.failed += 1;
+      if (delivery) {
+        await deleteDiscordBotMessage(
+          delivery.channelId,
+          delivery.messageId,
+          fetcher,
+        ).catch(() => undefined);
+      }
       const message =
         error instanceof Error ? error.message : "Falha desconhecida no Discord.";
       await repository

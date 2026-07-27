@@ -249,7 +249,27 @@ type GuildCustomerRankRoleSyncRow = {
   claim_token: string | null;
   claimed_at: string | null;
   completed_at: string | null;
+  attempts: number;
+  next_attempt_at: string;
   last_error: string | null;
+  updated_at: string;
+};
+
+type DiscordStorefrontSyncRequestRow = {
+  order_id: string;
+  status: string;
+  claim_token: string | null;
+  claimed_at: string | null;
+  completed_at: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type DiscordStorefrontSyncWorkerRow = {
+  id: number;
+  claim_token: string | null;
+  claimed_at: string | null;
   updated_at: string;
 };
 
@@ -1075,6 +1095,26 @@ export type Database = {
             ["id"]
           >,
         ];
+      };
+      discord_storefront_sync_requests: {
+        Row: DiscordStorefrontSyncRequestRow;
+        Insert: InsertRow<DiscordStorefrontSyncRequestRow, "order_id">;
+        Update: UpdateRow<DiscordStorefrontSyncRequestRow>;
+        Relationships: [
+          Relationship<
+            "discord_storefront_sync_requests_order_id_fkey",
+            ["order_id"],
+            "orders",
+            ["id"],
+            true
+          >,
+        ];
+      };
+      discord_storefront_sync_worker: {
+        Row: DiscordStorefrontSyncWorkerRow;
+        Insert: InsertRow<DiscordStorefrontSyncWorkerRow>;
+        Update: UpdateRow<DiscordStorefrontSyncWorkerRow>;
+        Relationships: [];
       };
       orders: {
         Row: OrderRow;
@@ -2087,6 +2127,40 @@ export type Database = {
           expired_product_id: string;
           restored_quantity: number;
         }[];
+      };
+      cancel_discord_unpaid_order: {
+        Args: {
+          p_order_id: string;
+          p_discord_guild_id: string;
+          p_buyer_discord_id: string;
+        };
+        Returns: {
+          cancelled_order_id: string;
+          was_cancelled: boolean;
+          already_cancelled: boolean;
+          payment_confirmed: boolean;
+          unavailable: boolean;
+          can_rebuild: boolean;
+          stock_changed: boolean;
+          recovery_dm_channel_id: string | null;
+          recovery_dm_message_id: string | null;
+        }[];
+      };
+      request_discord_storefront_sync: {
+        Args: { p_order_id: string };
+        Returns: boolean;
+      };
+      claim_discord_storefront_sync: {
+        Args: { p_claim_token: string; p_batch_size?: number };
+        Returns: number;
+      };
+      complete_discord_storefront_sync: {
+        Args: {
+          p_claim_token: string;
+          p_success: boolean;
+          p_error?: string | null;
+        };
+        Returns: boolean;
       };
       confirm_livepix_payment: {
         Args: {

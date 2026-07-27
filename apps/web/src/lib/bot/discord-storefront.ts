@@ -175,23 +175,7 @@ export async function publishDiscordStorefront({
   const channelName = asChannelName(channel.name);
   if (!channelName) throw new Error("Nome do canal Discord inválido.");
 
-  const payloads = catalogCards(catalog, customization).map((card) => {
-    const productOptionEmojis = collectDiscordProductOptionEmojis(card);
-    const normalized = toCardElement(card);
-    if (!normalized) throw new Error("Não foi possível montar a vitrine do Discord.");
-    return {
-      ...configureDiscordStorefrontBanner(
-        configureDiscordProductEntrySelect(
-          cardToDiscordPayload(normalized, {
-            contentFormat: DiscordContentFormat.ComponentsV2,
-          }),
-          productOptionEmojis,
-        ),
-        customization,
-      ),
-      allowed_mentions: { parse: [] },
-    };
-  });
+  const payloads = createDiscordStorefrontPayloads(catalog, customization);
 
   const reusableMessageIds = previous?.channel_id === channel.id ? previous.message_ids : [];
   const messageIds: string[] = [];
@@ -221,6 +205,29 @@ export async function publishDiscordStorefront({
       published_at: new Date().toISOString(),
     },
   };
+}
+
+export function createDiscordStorefrontPayloads(
+  catalog: BotCatalogGame[],
+  customization?: BotMessageCustomization,
+) {
+  return catalogCards(catalog, customization).map((card) => {
+    const productOptionEmojis = collectDiscordProductOptionEmojis(card);
+    const normalized = toCardElement(card);
+    if (!normalized) throw new Error("Não foi possível montar a vitrine do Discord.");
+    return {
+      ...configureDiscordStorefrontBanner(
+        configureDiscordProductEntrySelect(
+          cardToDiscordPayload(normalized, {
+            contentFormat: DiscordContentFormat.ComponentsV2,
+          }),
+          productOptionEmojis,
+        ),
+        customization,
+      ),
+      allowed_mentions: { parse: [] },
+    };
+  });
 }
 
 async function editOrCreateMessage(

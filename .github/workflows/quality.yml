@@ -88,3 +88,18 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/roulette_demo_verification.sql
+
+      - name: Validar cancelamento do comprador
+        env:
+          PGPASSWORD: postgres
+        run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/buyer_order_cancellation_verification.sql
+
+      - name: Validar recuperação de carrinho
+        env:
+          PGPASSWORD: postgres
+        run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/lead_recovery_verification.sql
+
+      - name: Validar fila de sincronização da vitrine
+        env:
+          PGPASSWORD: postgres
+        run: psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file supabase/tests/discord_storefront_sync_queue_verification.sql

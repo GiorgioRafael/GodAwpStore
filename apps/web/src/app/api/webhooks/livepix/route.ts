@@ -1,5 +1,11 @@
+import { after } from "next/server";
+
 import { ensurePaidOrderTicket } from "@/lib/bot/discord-ticket";
 import { synchronizeDiscordCustomerRankRole } from "@/lib/bot/discord-customer-rank";
+import {
+  drainDiscordStorefrontSyncQueue,
+  requestDiscordStorefrontSync,
+} from "@/lib/bot/discord-storefront-sync-queue";
 import { readLimitedBody, RequestBodyTooLargeError } from "@/lib/http/limited-body";
 import { getLivePixPaymentService } from "@/lib/livepix/runtime";
 import { parseLivePixPaymentWebhook } from "@/lib/livepix/webhook";
@@ -48,6 +54,25 @@ export async function POST(request: Request) {
 
     if (!["paid", "processing", "delivered"].includes(confirmation.orderStatus)) {
       return Response.json({ received: true, ticket: "not_applicable" });
+    }
+
+    try {
+      const requested = await requestDiscordStorefrontSync(
+        confirmation.orderId,
+      );
+      if (requested) {
+        after(async () => {
+          await drainDiscordStorefrontSyncQueue().catch((error) => {
+            // The durable request remains pending, so a provider replay or the
+            // next payment can retry without delaying this buyer's ticket.
+            logWebhookError("storefront", error);
+          });
+        });
+      }
+    } catch (error) {
+      // Payment and ticket delivery remain authoritative if queue persistence
+      // is temporarily unavailable.
+      logWebhookError("storefront_queue", error);
     }
 
     try {

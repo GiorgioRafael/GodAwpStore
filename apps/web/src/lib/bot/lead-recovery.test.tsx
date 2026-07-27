@@ -144,6 +144,43 @@ describe("recuperação de carrinho pelo Discord", () => {
       dmMessageId: "323456789012345678",
     });
   });
+
+  it("apaga a DM se o comprador cancelar enquanto a entrega está em voo", async () => {
+    const failDelivery = vi.fn(async () => true);
+    const repository = {
+      claimDeliveries: vi.fn(async () => [claim]),
+      completeDelivery: vi.fn(async () => false),
+      failDelivery,
+    };
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({ id: "223456789012345678" }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ id: "323456789012345678" }),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
+
+    await expect(
+      reconcileLeadRecoveryOffers({
+        repository: repository as never,
+        fetcher,
+      }),
+    ).resolves.toEqual({ claimed: 1, sent: 0, failed: 1 });
+
+    expect(fetcher).toHaveBeenNthCalledWith(
+      3,
+      "https://discord.com/api/v10/channels/223456789012345678/messages/323456789012345678",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(failDelivery).toHaveBeenCalledWith({
+      offerId: claim.id,
+      claimToken: expect.any(String),
+      error: "A reserva da mensagem de recuperação expirou.",
+    });
+  });
 });
 
 function visit(value: unknown, callback: (value: Record<string, unknown>) => void) {

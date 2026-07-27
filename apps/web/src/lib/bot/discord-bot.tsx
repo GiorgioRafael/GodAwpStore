@@ -776,13 +776,11 @@ export function purchaseResultCard(
         {message.statusText ? <CardText>{message.statusText}</CardText> : null}
         <CardText>{UNPAID_ORDER_EXPIRATION_NOTICE}</CardText>
         {message.paymentPrompt ? <CardText>{message.paymentPrompt}</CardText> : null}
-        {checkoutUrl ? (
-          <Actions>
-            <LinkButton url={checkoutUrl}>
-              {interpolateBotMessageLimited(message.paymentButtonLabel, {}, 80)}
-            </LinkButton>
-          </Actions>
-        ) : null}
+        {unpaidOrderActions(
+          result.orderId,
+          checkoutUrl,
+          interpolateBotMessageLimited(message.paymentButtonLabel, {}, 80),
+        )}
         <Divider />
         {message.ticketText ? <CardText>{message.ticketText}</CardText> : null}
         {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
@@ -876,13 +874,11 @@ export function cartPurchaseResultCard(
         {message.statusText ? <CardText>{message.statusText}</CardText> : null}
         <CardText>{UNPAID_ORDER_EXPIRATION_NOTICE}</CardText>
         {message.paymentPrompt ? <CardText>{message.paymentPrompt}</CardText> : null}
-        {checkoutUrl ? (
-          <Actions>
-            <LinkButton url={checkoutUrl}>
-              {interpolateBotMessageLimited(message.paymentButtonLabel, {}, 80)}
-            </LinkButton>
-          </Actions>
-        ) : null}
+        {unpaidOrderActions(
+          result.orderId,
+          checkoutUrl,
+          interpolateBotMessageLimited(message.paymentButtonLabel, {}, 80),
+        )}
         <Divider />
         {message.ticketText ? <CardText>{message.ticketText}</CardText> : null}
         {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
@@ -946,6 +942,40 @@ export function upsellOfferCard(offer: UpsellOffer): ChatElement {
         </Button>
       </Actions>
     </Card>
+  );
+}
+
+function unpaidOrderActions(
+  orderId: string,
+  checkoutUrl: string | null,
+  paymentButtonLabel: string,
+): ChatElement {
+  return (
+    <Actions>
+      {checkoutUrl ? (
+        <LinkButton url={checkoutUrl}>{paymentButtonLabel}</LinkButton>
+      ) : null}
+      <Button id="gwstore_order_cancel" value={orderId} style="danger">
+        Cancelar e corrigir
+      </Button>
+    </Actions>
+  );
+}
+
+export function orderRebuildActions(orderId: string): ChatElement {
+  return (
+    <Actions>
+      <Button
+        id="gwstore_order_retry_quantities"
+        value={orderId}
+        style="primary"
+      >
+        Corrigir quantidades
+      </Button>
+      <Button id="gwstore_order_new_cart" value={orderId} style="default">
+        Escolher outros produtos
+      </Button>
+    </Actions>
   );
 }
 
