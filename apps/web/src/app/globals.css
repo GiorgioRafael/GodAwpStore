@@ -119,7 +119,7 @@ button:not(:disabled),
   }
   to {
     opacity: 0;
-    transform: translate3d(0, 62vh, 0) rotate(540deg);
+    transform: translate3d(var(--confetti-drift, 0px), 62vh, 0) rotate(540deg);
   }
 }
 

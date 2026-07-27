@@ -34,6 +34,7 @@ import {
   type RouletteSettledLine,
 } from "@/app/roleta/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { RouletteConfetti } from "@/components/roulette/roulette-celebration";
 import {
   demoRouletteRotation,
   formatCoins,
@@ -46,6 +47,16 @@ import {
   type DemoRoulettePrizeKey,
   type RouletteWheelPrize,
 } from "@/lib/roulette/demo";
+import {
+  EXTRA_TURNS,
+  isBigRoulettePrize,
+  spinWheelTo,
+  wheelLabelPoint,
+  wheelSegmentPath,
+  WHEEL_CENTER,
+  WHEEL_RADIUS,
+  WHEEL_SIZE,
+} from "@/lib/roulette/wheel";
 
 const PRIZE_ICONS: Record<DemoRoulettePrizeKey, LucideIcon> = {
   premio_1: Gift,
@@ -55,10 +66,8 @@ const PRIZE_ICONS: Record<DemoRoulettePrizeKey, LucideIcon> = {
   premio_5: Crown,
 };
 
-const WHEEL_SIZE = 360;
-const WHEEL_CENTER = WHEEL_SIZE / 2;
-const WHEEL_RADIUS = 164;
 const PAYMENT_POLL_INTERVAL_MS = 4_000;
+const SPIN_MS = 4_400;
 
 type Phase =
   | "idle"
@@ -86,7 +95,7 @@ export function RouletteExperience({
   const [inventory, setInventory] = useState(initialInventory);
   const [balanceCents, setBalanceCents] = useState(initialBalanceCents);
   const [lastPrizeKey, setLastPrizeKey] = useState<DemoRoulettePrizeKey | null>(null);
-  const [rotation, setRotation] = useState(0);
+  const [landed, setLanded] = useState(false);
   const [phase, setPhase] = useState<Phase>(initialPurchaseId ? "awaiting_payment" : "idle");
   const [purchaseId, setPurchaseId] = useState<string | null>(initialPurchaseId);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
@@ -97,6 +106,7 @@ export function RouletteExperience({
   const [buyOpen, setBuyOpen] = useState(false);
   const router = useRouter();
   const rotationRef = useRef(0);
+  const wheelRef = useRef<SVGGElement | null>(null);
   const phaseRef = useRef(phase);
   const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
   const isBusy = phase !== "idle";
@@ -149,17 +159,23 @@ export function RouletteExperience({
 
     setBalanceCents(result.balanceCents);
     router.refresh();
-    const nextRotation = demoRouletteRotation(rotationRef.current, result.prizeKey);
-    rotationRef.current = nextRotation;
-    setRotation(nextRotation);
+    setLanded(false);
 
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    await new Promise((resolve) => window.setTimeout(resolve, reduceMotion ? 80 : 2_900));
+    const from = rotationRef.current;
+    const to = demoRouletteRotation(from, result.prizeKey) + EXTRA_TURNS * 360;
+    rotationRef.current = await spinWheelTo(
+      wheelRef.current,
+      from,
+      to,
+      reduceMotion ? 80 : SPIN_MS,
+    );
 
     setInventory((current) =>
       mergeDemoRouletteInventory(current, result.prizeKey, result.inventoryQuantity),
     );
     setLastPrizeKey(result.prizeKey);
+    setLanded(true);
     setPhase("idle");
   }, [router]);
 
@@ -282,6 +298,10 @@ export function RouletteExperience({
   }
 
   const lastPrize = lastPrizeKey ? rouletteWheelPrize(prizes, lastPrizeKey) : null;
+  const topPrizeCents = prizes.reduce((top, prize) => Math.max(top, prize.valueCents), 0);
+  const bigPrize = Boolean(lastPrize && isBigRoulettePrize(lastPrize.valueCents));
+  const topPrize = Boolean(lastPrize && lastPrize.valueCents >= topPrizeCents && topPrizeCents > 0);
+  const celebrating = landed && bigPrize;
 
   return (
     <main className="relative min-h-[calc(100vh-76px)] overflow-hidden bg-[#050306] text-white">
@@ -419,9 +439,16 @@ export function RouletteExperience({
           <div className="mt-7 [@media(max-height:820px)]:mt-4">
             <div className="mx-auto w-full max-w-[560px]">
               <div className="relative mx-auto aspect-square w-full max-w-[520px] [@media(max-height:820px)]:max-w-[400px]">
+                {celebrating ? <RouletteConfetti gold={topPrize} /> : null}
                 <div
                   aria-hidden="true"
-                  className="absolute inset-[3%] rounded-full bg-fuchsia-500/10 blur-3xl"
+                  className={`absolute inset-[3%] rounded-full blur-3xl transition-colors duration-500 ${
+                    celebrating
+                      ? topPrize
+                        ? "bg-amber-400/30"
+                        : "bg-emerald-400/25"
+                      : "bg-fuchsia-500/10"
+                  }`}
                 />
                 <span
                   aria-hidden="true"
@@ -429,7 +456,9 @@ export function RouletteExperience({
                   style={{
                     borderLeft: "clamp(18px, 4vw, 22px) solid transparent",
                     borderRight: "clamp(18px, 4vw, 22px) solid transparent",
-                    borderTop: "clamp(32px, 6vw, 39px) solid #e879f9",
+                    borderTop: `clamp(32px, 6vw, 39px) solid ${
+                      celebrating ? (topPrize ? "#fbbf24" : "#34d399") : "#e879f9"
+                    }`,
                   }}
                 />
                 <div className="absolute inset-[5.5%] rounded-full border border-fuchsia-200/35 bg-[#0b0710] p-[2.2%] shadow-[0_0_0_5px_rgba(217,70,239,.06),0_0_54px_rgba(217,70,239,.24),inset_0_0_28px_rgba(217,70,239,.12)]">
@@ -437,57 +466,85 @@ export function RouletteExperience({
                     viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
                     role="img"
                     aria-label="Roleta com cinco itens do catálogo"
-                    className="size-full overflow-visible rounded-full will-change-transform"
-                    style={{
-                      transform: `rotate(${rotation}deg)`,
-                      transformOrigin: "50% 50%",
-                      transitionDuration: phase === "spinning" ? "2800ms" : "0ms",
-                      transitionProperty: "transform",
-                      transitionTimingFunction: "cubic-bezier(.12,.68,.08,1)",
-                    }}
+                    className="size-full overflow-visible rounded-full"
                   >
+                    <defs>
+                      {prizes.map((prize, index) => (
+                        <linearGradient
+                          key={prize.key}
+                          id={`site-slot-${index}`}
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop offset="0%" stopColor={prize.accent} stopOpacity="0.45" />
+                          <stop offset="100%" stopColor={prize.surface} stopOpacity="1" />
+                        </linearGradient>
+                      ))}
+                      <filter id="site-glow" x="-40%" y="-40%" width="180%" height="180%">
+                        <feGaussianBlur stdDeviation="3" result="blur" />
+                        <feMerge>
+                          <feMergeNode in="blur" />
+                          <feMergeNode in="SourceGraphic" />
+                        </feMerge>
+                      </filter>
+                    </defs>
                     <circle
                       cx={WHEEL_CENTER}
                       cy={WHEEL_CENTER}
-                      r={WHEEL_RADIUS + 5}
+                      r={WHEEL_RADIUS + 10}
                       fill="#08040c"
                       stroke="rgba(244,114,182,.72)"
                       strokeWidth="3"
                     />
-                    {prizes.map((prize, index) => {
-                      const path = wheelSegmentPath(index, prizes.length);
-                      const label = wheelLabelPoint(index, prizes.length);
-                      return (
-                        <g key={prize.key}>
-                          <path
-                            d={path}
-                            fill={prize.surface}
-                            stroke="rgba(232,121,249,.36)"
-                            strokeWidth="1.6"
-                          />
-                          <text
-                            x={label.x}
-                            y={label.y - 8}
-                            textAnchor="middle"
-                            fill="#fff8ff"
-                            fontSize="13"
-                            fontWeight="700"
-                          >
-                            {prize.wheelLabel}
-                          </text>
-                          <text
-                            x={label.x}
-                            y={label.y + 12}
-                            textAnchor="middle"
-                            fill={prize.accent}
-                            fontSize="13"
-                            fontWeight="800"
-                          >
-                            {formatCoins(prize.valueCents)}
-                          </text>
-                        </g>
-                      );
-                    })}
+                    <g ref={wheelRef} style={{ transformOrigin: "50% 50%" }}>
+                      {prizes.map((prize, index) => {
+                        const label = wheelLabelPoint(index, prizes.length);
+                        const highlight = isBigRoulettePrize(prize.valueCents);
+                        return (
+                          <g key={prize.key}>
+                            <path
+                              d={wheelSegmentPath(index, prizes.length)}
+                              fill={`url(#site-slot-${index})`}
+                              stroke={highlight ? "#fde68a" : "rgba(232,121,249,.36)"}
+                              strokeWidth={highlight ? 3 : 1.6}
+                              filter={highlight ? "url(#site-glow)" : undefined}
+                            />
+                            <text
+                              x={label.x}
+                              y={label.y - 7}
+                              textAnchor="middle"
+                              fill="#fff8ff"
+                              fontSize="13"
+                              fontWeight="800"
+                              style={{
+                                paintOrder: "stroke",
+                                stroke: "rgba(0,0,0,.55)",
+                                strokeWidth: 3,
+                              }}
+                            >
+                              {prize.wheelLabel}
+                            </text>
+                            <text
+                              x={label.x}
+                              y={label.y + 13}
+                              textAnchor="middle"
+                              fill={highlight ? "#fde68a" : prize.accent}
+                              fontSize={highlight ? 15 : 13}
+                              fontWeight="900"
+                              style={{
+                                paintOrder: "stroke",
+                                stroke: "rgba(0,0,0,.6)",
+                                strokeWidth: 3,
+                              }}
+                            >
+                              {formatCoins(prize.valueCents)}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </g>
                   </svg>
                   <span className="absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full border-2 border-fuchsia-200/55 bg-[#08040c] p-[8px] shadow-[0_0_25px_rgba(217,70,239,.42)]">
                     <BrandMark className="rounded-full" />
@@ -499,19 +556,43 @@ export function RouletteExperience({
                   className="pointer-events-none absolute inset-x-0 bottom-[6%] z-30 flex justify-center px-4"
                 >
                   {lastPrize ? (
-                    <div className="animate-[fadeIn_.35s_ease-out] rounded-2xl border border-fuchsia-300/45 bg-[#140b1a]/95 px-6 py-4 text-center shadow-[0_18px_50px_rgba(0,0,0,.6)] backdrop-blur">
-                      <p className="flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-fuchsia-300">
+                    <div
+                      className={`animate-[popIn_.45s_cubic-bezier(.2,1.4,.4,1)] max-w-full rounded-3xl border-2 px-6 py-4 text-center shadow-[0_18px_55px_rgba(0,0,0,.65)] backdrop-blur ${
+                        topPrize
+                          ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
+                          : bigPrize
+                            ? "border-emerald-300/70 bg-gradient-to-b from-[#062018]/95 to-[#03120d]/95"
+                            : "border-fuchsia-300/55 bg-gradient-to-b from-[#1d0f26]/95 to-[#0f0714]/95"
+                      }`}
+                    >
+                      <p
+                        className={`flex items-center justify-center gap-1.5 text-xs font-black uppercase tracking-[0.2em] ${
+                          topPrize
+                            ? "text-amber-300"
+                            : bigPrize
+                              ? "text-emerald-300"
+                              : "text-fuchsia-300"
+                        }`}
+                      >
                         <Sparkles aria-hidden="true" className="size-3.5" />
-                        Você ganhou
+                        {topPrize ? "Prêmio máximo" : bigPrize ? "Prêmio raro" : "Você ganhou"}
                       </p>
                       <p
                         data-testid="roulette-result"
-                        className="mt-1 text-2xl font-black tracking-[-0.03em] text-white sm:text-3xl"
+                        className="mt-1 truncate text-2xl font-black tracking-[-0.03em] text-white sm:text-3xl"
                       >
                         {lastPrize.displayName}
                       </p>
-                      <p className="mt-0.5 text-sm font-bold text-amber-200">
-                        vale {formatCoins(lastPrize.valueCents)} moedas
+                      <p
+                        className={`mt-1.5 inline-block rounded-full px-3 py-0.5 text-sm font-black ${
+                          topPrize
+                            ? "bg-amber-400/25 text-amber-200"
+                            : bigPrize
+                              ? "bg-emerald-400/20 text-emerald-200"
+                              : "bg-fuchsia-400/20 text-fuchsia-200"
+                        }`}
+                      >
+                        {formatCoins(lastPrize.valueCents)} moedas
                       </p>
                     </div>
                   ) : null}
@@ -776,31 +857,4 @@ function spinButtonLabel(phase: Phase, isAdmin: boolean, canSpin: boolean) {
   if (isAdmin) return "Girar grátis (admin)";
   // Sem saldo o botão não vira beco sem saída: ele abre a compra de moedas.
   return canSpin ? "Girar (1 moeda)" : "Adicionar moedas para girar";
-}
-
-function wheelSegmentPath(index: number, total: number) {
-  const segmentAngle = 360 / total;
-  const start = index * segmentAngle - 90;
-  const end = start + segmentAngle;
-  const startPoint = polarPoint(start);
-  const endPoint = polarPoint(end);
-  return [
-    `M ${WHEEL_CENTER} ${WHEEL_CENTER}`,
-    `L ${startPoint.x} ${startPoint.y}`,
-    `A ${WHEEL_RADIUS} ${WHEEL_RADIUS} 0 0 1 ${endPoint.x} ${endPoint.y}`,
-    "Z",
-  ].join(" ");
-}
-
-function wheelLabelPoint(index: number, total: number) {
-  const segmentAngle = 360 / total;
-  return polarPoint(index * segmentAngle - 90 + segmentAngle / 2, 105);
-}
-
-function polarPoint(angle: number, radius = WHEEL_RADIUS) {
-  const radians = (angle * Math.PI) / 180;
-  return {
-    x: WHEEL_CENTER + Math.cos(radians) * radius,
-    y: WHEEL_CENTER + Math.sin(radians) * radius,
-  };
 }
