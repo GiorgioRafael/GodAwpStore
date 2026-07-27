@@ -58,34 +58,55 @@ begin
     limit 1;
 
     if v_product.id is null then
-      raise exception using
-        errcode = 'P0014',
-        message = 'The catalog has too few products above the roulette floor.';
+      raise notice 'Roulette left unchanged: fewer than five products above the floor.';
+      return;
     end if;
 
     v_chosen := v_chosen || v_product.id;
     v_values := v_values || v_product.value_cents;
   end loop;
 
-  -- 3. Solve the jackpot weight so the new expected value equals the old one:
+  -- 3. A catalog whose cheapest eligible prize already beats the target return
+  -- cannot host this ladder at the same house edge, at any weighting. Leave the
+  -- wheel untouched instead of shipping a different edge.
+  if v_values[1] >= v_target_ev or v_values[5] <= v_target_ev then
+    raise notice
+      'Roulette left unchanged: the catalog cannot pay % cents per spin with a % cent floor.',
+      round(v_target_ev, 4), v_values[1];
+    return;
+  end if;
+
+  -- 4. Solve the jackpot weight so the new expected value equals the old one:
   --    (S + w*vJ) / (W + w) = EV  =>  w = (EV*W - S) / (vJ - EV)
   for v_index in 1..4 loop
     v_weighted := v_weighted + v_shape[v_index]::numeric * v_values[v_index];
     v_weight_total := v_weight_total + v_shape[v_index];
   end loop;
 
-  if v_values[5] <= v_target_ev then
-    raise exception using
-      errcode = 'P0015',
-      message = 'The jackpot must be worth more than the expected return.';
+  v_jackpot_weight := round(
+    (v_target_ev * v_weight_total - v_weighted) / (v_values[5] - v_target_ev)
+  )::integer;
+
+  if v_jackpot_weight < 1 then
+    raise notice
+      'Roulette left unchanged: the ladder overshoots % cents per spin before the jackpot.',
+      round(v_target_ev, 4);
+    return;
   end if;
 
-  v_jackpot_weight := greatest(
-    1,
-    round((v_target_ev * v_weight_total - v_weighted) / (v_values[5] - v_target_ev))::integer
-  );
+  -- 5. Check the result before writing anything, so a wheel that would move the
+  -- house edge is never committed.
+  v_new_ev := (v_weighted + v_jackpot_weight::numeric * v_values[5])
+    / (v_weight_total + v_jackpot_weight);
 
-  -- 4. Replace the wheel in place.
+  if abs(v_new_ev - v_target_ev) > 0.01 then
+    raise notice
+      'Roulette left unchanged: the rebalanced ladder returns % instead of %.',
+      round(v_new_ev, 4), round(v_target_ev, 4);
+    return;
+  end if;
+
+  -- 6. Replace the wheel in place.
   delete from public.roulette_prize_products;
   for v_index in 1..5 loop
     insert into public.roulette_prize_products (prize_key, product_id, draw_weight)
@@ -95,24 +116,6 @@ begin
       case when v_index = 5 then v_jackpot_weight else v_shape[v_index] end
     );
   end loop;
-
-  -- 5. Refuse to ship a wheel that moved the house edge by more than a hundredth
-  -- of a cent per spin.
-  select sum(slot.draw_weight::numeric * product.minimum_price_cents)
-       / nullif(sum(slot.draw_weight::numeric), 0)
-  into v_new_ev
-  from public.roulette_prize_products as slot
-  join public.products as product on product.id = slot.product_id;
-
-  if abs(v_new_ev - v_target_ev) > 0.01 then
-    raise exception using
-      errcode = 'P0016',
-      message = format(
-        'The rebalanced wheel returns %s cents per spin instead of %s.',
-        round(v_new_ev, 4),
-        round(v_target_ev, 4)
-      );
-  end if;
 
   raise notice 'Roulette rebalanced: % cents per spin (was %).',
     round(v_new_ev, 4), round(v_target_ev, 4);
