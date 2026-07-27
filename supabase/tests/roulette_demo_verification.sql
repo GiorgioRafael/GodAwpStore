@@ -241,7 +241,7 @@ select set_config(
   'roulette.purchase_id',
   (
     select purchase_id::text
-    from public.start_roulette_coin_purchase('900000000000000001', 2)
+    from public.start_roulette_coin_purchase('900000000000000001', 5)
   ),
   true
 );
@@ -314,7 +314,7 @@ begin
     'roulette-coin-payment',
     'roulette-coin-proof',
     'roulette-coin-verification',
-    200,
+    500,
     'BRL',
     now(),
     repeat('a', 64)
@@ -322,8 +322,8 @@ begin
   if v_credit.confirmed_status <> 'credited' or not v_credit.first_confirmation then
     raise exception 'The LivePix confirmation did not credit the coins';
   end if;
-  if v_credit.coin_balance_cents <> 200 then
-    raise exception 'Expected a 200 cent balance, found %', v_credit.coin_balance_cents;
+  if v_credit.coin_balance_cents <> 500 then
+    raise exception 'Expected a 500 cent balance, found %', v_credit.coin_balance_cents;
   end if;
 
   -- A webhook redelivery must not credit twice.
@@ -332,7 +332,7 @@ begin
     'roulette-coin-payment',
     'roulette-coin-proof',
     'roulette-coin-verification',
-    200,
+    500,
     'BRL',
     now(),
     repeat('a', 64)
@@ -340,7 +340,7 @@ begin
   if v_credit.first_confirmation then
     raise exception 'A replayed LivePix webhook credited the same coins twice';
   end if;
-  if v_credit.coin_balance_cents <> 200 then
+  if v_credit.coin_balance_cents <> 500 then
     raise exception 'A replayed webhook changed the balance to %', v_credit.coin_balance_cents;
   end if;
 end
@@ -366,7 +366,7 @@ begin
   if v_spin.won_inventory_quantity <> 1 then
     raise exception 'The first spin should leave one item, found %', v_spin.won_inventory_quantity;
   end if;
-  if v_spin.coin_balance_cents <> 100 then
+  if v_spin.coin_balance_cents <> 400 then
     raise exception 'A spin must cost exactly one coin, balance is %', v_spin.coin_balance_cents;
   end if;
 
@@ -385,8 +385,8 @@ begin
   if v_sale.remaining_quantity <> 0 then
     raise exception 'The sold item should leave the inventory, found %', v_sale.remaining_quantity;
   end if;
-  if v_sale.coin_balance_cents <> 300 then
-    raise exception 'Expected a 300 cent balance after the sale, found %', v_sale.coin_balance_cents;
+  if v_sale.coin_balance_cents <> 600 then
+    raise exception 'Expected a 600 cent balance after the sale, found %', v_sale.coin_balance_cents;
   end if;
 
   begin
@@ -430,11 +430,11 @@ begin
     select balance_cents
     from public.roulette_coin_balances
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 300 then
+  ) <> 600 then
     raise exception 'The player balance does not match the ledger path';
   end if;
 
-  -- purchase +200, spin -100, sale +200.
+  -- purchase +500, spin -100, sale +200.
   if (
     select count(*)
     from public.roulette_coin_entries
@@ -447,7 +447,7 @@ begin
     select sum(amount_cents)
     from public.roulette_coin_entries
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 300 then
+  ) <> 600 then
     raise exception 'The coin ledger does not add up to the balance';
   end if;
 

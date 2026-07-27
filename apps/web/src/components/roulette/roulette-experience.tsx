@@ -35,6 +35,7 @@ import {
   mergeDemoRouletteInventory,
   rouletteWheelPrize,
   MAXIMUM_COIN_PURCHASE,
+  MINIMUM_COIN_PURCHASE,
   SPIN_COST_CENTS,
   type DemoRouletteInventoryItem,
   type DemoRoulettePrizeKey,
@@ -78,7 +79,7 @@ export function RouletteExperience({
   const [phase, setPhase] = useState<Phase>(initialPurchaseId ? "awaiting_payment" : "idle");
   const [purchaseId, setPurchaseId] = useState<string | null>(initialPurchaseId);
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-  const [coinQuantity, setCoinQuantity] = useState(1);
+  const [coinQuantity, setCoinQuantity] = useState(MINIMUM_COIN_PURCHASE);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const rotationRef = useRef(0);
@@ -333,7 +334,9 @@ export function RouletteExperience({
                       <Coins aria-hidden="true" className="size-4" />
                       Saldo: {formatCoins(balanceCents)} moedas
                     </span>
-                    <span className="text-xs text-[#9e8a76]">1 moeda = R$ 1,00</span>
+                    <span className="text-xs text-[#9e8a76]">
+                      1 moeda = R$ 1,00 · mínimo {MINIMUM_COIN_PURCHASE}
+                    </span>
                   </div>
 
                   <div className="mt-3 flex items-center gap-2">
@@ -341,8 +344,12 @@ export function RouletteExperience({
                       <button
                         type="button"
                         aria-label="Menos uma moeda"
-                        onClick={() => setCoinQuantity((value) => Math.max(1, value - 1))}
-                        disabled={isBusy || coinQuantity <= 1}
+                        onClick={() =>
+                          setCoinQuantity((value) =>
+                            Math.max(MINIMUM_COIN_PURCHASE, value - 1),
+                          )
+                        }
+                        disabled={isBusy || coinQuantity <= MINIMUM_COIN_PURCHASE}
                         className="grid size-11 place-items-center rounded-l-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
                       >
                         <Minus aria-hidden="true" className="size-4" />

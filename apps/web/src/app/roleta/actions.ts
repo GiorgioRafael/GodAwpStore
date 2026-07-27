@@ -10,6 +10,7 @@ import type { RouletteCoinPurchaseStatus } from "@/lib/roulette/coin-purchase";
 import {
   isDemoRoulettePrizeKey,
   MAXIMUM_COIN_PURCHASE,
+  MINIMUM_COIN_PURCHASE,
   type DemoRoulettePrizeKey,
 } from "@/lib/roulette/demo";
 import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
@@ -67,12 +68,12 @@ export async function startRouletteCoinPurchase(
 ): Promise<RouletteCoinPurchaseResult> {
   if (
     !Number.isSafeInteger(coinQuantity) ||
-    coinQuantity < 1 ||
+    coinQuantity < MINIMUM_COIN_PURCHASE ||
     coinQuantity > MAXIMUM_COIN_PURCHASE
   ) {
     return {
       ok: false,
-      message: `Escolha de 1 a ${MAXIMUM_COIN_PURCHASE} moedas.`,
+      message: `Escolha de ${MINIMUM_COIN_PURCHASE} a ${MAXIMUM_COIN_PURCHASE} moedas.`,
     };
   }
 
