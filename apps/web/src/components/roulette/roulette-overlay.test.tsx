@@ -137,6 +137,35 @@ describe("RouletteOverlay", () => {
     });
   });
 
+  it("reserva a área do ganhador para a roda não subir e descer", async () => {
+    const { container } = mount(4);
+    await waitForConnection();
+
+    // A faixa do resultado existe mesmo sem prêmio: sem ela, o card entrando
+    // recentraliza a coluna e a roda pula de lugar.
+    const slot = container.querySelector('[aria-live="polite"]');
+    expect(slot).not.toBeNull();
+    expect(slot!.className).toContain("h-[26vh]");
+    expect(screen.queryByTestId("overlay-result")).not.toBeInTheDocument();
+  });
+
+  it("apaga o card do ganhador antes de removê-lo", async () => {
+    mount(4);
+    await waitForConnection();
+
+    emit(spinEvent("saida"));
+
+    const card = await screen.findByTestId("overlay-result");
+    await waitFor(() => {
+      expect(card.className).toContain("opacity-100");
+    });
+
+    // Ao encerrar, ele fica montado com opacidade zero antes de sair.
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-result").className).toContain("opacity-0");
+    });
+  });
+
   it("gira a roda de verdade em vez de saltar para o prêmio", async () => {
     mount(4);
     await waitForConnection();

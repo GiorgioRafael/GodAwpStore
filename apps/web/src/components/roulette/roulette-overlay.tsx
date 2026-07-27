@@ -28,6 +28,8 @@ const DEFAULT_SPIN_MS = 4_600;
 const DEFAULT_RESULT_MS = 3_400;
 const POLL_MS = 1_500;
 const IDLE_TURN_MS = 44_000;
+/** Entrada e saída do card do ganhador. */
+const FADE_MS = 420;
 
 export type RouletteOverlayEvent = {
   id: string;
@@ -62,6 +64,7 @@ export function RouletteOverlay({
 }) {
   const [current, setCurrent] = useState<RouletteOverlayEvent | null>(null);
   const [landed, setLanded] = useState(false);
+  const [cardVisible, setCardVisible] = useState(false);
   const [skipped, setSkipped] = useState(0);
   const [connected, setConnected] = useState(false);
   const queue = useRef<RouletteOverlayEvent[]>([]);
@@ -108,7 +111,13 @@ export function RouletteOverlay({
 
       setCurrent(next);
       setLanded(true);
+      setCardVisible(true);
       await wait(resultMs);
+      if (!active) return;
+
+      // Sai desenhado: o card apaga antes de deixar de existir.
+      setCardVisible(false);
+      await wait(FADE_MS);
       if (!active) return;
 
       setCurrent(null);
@@ -168,7 +177,7 @@ export function RouletteOverlay({
   const celebrating = landed && big;
 
   return (
-    <div className="relative flex h-screen w-full flex-col items-center justify-center gap-[2.5vh] overflow-hidden bg-transparent p-[3vh]">
+    <div className="relative flex h-screen w-full flex-col items-center justify-start gap-[2vh] overflow-hidden bg-transparent px-[3vh] pt-[5vh]">
       {celebrating ? <RouletteConfetti gold={jackpot} /> : null}
 
       <div
@@ -298,14 +307,20 @@ export function RouletteOverlay({
         </span>
       </div>
 
+      {/* A altura é reservada sempre, senão a roda sobe quando o card aparece. */}
       <div
         aria-live="polite"
-        className="flex w-full max-w-[92vw] shrink-0 justify-center"
+        className="flex h-[26vh] w-full max-w-[92vw] shrink-0 items-start justify-center"
       >
         {prize && current ? (
           <div
             data-testid="overlay-result"
-            className={`animate-[popIn_.45s_cubic-bezier(.2,1.4,.4,1)] max-w-full rounded-3xl border-2 px-[3vh] py-[2vh] text-center shadow-[0_24px_70px_rgba(0,0,0,.7)] backdrop-blur ${
+            style={{ transitionDuration: `${FADE_MS}ms` }}
+            className={`max-w-full rounded-3xl border-2 px-[3vh] py-[2vh] text-center shadow-[0_24px_70px_rgba(0,0,0,.7)] backdrop-blur transition-all ease-out ${
+              cardVisible
+                ? "translate-y-0 scale-100 opacity-100"
+                : "translate-y-3 scale-95 opacity-0"
+            } ${
               jackpot
                 ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
                 : big
@@ -346,10 +361,11 @@ export function RouletteOverlay({
         ) : null}
       </div>
 
+      {/* Fora do fluxo, senão aparecer ou sumir também empurra a roda. */}
       {skipped > 0 ? (
         <p
           data-testid="overlay-skipped"
-          className="shrink-0 rounded-full border border-white/15 bg-black/50 px-4 py-1 text-[1.6vh] font-semibold text-white/80"
+          className="absolute bottom-[3vh] left-1/2 -translate-x-1/2 rounded-full border border-white/15 bg-black/50 px-4 py-1 text-[1.6vh] font-semibold text-white/80"
         >
           +{skipped} {skipped === 1 ? "giro" : "giros"} na fila
         </p>
