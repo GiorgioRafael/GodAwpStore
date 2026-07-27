@@ -895,24 +895,20 @@ begin
 end
 $$;
 
--- Pedir o resgate reserva a unidade no catálogo.
+-- Pedir o resgate não mexe no catálogo: a unidade sai na entrega.
 do $$
-declare
-  v_stock integer;
 begin
-  -- O produto começou com 10 unidades e o jogador resgatou 2.
-  select product.stock_quantity
-  into v_stock
-  from public.products as product
-  where product.id = '9c000000-0000-4000-8000-000000000003';
-
-  if v_stock <> 8 then
-    raise exception 'The redemption did not reserve its units: % left of 10', v_stock;
+  if (
+    select product.stock_quantity
+    from public.products as product
+    where product.id = '9c000000-0000-4000-8000-000000000003'
+  ) <> 10 then
+    raise exception 'The pending redemption already took units out of the catalog';
   end if;
 end
 $$;
 
--- Cancelar devolve a unidade ao catálogo e o prêmio ao jogador.
+-- Cancelar devolve o prêmio ao jogador e não toca no estoque.
 select set_config(
   'request.jwt.claims',
   '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
@@ -945,7 +941,7 @@ begin
     from public.products as product
     where product.id = '9c000000-0000-4000-8000-000000000003'
   ) <> 10 then
-    raise exception 'Cancelling did not return the units to the catalog';
+    raise exception 'Cancelling moved the catalog stock';
   end if;
 
   -- E o prêmio voltou para o inventário, com o produto e o preço do ticket.
@@ -1002,6 +998,120 @@ begin
   update public.products
   set stock_quantity = 10
   where id = '9c000000-0000-4000-8000-000000000003';
+end
+$$;
+
+-- Um novo pedido, agora para exercitar a entrega.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+begin
+  perform * from public.redeem_roulette_prizes(
+    '[{"prize_key":"premio_1","quantity":2}]'::jsonb
+  );
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- O estoque cai entre o pedido e a entrega: a entrega tem que ser recusada.
+update public.products
+set stock_quantity = 1
+where id = '9c000000-0000-4000-8000-000000000003';
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_redemption_id uuid;
+begin
+  select redemption.id
+  into v_redemption_id
+  from public.roulette_redemptions as redemption
+  where redemption.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and redemption.status = 'pending'
+  limit 1;
+
+  begin
+    perform * from public.admin_settle_roulette_redemption(v_redemption_id, 'delivered');
+    raise exception 'A delivery went through with only one unit left';
+  exception
+    when sqlstate 'P0016' then null;
+  end;
+
+  if (
+    select redemption.status
+    from public.roulette_redemptions as redemption
+    where redemption.id = v_redemption_id
+  ) <> 'pending' then
+    raise exception 'The refused delivery still settled the redemption';
+  end if;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+update public.products
+set stock_quantity = 10
+where id = '9c000000-0000-4000-8000-000000000003';
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_redemption_id uuid;
+begin
+  select redemption.id
+  into v_redemption_id
+  from public.roulette_redemptions as redemption
+  where redemption.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and redemption.status = 'pending'
+  limit 1;
+
+  perform * from public.admin_settle_roulette_redemption(v_redemption_id, 'delivered');
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+begin
+  -- Entregar é o que tira a unidade do catálogo.
+  if (
+    select product.stock_quantity
+    from public.products as product
+    where product.id = '9c000000-0000-4000-8000-000000000003'
+  ) <> 8 then
+    raise exception 'The delivery did not take the units out of the catalog';
+  end if;
+
+  -- E a movimentação ficou registrada com o administrador que entregou.
+  if not exists (
+    select 1
+    from public.audit_events as event
+    where event.entity_type = 'product'
+      and event.actor_auth_user_id = '9a000000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'The stock movement was not attributed to the administrator';
+  end if;
 end
 $$;
 

@@ -1,12 +1,18 @@
 -- Stop the roulette promising what the store cannot hand over.
 --
--- Redemption deliberately ignored catalog stock, so the wheel could award an
--- item with zero units and a player could open a ticket nobody was able to
--- honour. Giveaways already solved this: they check stock, decrement it when
--- the prize is committed and give it back if the prize is undone. Redemption
--- now does the same, and the whole selection is checked before a single prize
--- moves so the player is told which item is short instead of watching the
--- request fail halfway.
+-- Redemption ignored catalog stock, so the wheel could award an item with zero
+-- units and a player could open a ticket nobody was able to honour. The request
+-- now refuses to open unless the units exist, and the whole selection is checked
+-- before a single prize moves so the player is told which item is short instead
+-- of watching the request fail halfway.
+--
+-- The catalog itself is decremented when the administrator marks the ticket
+-- delivered, not when the player asks. private.audit_admin_mutation() requires
+-- an administrative actor on every product mutation, and that invariant is
+-- worth more than a reservation: moving the write to the delivery keeps the
+-- audit trail honest and attributes the unit to whoever handed it over. The
+-- gap it leaves — stock draining between the request and the handover — is
+-- caught at delivery, which is the moment the operator can still act on it.
 
 begin;
 
@@ -47,9 +53,9 @@ begin
 
   perform pg_advisory_xact_lock(hashtext('roulette_redeem:' || v_auth_user_id::text));
 
-  -- Pass one validates the whole request and reserves nothing. Products are
-  -- locked in a fixed order so two redemptions racing for the last unit queue
-  -- up instead of deadlocking.
+  -- Pass one validates the whole request before anything moves. Products are
+  -- read in a fixed order so concurrent redemptions queue instead of
+  -- deadlocking.
   for v_selection in
     select * from private.read_roulette_item_selection(p_items)
   loop
@@ -189,10 +195,6 @@ begin
         and item.prize_key = v_item.prize_key;
     end if;
 
-    update public.products as product
-    set stock_quantity = product.stock_quantity - v_selection.selected_quantity
-    where product.id = v_item.product_id;
-
     insert into public.roulette_redemption_items (
       redemption_id,
       prize_key,
@@ -231,7 +233,9 @@ begin
 end;
 $$;
 
--- Cancelling gives the unit back to the catalog as well as to the player.
+-- Delivering is what takes the unit out of the catalog: the administrator is
+-- the actor the audit trigger demands, so the movement is attributed to
+-- whoever actually handed the item over.
 create or replace function public.admin_settle_roulette_redemption(
   p_redemption_id uuid,
   p_status text
@@ -306,11 +310,29 @@ begin
       on conflict (auth_user_id, prize_key)
       do update set
         quantity = public.roulette_demo_inventory.quantity + excluded.quantity;
+    end loop;
+  end if;
 
-      -- The unit was held for this ticket and nobody received it.
+  if p_status = 'delivered' then
+    for v_line in
+      select line.product_id, line.product_name, sum(line.quantity) as quantity
+      from public.roulette_redemption_items as line
+      where line.redemption_id = v_redemption.id
+      group by line.product_id, line.product_name
+      order by line.product_id
+    loop
       update public.products as product
-      set stock_quantity = product.stock_quantity + v_line.quantity
-      where product.id = v_line.product_id;
+      set stock_quantity = product.stock_quantity - v_line.quantity
+      where product.id = v_line.product_id
+        and product.stock_quantity >= v_line.quantity;
+
+      if not found then
+        raise exception using
+          errcode = 'P0016',
+          message = format(
+            '%s no longer has %s unit(s) in stock.', v_line.product_name, v_line.quantity
+          );
+      end if;
     end loop;
   end if;
 
@@ -335,6 +357,8 @@ revoke all on function public.admin_settle_roulette_redemption(uuid, text)
 grant execute on function public.admin_settle_roulette_redemption(uuid, text) to authenticated;
 
 comment on function public.redeem_roulette_prizes(jsonb) is
-  'Bundles several prizes into one redemption request, reserving the catalog unit that will be handed over.';
+  'Bundles several prizes into one redemption request, refusing anything the catalog cannot cover.';
+comment on function public.admin_settle_roulette_redemption(uuid, text) is
+  'Settles a redemption. Delivering takes the units out of the catalog under the administrator that handed them over; cancelling gives the prize back to the player.';
 
 commit;

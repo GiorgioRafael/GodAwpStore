@@ -24,8 +24,10 @@ export default async function RouletteRedemptionsPage() {
         description={`Prêmios que os jogadores pediram para receber. A entrega é feita à mão no ticket privado do Discord, como em um pedido pago da ${STORE_NAME}.`}
       />
       <Notice>
-        Pedir o resgate já reserva a unidade no catálogo, então o que está nesta lista existe para
-        entregar. Cancelar devolve a unidade ao estoque e o prêmio ao inventário do jogador.
+        O resgate só abre se o item tiver estoque, então nada nesta lista nasceu impossível de
+        entregar. A unidade sai do catálogo quando você marca como entregue — se ela tiver acabado
+        nesse meio-tempo, a entrega é recusada e você pode cancelar, o que devolve o prêmio ao
+        inventário do jogador.
         {pending > 0 ? ` Há ${pending} resgate(s) aguardando entrega.` : ""}
       </Notice>
       <RouletteRedemptionManager redemptions={redemptions} />
