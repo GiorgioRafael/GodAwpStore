@@ -280,6 +280,13 @@ export async function redeemRoulettePrizes(
   if (error?.code === "P0012") {
     return { ok: false, message: "O servidor de entrega está indisponível. Fale com a equipe." };
   }
+  if (error?.code === "P0016") {
+    return {
+      ok: false,
+      message:
+        "Um dos itens está sem estoque agora. Você pode vender de volta ou tentar o resgate mais tarde.",
+    };
+  }
   if (error || !redemption) {
     if (error) console.error(`[roleta:resgate] ${error.code ?? "sem código"} ${error.message}`);
     return { ok: false, message: "Não foi possível abrir o resgate. Tente novamente." };

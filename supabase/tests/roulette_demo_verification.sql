@@ -895,6 +895,116 @@ begin
 end
 $$;
 
+-- Pedir o resgate reserva a unidade no catálogo.
+do $$
+declare
+  v_stock integer;
+begin
+  -- O produto começou com 10 unidades e o jogador resgatou 2.
+  select product.stock_quantity
+  into v_stock
+  from public.products as product
+  where product.id = '9c000000-0000-4000-8000-000000000003';
+
+  if v_stock <> 8 then
+    raise exception 'The redemption did not reserve its units: % left of 10', v_stock;
+  end if;
+end
+$$;
+
+-- Cancelar devolve a unidade ao catálogo e o prêmio ao jogador.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_redemption_id uuid;
+begin
+  select redemption.id
+  into v_redemption_id
+  from public.roulette_redemptions as redemption
+  where redemption.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and redemption.status = 'pending'
+  limit 1;
+
+  perform * from public.admin_settle_roulette_redemption(v_redemption_id, 'cancelled');
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+begin
+  if (
+    select product.stock_quantity
+    from public.products as product
+    where product.id = '9c000000-0000-4000-8000-000000000003'
+  ) <> 10 then
+    raise exception 'Cancelling did not return the units to the catalog';
+  end if;
+
+  -- E o prêmio voltou para o inventário, com o produto e o preço do ticket.
+  if (
+    select item.quantity
+    from public.roulette_demo_inventory as item
+    where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+      and item.product_id = '9c000000-0000-4000-8000-000000000003'
+      and item.unit_value_cents = 400
+  ) <> 2 then
+    raise exception 'The cancelled prize did not go back to the inventory';
+  end if;
+
+  update public.products
+  set stock_quantity = 0
+  where id = '9c000000-0000-4000-8000-000000000003';
+end
+$$;
+
+-- Sem estoque, o resgate é recusado antes de mover qualquer prêmio.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+begin
+  begin
+    perform * from public.redeem_roulette_prizes(
+      '[{"prize_key":"premio_1","quantity":1}]'::jsonb
+    );
+    raise exception 'The roulette promised an item with no stock';
+  exception
+    when sqlstate 'P0016' then null;
+  end;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+begin
+  if (
+    select item.quantity
+    from public.roulette_demo_inventory as item
+    where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  ) <> 2 then
+    raise exception 'The refused redemption still took the prize from the inventory';
+  end if;
+
+  update public.products
+  set stock_quantity = 10
+  where id = '9c000000-0000-4000-8000-000000000003';
+end
+$$;
+
 -- Repointing a slot somebody holds units of has to be refused at commit.
 do $$
 begin
