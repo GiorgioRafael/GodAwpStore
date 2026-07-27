@@ -802,8 +802,16 @@ insert into public.admin_profiles (
 insert into public.roulette_demo_spins (auth_user_id, discord_user_id, prize_key, prize_value_cents)
 values ('9a000000-0000-4000-8000-000000000003', '900000000000000003', 'premio_1', 400);
 
-insert into public.roulette_demo_inventory (auth_user_id, discord_user_id, prize_key, quantity)
-values ('9a000000-0000-4000-8000-000000000003', '900000000000000003', 'premio_1', 1);
+insert into public.roulette_demo_inventory (
+  auth_user_id, discord_user_id, prize_key, product_id, unit_value_cents, quantity
+) values (
+  '9a000000-0000-4000-8000-000000000003',
+  '900000000000000003',
+  'premio_1',
+  '9c000000-0000-4000-8000-000000000003',
+  400,
+  1
+);
 
 reset role;
 select set_config(
