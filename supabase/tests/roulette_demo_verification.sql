@@ -689,20 +689,19 @@ begin
     raise exception 'The provider fee does not follow the configured rate';
   end if;
 
-  -- Three paid spins and one free administrator spin.
-  if v_metrics.spin_count <> 4
-    or v_metrics.paid_spin_count <> 3
-    or v_metrics.admin_spin_count <> 1 then
-    raise exception 'The metrics saw % spin(s), % paid and % free',
-      v_metrics.spin_count, v_metrics.paid_spin_count, v_metrics.admin_spin_count;
+  -- The player spun three times; the free administrator spin is internal
+  -- testing and may not reach a single number on the panel.
+  if v_metrics.spin_count <> 3 or v_metrics.spinner_count <> 1 then
+    raise exception 'The metrics saw % spin(s) from % player(s)',
+      v_metrics.spin_count, v_metrics.spinner_count;
   end if;
   if v_metrics.coins_spent_cents <> 300 then
     raise exception 'The paid spins consumed % cents', v_metrics.coins_spent_cents;
   end if;
   -- The prize is pinned at 4,00, so the value is frozen even after a rebalance.
-  if v_metrics.awarded_value_cents <> 1600 or v_metrics.admin_awarded_value_cents <> 400 then
-    raise exception 'The metrics awarded % cents, % of them free',
-      v_metrics.awarded_value_cents, v_metrics.admin_awarded_value_cents;
+  -- 1600 would mean the administrator prize leaked into the total.
+  if v_metrics.awarded_value_cents <> 1200 then
+    raise exception 'The metrics awarded % cents', v_metrics.awarded_value_cents;
   end if;
 
   -- Every prize a spin created has to land in exactly one bucket.
@@ -712,10 +711,12 @@ begin
       v_metrics.sold_unit_count, v_metrics.redeemed_unit_count,
       v_metrics.held_unit_count, v_metrics.spin_count;
   end if;
+  -- The administrator still holds the prize from the free spin, so a held count
+  -- of 1 would mean the inventory filter is missing.
   if v_metrics.sold_unit_count <> 1
     or v_metrics.redeemed_unit_count <> 2
-    or v_metrics.held_unit_count <> 1 then
-    raise exception 'Expected 1 sold, 2 redeemed and 1 held, found %, % and %',
+    or v_metrics.held_unit_count <> 0 then
+    raise exception 'Expected 1 sold, 2 redeemed and 0 held, found %, % and %',
       v_metrics.sold_unit_count, v_metrics.redeemed_unit_count, v_metrics.held_unit_count;
   end if;
   if v_metrics.sold_credited_cents <> 200 then
@@ -745,8 +746,69 @@ begin
     raise exception 'The pending cost of % cents ignores the markup',
       v_metrics.pending_cost_cents;
   end if;
-  if v_metrics.held_cost_cents <> (400 * 10000) / (10000 + v_metrics.markup_bps) then
-    raise exception 'The held cost of % cents ignores the markup', v_metrics.held_cost_cents;
+  if v_metrics.held_value_cents <> 0 or v_metrics.held_cost_cents <> 0 then
+    raise exception 'The administrator inventory reached the panel: % cents at % cost',
+      v_metrics.held_value_cents, v_metrics.held_cost_cents;
+  end if;
+end
+$$;
+
+-- An administrator whose authorization lapsed was still testing, not playing.
+reset role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+set local role service_role;
+
+insert into auth.users (
+  id, aud, role, email, encrypted_password, email_confirmed_at,
+  raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '9a000000-0000-4000-8000-000000000003',
+  'authenticated',
+  'authenticated',
+  'roulette-former-admin@example.invalid',
+  '',
+  now(),
+  '{"provider":"discord","providers":["discord"]}'::jsonb,
+  '{"sub":"900000000000000003"}'::jsonb,
+  now(),
+  now()
+);
+
+insert into public.admin_profiles (
+  auth_user_id, discord_user_id, display_name, is_active, authorization_expires_at
+) values (
+  '9a000000-0000-4000-8000-000000000003',
+  '900000000000000003',
+  'Roulette Verification Former Admin',
+  false,
+  now() - interval '1 day'
+);
+
+insert into public.roulette_demo_spins (auth_user_id, discord_user_id, prize_key, prize_value_cents)
+values ('9a000000-0000-4000-8000-000000000003', '900000000000000003', 'premio_1', 400);
+
+insert into public.roulette_demo_inventory (auth_user_id, discord_user_id, prize_key, quantity)
+values ('9a000000-0000-4000-8000-000000000003', '900000000000000003', 'premio_1', 1);
+
+reset role;
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_metrics record;
+begin
+  select * into v_metrics from public.admin_roulette_metrics();
+
+  if v_metrics.spin_count <> 3
+    or v_metrics.awarded_value_cents <> 1200
+    or v_metrics.held_unit_count <> 0 then
+    raise exception 'A lapsed administrator moved the panel: % spin(s), % cents, % held',
+      v_metrics.spin_count, v_metrics.awarded_value_cents, v_metrics.held_unit_count;
   end if;
 end
 $$;

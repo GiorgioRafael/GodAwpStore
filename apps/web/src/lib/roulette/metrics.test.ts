@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  hasPlayerActivity,
   prizeOutcomeShares,
   realisedReturnBps,
   worstCaseProfitCents,
@@ -17,11 +18,9 @@ function metrics(overrides: Partial<RouletteMetrics> = {}): RouletteMetrics {
     providerFeeCents: 0,
     coinLiabilityCents: 0,
     spinCount: 0,
-    paidSpinCount: 0,
-    adminSpinCount: 0,
+    spinnerCount: 0,
     coinsSpentCents: 0,
     awardedValueCents: 0,
-    adminAwardedValueCents: 0,
     soldUnitCount: 0,
     soldCreditedCents: 0,
     redeemedUnitCount: 0,
@@ -43,16 +42,10 @@ function metrics(overrides: Partial<RouletteMetrics> = {}): RouletteMetrics {
 }
 
 describe("métricas da roleta", () => {
-  it("tira os giros de admin do retorno ao jogador", () => {
-    // 20 giros pagos (R$ 20,00 em moedas) pagaram R$ 14,00 em prêmios; os giros
-    // de admin sortearam mais R$ 30,00 sem gastar moeda nenhuma. Contar esse
-    // valor inflaria o retorno para 220% contra um divisor que não cresceu.
+  it("mede o retorno pelo que foi pago por moeda gasta", () => {
+    // 20 giros pagos (R$ 20,00 em moedas) que pagaram R$ 14,00 em prêmios.
     const result = realisedReturnBps(
-      metrics({
-        coinsSpentCents: 2_000,
-        awardedValueCents: 4_400,
-        adminAwardedValueCents: 3_000,
-      }),
+      metrics({ coinsSpentCents: 2_000, awardedValueCents: 1_400 }),
     );
 
     expect(result).toBe(7_000);
@@ -93,5 +86,14 @@ describe("métricas da roleta", () => {
     );
 
     expect(result).toBe(-800);
+  });
+
+  it("trata a loja como intocada enquanto só a equipe girou", () => {
+    // Os giros de admin não chegam a estes campos, então a página não deve
+    // mostrar uma parede de zeros como se fosse resultado de verdade.
+    expect(hasPlayerActivity(metrics())).toBe(false);
+    expect(hasPlayerActivity(metrics({ spinCount: 1 }))).toBe(true);
+    // Um depósito sem giro nenhum já é movimento de jogador.
+    expect(hasPlayerActivity(metrics({ depositCount: 1 }))).toBe(true);
   });
 });

@@ -9,11 +9,9 @@ export type RouletteMetrics = {
   providerFeeCents: number;
   coinLiabilityCents: number;
   spinCount: number;
-  paidSpinCount: number;
-  adminSpinCount: number;
+  spinnerCount: number;
   coinsSpentCents: number;
   awardedValueCents: number;
-  adminAwardedValueCents: number;
   soldUnitCount: number;
   soldCreditedCents: number;
   redeemedUnitCount: number;
@@ -34,7 +32,8 @@ export type RouletteMetrics = {
 
 /**
  * Roulette-only result. It never reads orders or ledger_entries, so the numbers
- * here can be compared with the store revenue without double counting.
+ * here can be compared with the store revenue without double counting, and the
+ * function behind it already leaves administrator testing out.
  */
 export async function getRouletteMetrics(): Promise<RouletteMetrics | null> {
   const supabase = await createServerSupabaseClient();
@@ -54,11 +53,9 @@ export async function getRouletteMetrics(): Promise<RouletteMetrics | null> {
     providerFeeCents: count(row.provider_fee_cents),
     coinLiabilityCents: count(row.coin_liability_cents),
     spinCount: count(row.spin_count),
-    paidSpinCount: count(row.paid_spin_count),
-    adminSpinCount: count(row.admin_spin_count),
+    spinnerCount: count(row.spinner_count),
     coinsSpentCents: count(row.coins_spent_cents),
     awardedValueCents: count(row.awarded_value_cents),
-    adminAwardedValueCents: count(row.admin_awarded_value_cents),
     soldUnitCount: count(row.sold_unit_count),
     soldCreditedCents: count(row.sold_credited_cents),
     redeemedUnitCount: count(row.redeemed_unit_count),
@@ -78,17 +75,10 @@ export async function getRouletteMetrics(): Promise<RouletteMetrics | null> {
   };
 }
 
-/**
- * Realised return: value handed out per coin spun. Admin spins cost no coin, so
- * counting their prizes here would inflate the ratio against a smaller divisor.
- */
+/** Realised return: value handed out per coin spun. */
 export function realisedReturnBps(metrics: RouletteMetrics) {
   if (metrics.coinsSpentCents <= 0) return null;
-  const paidAwarded = Math.max(
-    metrics.awardedValueCents - metrics.adminAwardedValueCents,
-    0,
-  );
-  return Math.round((paidAwarded / metrics.coinsSpentCents) * 10000);
+  return Math.round((metrics.awardedValueCents / metrics.coinsSpentCents) * 10000);
 }
 
 /** Cash already banked, minus the cost of everything still owed to players. */
@@ -107,6 +97,14 @@ export function prizeOutcomeShares(metrics: RouletteMetrics) {
     redeemedBps: Math.round((metrics.redeemedUnitCount / total) * 10000),
     heldBps: Math.round((metrics.heldUnitCount / total) * 10000),
   };
+}
+
+/**
+ * Administrator spins never reach these numbers, so a store where only the team
+ * has tested the wheel reads as untouched instead of as a wall of zeros.
+ */
+export function hasPlayerActivity(metrics: RouletteMetrics) {
+  return metrics.spinCount > 0 || metrics.depositCount > 0;
 }
 
 function count(value: number | null | undefined) {

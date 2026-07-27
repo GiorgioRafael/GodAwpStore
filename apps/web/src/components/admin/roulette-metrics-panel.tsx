@@ -5,8 +5,8 @@ import {
   Percent,
   Receipt,
   RotateCw,
-  ShieldAlert,
   TrendingUp,
+  UsersRound,
 } from "lucide-react";
 import { formatBrl } from "@godawp/domain";
 import { MetricCard } from "@/components/admin/metric-card";
@@ -67,7 +67,8 @@ export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) 
             Resultado da roleta
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Somente moedas e prêmios da roleta. Nenhum pedido pago da loja entra nesta conta.
+            Somente moedas e prêmios de contas de jogador. Nem os pedidos da loja nem os giros de
+            teste da equipe entram nesta conta.
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -131,27 +132,30 @@ export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) 
           <CardHeader>
             <h2 className="text-base font-semibold tracking-tight">Giros e retorno</h2>
             <p className="mt-1 text-sm text-muted">
-              O giro de admin não gasta moeda, então o retorno considera só os giros pagos.
+              Cada giro custa uma moeda, então o retorno é o quanto a roleta devolve em prêmio a
+              cada real girado.
             </p>
           </CardHeader>
           <CardContent className="grid gap-3 pt-0 sm:grid-cols-2">
             <Stat
               icon={RotateCw}
-              label="Giros pagos"
-              value={formatCount(metrics.paidSpinCount)}
+              label="Giros"
+              value={formatCount(metrics.spinCount)}
               detail={`${formatBrl(metrics.coinsSpentCents)} em moedas gastas`}
             />
             <Stat
-              icon={ShieldAlert}
-              label="Giros de admin"
-              value={formatCount(metrics.adminSpinCount)}
-              detail={`${formatBrl(metrics.adminAwardedValueCents)} sorteados sem receita`}
+              icon={UsersRound}
+              label="Jogadores"
+              value={formatCount(metrics.spinnerCount)}
+              detail={`${formatCount(metrics.depositPayerCount)} ${
+                metrics.depositPayerCount === 1 ? "recarregou moedas" : "recarregaram moedas"
+              }`}
             />
             <Stat
               icon={Coins}
               label="Prêmios sorteados"
               value={formatBrl(metrics.awardedValueCents)}
-              detail={`Valor de tabela em ${formatCount(metrics.spinCount)} giro(s)`}
+              detail="Valor de tabela do que a roleta pagou"
             />
             <Stat
               icon={Percent}

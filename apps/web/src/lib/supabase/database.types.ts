@@ -1725,11 +1725,9 @@ export type Database = {
           provider_fee_cents: number;
           coin_liability_cents: number;
           spin_count: number;
-          paid_spin_count: number;
-          admin_spin_count: number;
+          spinner_count: number;
           coins_spent_cents: number;
           awarded_value_cents: number;
-          admin_awarded_value_cents: number;
           sold_unit_count: number;
           sold_credited_cents: number;
           redeemed_unit_count: number;

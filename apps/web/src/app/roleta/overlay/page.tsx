@@ -7,6 +7,10 @@ import {
   buildRouletteWheelPrizes,
   normalizeRoulettePrizeProducts,
 } from "@/lib/roulette/demo";
+import {
+  OVERLAY_QUEUE_PARAM,
+  normalizeOverlayQueueLimit,
+} from "@/lib/roulette/overlay-queue";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = {
@@ -14,8 +18,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 export const dynamic = "force-dynamic";
-
-const DEFAULT_QUEUE_LIMIT = 8;
 
 /**
  * Transparent overlay for OBS or a captured browser window. It runs without a
@@ -36,7 +38,7 @@ export default async function RouletteOverlayPage({
   if (!configuredToken || !token || token !== configuredToken) notFound();
 
   const prizes = buildRouletteWheelPrizes(await readOverlayPrizes());
-  const queueLimit = readQueueLimit(single(query.fila));
+  const queueLimit = normalizeOverlayQueueLimit(single(query[OVERLAY_QUEUE_PARAM]));
 
   return <RouletteOverlay prizes={prizes} token={token} queueLimit={queueLimit} />;
 }
@@ -71,13 +73,6 @@ async function readOverlayPrizes() {
         : [],
     ),
   );
-}
-
-function readQueueLimit(value: string | undefined) {
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= 1 && parsed <= 50
-    ? parsed
-    : DEFAULT_QUEUE_LIMIT;
 }
 
 function single(value: string | string[] | undefined) {
