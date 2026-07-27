@@ -97,11 +97,31 @@ async function waitForConnection() {
   });
 }
 
+type AnimateCall = { keyframes: Array<{ transform: string }>; options: KeyframeAnimationOptions };
+const animateCalls: AnimateCall[] = [];
+
+/** jsdom não implementa a Web Animations API; aqui ela é observável. */
+function installAnimateSpy() {
+  animateCalls.length = 0;
+  Object.defineProperty(Element.prototype, "animate", {
+    configurable: true,
+    writable: true,
+    value: function animate(
+      keyframes: Array<{ transform: string }>,
+      options: KeyframeAnimationOptions,
+    ) {
+      animateCalls.push({ keyframes, options });
+      return { finished: Promise.resolve(), cancel: () => undefined };
+    },
+  });
+}
+
 describe("RouletteOverlay", () => {
   beforeEach(() => {
     feed.log = [];
     feed.clock = 0;
     vi.useRealTimers();
+    installAnimateSpy();
   });
 
   it("mostra o nome mascarado e o prêmio de um giro", async () => {
@@ -115,6 +135,30 @@ describe("RouletteOverlay", () => {
       expect(result).toHaveTextContent("Joa...");
       expect(result).toHaveTextContent("Rainbow Seed");
     });
+  });
+
+  it("gira a roda de verdade em vez de saltar para o prêmio", async () => {
+    mount(4);
+    await waitForConnection();
+
+    emit(spinEvent("gira"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("overlay-result")).toBeInTheDocument();
+    });
+
+    // O giro precisa de uma animação própria, com começo e fim distintos: uma
+    // transição CSS não roda porque o React entrega os dois estados no mesmo
+    // commit, e a roda saltava direto para o prêmio.
+    const spin = animateCalls.find((call) => call.options.duration === 10);
+    expect(spin).toBeDefined();
+    expect(spin!.keyframes).toHaveLength(2);
+    expect(spin!.keyframes[0].transform).not.toBe(spin!.keyframes[1].transform);
+
+    const from = Number(spin!.keyframes[0].transform.match(/-?[\d.]+/)![0]);
+    const to = Number(spin!.keyframes[1].transform.match(/-?[\d.]+/)![0]);
+    // Muitas voltas antes de parar, não um ajuste de alguns graus.
+    expect(to - from).toBeGreaterThan(360 * 5);
   });
 
   it("pega o giro que chega entre dois polls", async () => {

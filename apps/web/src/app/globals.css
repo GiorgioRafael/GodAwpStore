@@ -96,6 +96,33 @@ button:not(:disabled),
   }
 }
 
+/* Entrada do card de resultado do overlay da live. */
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.88);
+  }
+  60% {
+    opacity: 1;
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Confete do prêmio máximo no overlay da live. */
+@keyframes confetti {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 62vh, 0) rotate(540deg);
+  }
+}
+
 /* Entrada do card de resultado da roleta. */
 @keyframes fadeIn {
   from {

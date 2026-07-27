@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { readRouletteOverlayEvents } from "@/app/roleta/overlay/actions";
+import { BrandMark } from "@/components/layout/brand-mark";
 import {
   demoRouletteRotation,
   formatCoins,
@@ -10,14 +12,16 @@ import {
   type DemoRoulettePrizeKey,
   type RouletteWheelPrize,
 } from "@/lib/roulette/demo";
-import { readRouletteOverlayEvents } from "@/app/roleta/overlay/actions";
 
 const WHEEL_SIZE = 360;
 const WHEEL_CENTER = WHEEL_SIZE / 2;
-const WHEEL_RADIUS = 164;
-const DEFAULT_SPIN_MS = 2_600;
-const DEFAULT_RESULT_MS = 2_200;
+const WHEEL_RADIUS = 158;
+const DEFAULT_SPIN_MS = 4_600;
+const DEFAULT_RESULT_MS = 3_400;
 const POLL_MS = 1_500;
+/** Extra full turns on top of the alignment, so the wheel really travels. */
+const EXTRA_TURNS = 6;
+const IDLE_TURN_MS = 44_000;
 
 export type RouletteOverlayEvent = {
   id: string;
@@ -33,6 +37,11 @@ export type RouletteOverlayEvent = {
  * feed. When the backlog is longer than `queueLimit` the extra spins are only
  * counted, so the stream never falls minutes behind — except for the biggest
  * prize, which always gets its animation.
+ *
+ * The wheel is driven by the Web Animations API instead of a CSS transition:
+ * the state that starts a spin and the state that moves it land in the same
+ * React commit, and a transition has no previous frame to run from, so the
+ * wheel used to jump straight to the prize.
  */
 export function RouletteOverlay({
   prizes,
@@ -51,18 +60,63 @@ export function RouletteOverlay({
   pollMs?: number;
 }) {
   const [current, setCurrent] = useState<RouletteOverlayEvent | null>(null);
-  const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
+  const [landed, setLanded] = useState(false);
   const [skipped, setSkipped] = useState(0);
   const [connected, setConnected] = useState(false);
   const queue = useRef<RouletteOverlayEvent[]>([]);
   const rotationRef = useRef(0);
   const busy = useRef(false);
   const seen = useRef(new Set<string>());
+  const wheelRef = useRef<SVGGElement | null>(null);
+  const idleRef = useRef<Animation | null>(null);
 
   useEffect(() => {
     let active = true;
     let since: string | null = null;
+
+    /** Slow drift so the overlay is never a frozen picture on stream. */
+    function startIdle() {
+      const wheel = wheelRef.current;
+      if (!wheel?.animate || idleRef.current) return;
+      idleRef.current = wheel.animate(
+        [
+          { transform: `rotate(${rotationRef.current}deg)` },
+          { transform: `rotate(${rotationRef.current + 360}deg)` },
+        ],
+        { duration: IDLE_TURN_MS, iterations: Infinity, easing: "linear" },
+      );
+    }
+
+    function stopIdle() {
+      idleRef.current?.cancel();
+      idleRef.current = null;
+    }
+
+    async function turnWheel(prizeKey: DemoRoulettePrizeKey) {
+      const wheel = wheelRef.current;
+      const from = rotationRef.current;
+      const to = demoRouletteRotation(from, prizeKey) + EXTRA_TURNS * 360;
+      rotationRef.current = to;
+
+      // jsdom has no Web Animations API; the tests only need the timing.
+      if (!wheel?.animate) {
+        await wait(spinMs);
+        return;
+      }
+
+      stopIdle();
+      const animation = wheel.animate(
+        [{ transform: `rotate(${from}deg)` }, { transform: `rotate(${to}deg)` }],
+        {
+          duration: spinMs,
+          // Bursts away, then a long tail that keeps the last segments tense.
+          easing: "cubic-bezier(.08,.72,.06,1)",
+          fill: "forwards",
+        },
+      );
+      await animation.finished.catch(() => undefined);
+    }
 
     async function play() {
       if (busy.current || !active) return;
@@ -70,20 +124,21 @@ export function RouletteOverlay({
       if (!next) return;
       busy.current = true;
 
+      setLanded(false);
       setSpinning(true);
-      const nextRotation = demoRouletteRotation(rotationRef.current, next.prizeKey);
-      rotationRef.current = nextRotation;
-      setRotation(nextRotation);
-      await wait(spinMs);
+      await turnWheel(next.prizeKey);
       if (!active) return;
 
       setSpinning(false);
       setCurrent(next);
+      setLanded(true);
       await wait(resultMs);
       if (!active) return;
 
       setCurrent(null);
+      setLanded(false);
       busy.current = false;
+      startIdle();
       void play();
     }
 
@@ -120,112 +175,187 @@ export function RouletteOverlay({
       }
     }
 
+    startIdle();
     void poll();
     const timer = window.setInterval(() => void poll(), pollMs);
 
     return () => {
       active = false;
       window.clearInterval(timer);
+      stopIdle();
     };
   }, [queueLimit, spinMs, resultMs, pollMs, token]);
 
   const prize = current ? rouletteWheelPrize(prizes, current.prizeKey) : null;
+  const jackpot = Boolean(current?.isTopPrize);
 
   return (
-    <div className="relative flex min-h-screen w-full flex-col items-center justify-center gap-6 bg-transparent p-8">
+    <div className="relative flex min-h-screen w-full flex-col items-center justify-center gap-7 bg-transparent p-8">
+      {jackpot && landed ? <Confetti /> : null}
+
       <div
-        className={`relative aspect-square w-[420px] transition-opacity duration-500 ${
-          spinning || current ? "opacity-100" : "opacity-35"
+        className={`relative aspect-square w-[460px] transition-all duration-700 ${
+          spinning || current ? "scale-100 opacity-100" : "scale-95 opacity-70"
         }`}
       >
+        <div
+          aria-hidden="true"
+          className={`absolute inset-[-8%] rounded-full blur-3xl transition-colors duration-500 ${
+            jackpot && landed ? "bg-amber-400/35" : "bg-fuchsia-500/20"
+          }`}
+        />
+
         <span
           aria-hidden="true"
-          className="absolute left-1/2 top-[-2px] z-20 h-0 w-0 -translate-x-1/2 drop-shadow-[0_0_14px_rgba(244,114,182,.95)]"
+          className="absolute left-1/2 top-[-6px] z-30 h-0 w-0 -translate-x-1/2 drop-shadow-[0_0_18px_rgba(244,114,182,1)]"
           style={{
-            borderLeft: "20px solid transparent",
-            borderRight: "20px solid transparent",
-            borderTop: "36px solid #e879f9",
+            borderLeft: "22px solid transparent",
+            borderRight: "22px solid transparent",
+            borderTop: `42px solid ${jackpot && landed ? "#fbbf24" : "#e879f9"}`,
           }}
         />
-        <div className="absolute inset-[4%] rounded-full border-2 border-fuchsia-200/60 bg-[#0b0710]/90 p-2 shadow-[0_0_60px_rgba(217,70,239,.45)]">
-          <svg
-            viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
-            role="img"
-            aria-label="Roleta da GWStore"
-            className="size-full overflow-visible rounded-full"
-            style={{
-              transform: `rotate(${rotation}deg)`,
-              transformOrigin: "50% 50%",
-              transitionDuration: spinning ? `${spinMs}ms` : "0ms",
-              transitionProperty: "transform",
-              transitionTimingFunction: "cubic-bezier(.12,.68,.08,1)",
-            }}
-          >
-            <circle
-              cx={WHEEL_CENTER}
-              cy={WHEEL_CENTER}
-              r={WHEEL_RADIUS + 5}
-              fill="#08040c"
-              stroke="rgba(244,114,182,.8)"
-              strokeWidth="3"
-            />
+
+        <svg
+          viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
+          role="img"
+          aria-label="Roleta da GWStore"
+          className="size-full overflow-visible"
+        >
+          <defs>
+            {prizes.map((slot, index) => (
+              <linearGradient
+                key={slot.key}
+                id={`slot-${index}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <stop offset="0%" stopColor={slot.accent} stopOpacity="0.42" />
+                <stop offset="100%" stopColor={slot.surface} stopOpacity="1" />
+              </linearGradient>
+            ))}
+            <radialGradient id="hub" cx="50%" cy="35%">
+              <stop offset="0%" stopColor="#2a0f36" />
+              <stop offset="100%" stopColor="#08040c" />
+            </radialGradient>
+          </defs>
+
+          {/* Anel externo com luzes */}
+          <circle
+            cx={WHEEL_CENTER}
+            cy={WHEEL_CENTER}
+            r={WHEEL_RADIUS + 16}
+            fill="none"
+            stroke={jackpot && landed ? "rgba(251,191,36,.9)" : "rgba(244,114,182,.55)"}
+            strokeWidth="4"
+          />
+          <circle
+            cx={WHEEL_CENTER}
+            cy={WHEEL_CENTER}
+            r={WHEEL_RADIUS + 9}
+            fill="none"
+            stroke={jackpot && landed ? "rgba(251,191,36,.65)" : "rgba(232,121,249,.45)"}
+            strokeWidth="3"
+            strokeDasharray="2 12"
+            strokeLinecap="round"
+          />
+
+          <g ref={wheelRef} style={{ transformOrigin: "50% 50%" }}>
             {prizes.map((slot, index) => {
               const label = labelPoint(index, prizes.length);
+              const value = valuePoint(index, prizes.length);
               return (
                 <g key={slot.key}>
                   <path
                     d={segmentPath(index, prizes.length)}
-                    fill={slot.surface}
-                    stroke="rgba(232,121,249,.4)"
-                    strokeWidth="1.6"
+                    fill={`url(#slot-${index})`}
+                    stroke="rgba(255,255,255,.16)"
+                    strokeWidth="1.5"
                   />
                   <text
                     x={label.x}
                     y={label.y}
                     textAnchor="middle"
                     fill="#fff8ff"
-                    fontSize="14"
-                    fontWeight="700"
+                    fontSize="15"
+                    fontWeight="800"
+                    style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.55)", strokeWidth: 3 }}
                   >
                     {slot.wheelLabel}
+                  </text>
+                  <text
+                    x={value.x}
+                    y={value.y}
+                    textAnchor="middle"
+                    fill={slot.accent}
+                    fontSize="15"
+                    fontWeight="900"
+                    style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.6)", strokeWidth: 3 }}
+                  >
+                    {formatCoins(slot.valueCents)}
                   </text>
                 </g>
               );
             })}
-          </svg>
-        </div>
+          </g>
+
+          {/* Miolo fixo com a marca */}
+          <circle cx={WHEEL_CENTER} cy={WHEEL_CENTER} r="52" fill="url(#hub)" />
+          <circle
+            cx={WHEEL_CENTER}
+            cy={WHEEL_CENTER}
+            r="52"
+            fill="none"
+            stroke={jackpot && landed ? "rgba(251,191,36,.95)" : "rgba(244,114,182,.75)"}
+            strokeWidth="3"
+          />
+        </svg>
+
+        <span className="pointer-events-none absolute left-1/2 top-1/2 grid size-[26%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full">
+          <BrandMark className="rounded-full" />
+        </span>
       </div>
 
-      {prize && current ? (
-        <div
-          data-testid="overlay-result"
-          className={`rounded-2xl border px-8 py-5 text-center shadow-[0_20px_60px_rgba(0,0,0,.55)] backdrop-blur ${
-            current.isTopPrize
-              ? "border-amber-300/70 bg-[#241a05]/95"
-              : "border-fuchsia-300/45 bg-[#140b1a]/95"
-          }`}
-        >
-          {current.isTopPrize ? (
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-amber-300">
-              Prêmio máximo
+      <div aria-live="polite" className="flex min-h-[132px] items-start justify-center">
+        {prize && current ? (
+          <div
+            data-testid="overlay-result"
+            className={`animate-[popIn_.45s_cubic-bezier(.2,1.4,.4,1)] rounded-3xl border-2 px-10 py-6 text-center shadow-[0_24px_70px_rgba(0,0,0,.65)] backdrop-blur ${
+              jackpot
+                ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
+                : "border-fuchsia-300/60 bg-gradient-to-b from-[#1d0f26]/95 to-[#0f0714]/95"
+            }`}
+          >
+            {jackpot ? (
+              <p className="mb-1 text-sm font-black uppercase tracking-[0.28em] text-amber-300">
+                ★ Prêmio máximo ★
+              </p>
+            ) : null}
+            <p className="text-2xl font-bold text-white">
+              <span className={jackpot ? "text-amber-300" : "text-fuchsia-300"}>
+                {current.maskedDisplayName}
+              </span>{" "}
+              ganhou
             </p>
-          ) : null}
-          <p className="text-2xl font-bold text-white">
-            <span className="text-fuchsia-300">{current.maskedDisplayName}</span> ganhou
-          </p>
-          <p className="mt-1 text-3xl font-black tracking-[-0.03em] text-white">
-            {prize.displayName}
-          </p>
-          <p className="mt-1 text-lg font-bold text-amber-200">
-            {formatCoins(current.valueCents)} moedas
-          </p>
-        </div>
-      ) : null}
+            <p className="mt-1 text-4xl font-black tracking-[-0.035em] text-white">
+              {prize.displayName}
+            </p>
+            <p
+              className={`mt-2 inline-block rounded-full px-4 py-1 text-lg font-black ${
+                jackpot ? "bg-amber-400/25 text-amber-200" : "bg-fuchsia-400/20 text-fuchsia-200"
+              }`}
+            >
+              {formatCoins(current.valueCents)} moedas
+            </p>
+          </div>
+        ) : null}
+      </div>
 
       {skipped > 0 ? (
         <p
           data-testid="overlay-skipped"
-          className="rounded-full border border-white/15 bg-black/45 px-4 py-1.5 text-sm font-semibold text-white/80"
+          className="rounded-full border border-white/15 bg-black/50 px-4 py-1.5 text-sm font-semibold text-white/80"
         >
           +{skipped} {skipped === 1 ? "giro" : "giros"} na fila
         </p>
@@ -241,6 +371,33 @@ export function RouletteOverlay({
     </div>
   );
 }
+
+/** Burst that only the biggest prize earns. */
+function Confetti() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+      {CONFETTI.map((piece, index) => (
+        <span
+          key={index}
+          className="absolute top-[38%] size-2.5 rounded-[2px]"
+          style={{
+            left: `${piece.left}%`,
+            backgroundColor: piece.color,
+            animation: `confetti ${piece.duration}ms ${piece.delay}ms cubic-bezier(.2,.7,.3,1) forwards`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const CONFETTI_COLORS = ["#fbbf24", "#f472b6", "#e879f9", "#fde68a", "#a78bfa"];
+const CONFETTI = Array.from({ length: 28 }, (_, index) => ({
+  left: 6 + ((index * 37) % 88),
+  color: CONFETTI_COLORS[index % CONFETTI_COLORS.length],
+  duration: 1_600 + ((index * 131) % 1_400),
+  delay: (index * 47) % 600,
+}));
 
 function readEvent(row: unknown): RouletteOverlayEvent | null {
   const event = row as Record<string, unknown> | null;
@@ -275,7 +432,12 @@ function segmentPath(index: number, total: number) {
 
 function labelPoint(index: number, total: number) {
   const angle = 360 / total;
-  return polar(index * angle - 90 + angle / 2, 105);
+  return polar(index * angle - 90 + angle / 2, 112);
+}
+
+function valuePoint(index: number, total: number) {
+  const angle = 360 / total;
+  return polar(index * angle - 90 + angle / 2, 82);
 }
 
 function polar(angle: number, radius = WHEEL_RADIUS) {
