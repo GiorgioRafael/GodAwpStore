@@ -293,7 +293,7 @@ export function RouletteExperience({
         <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
           <span className="flex items-center gap-2 text-sm text-[#c8b49a]">
             <Coins aria-hidden="true" className="size-4 text-amber-300" />
-            Saldo
+            <span className="hidden sm:inline">Saldo</span>
           </span>
           <strong
             data-testid="roulette-balance"
@@ -301,7 +301,7 @@ export function RouletteExperience({
           >
             {formatCoins(balanceCents)}
           </strong>
-          <span className="text-sm text-[#9e8a76]">moedas</span>
+          <span className="hidden text-sm text-[#9e8a76] sm:inline">moedas</span>
           <button
             type="button"
             onClick={() => setBuyOpen((open) => !open)}
@@ -313,6 +313,14 @@ export function RouletteExperience({
             <span className="hidden sm:inline">Adicionar moedas</span>
             <span className="sm:hidden">Moedas</span>
           </button>
+          <a
+            href="#inventario"
+            aria-label={`Inventário: ${totalPrizes} ${totalPrizes === 1 ? "prêmio" : "prêmios"}`}
+            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-fuchsia-300/35 bg-fuchsia-400/10 px-3 text-sm font-bold text-fuchsia-100 transition-colors hover:bg-fuchsia-400/20"
+          >
+            <Box aria-hidden="true" className="size-4" />
+            {totalPrizes}
+          </a>
         </div>
 
         {buyOpen ? (
@@ -408,7 +416,7 @@ export function RouletteExperience({
               : "Cada moeda vale R$ 1,00 e paga um giro. Não gostou do prêmio? Venda de volta por moedas."}
           </p>
 
-          <div className="mt-7 grid items-center gap-7 xl:grid-cols-[minmax(0,560px)_minmax(170px,1fr)] [@media(max-height:820px)]:mt-4">
+          <div className="mt-7 [@media(max-height:820px)]:mt-4">
             <div className="mx-auto w-full max-w-[560px]">
               <div className="relative mx-auto aspect-square w-full max-w-[520px] [@media(max-height:820px)]:max-w-[400px]">
                 <div
@@ -485,6 +493,29 @@ export function RouletteExperience({
                     <BrandMark className="rounded-full" />
                   </span>
                 </div>
+
+                <div
+                  aria-live="polite"
+                  className="pointer-events-none absolute inset-x-0 bottom-[6%] z-30 flex justify-center px-4"
+                >
+                  {lastPrize ? (
+                    <div className="animate-[fadeIn_.35s_ease-out] rounded-2xl border border-fuchsia-300/45 bg-[#140b1a]/95 px-6 py-4 text-center shadow-[0_18px_50px_rgba(0,0,0,.6)] backdrop-blur">
+                      <p className="flex items-center justify-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-fuchsia-300">
+                        <Sparkles aria-hidden="true" className="size-3.5" />
+                        Você ganhou
+                      </p>
+                      <p
+                        data-testid="roulette-result"
+                        className="mt-1 text-2xl font-black tracking-[-0.03em] text-white sm:text-3xl"
+                      >
+                        {lastPrize.displayName}
+                      </p>
+                      <p className="mt-0.5 text-sm font-bold text-amber-200">
+                        vale {formatCoins(lastPrize.valueCents)} moedas
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <button
@@ -558,43 +589,6 @@ export function RouletteExperience({
               ) : null}
             </div>
 
-            <div
-              aria-live="polite"
-              className="mx-auto w-full max-w-sm text-center xl:text-left"
-            >
-              {lastPrize ? (
-                <div className="relative overflow-hidden border-y border-fuchsia-300/30 py-6">
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(217,70,239,.13),transparent_65%)]"
-                  />
-                  <Sparkles
-                    aria-hidden="true"
-                    className="relative mx-auto size-5 text-fuchsia-300 xl:mx-0"
-                  />
-                  <p className="relative mt-2 text-sm text-[#b69dbf]">Você ganhou:</p>
-                  <p
-                    data-testid="roulette-result"
-                    className="relative mt-1 text-3xl font-semibold tracking-[-0.04em] text-white"
-                  >
-                    {lastPrize.displayName}
-                  </p>
-                  <p className="relative mt-1 text-sm font-semibold text-amber-200">
-                    vale {formatCoins(lastPrize.valueCents)} moedas
-                  </p>
-                </div>
-              ) : (
-                <div className="border-y border-fuchsia-300/15 py-6">
-                  <Sparkles
-                    aria-hidden="true"
-                    className="mx-auto size-5 text-fuchsia-300/65 xl:mx-0"
-                  />
-                  <p className="mt-3 text-sm leading-6 text-[#9e88a8]">
-                    Seu próximo prêmio aparecerá aqui quando a roleta parar.
-                  </p>
-                </div>
-              )}
-            </div>
           </div>
         </section>
 

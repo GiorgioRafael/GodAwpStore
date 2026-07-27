@@ -93,6 +93,30 @@ describe("RouletteExperience", () => {
     expect(screen.getByRole("button", { name: "Adicionar moedas" })).toBeEnabled();
   });
 
+  it("não reserva espaço para o resultado antes do primeiro giro", () => {
+    render(
+      <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={500} />,
+    );
+
+    // O card de resultado só existe quando há prêmio; antes disso, nada ocupa a área.
+    expect(screen.queryByTestId("roulette-result")).not.toBeInTheDocument();
+    expect(screen.queryByText("Você ganhou")).not.toBeInTheDocument();
+  });
+
+  it("leva ao inventário pela barra fixa, com a contagem de itens", () => {
+    render(
+      <RouletteExperience
+        prizes={prizes}
+        initialInventory={[{ prizeKey: "premio_2", quantity: 3 }]}
+        initialBalanceCents={0}
+      />,
+    );
+
+    const atalho = screen.getByRole("link", { name: "Inventário: 3 prêmios" });
+    expect(atalho).toHaveAttribute("href", "#inventario");
+    expect(atalho).toHaveTextContent("3");
+  });
+
   it("não deixa comprar abaixo de uma moeda", async () => {
     const user = userEvent.setup();
 
