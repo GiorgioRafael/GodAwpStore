@@ -754,9 +754,10 @@ end
 $$;
 
 -- An administrator whose authorization lapsed was still testing, not playing.
+-- The fixture is written with the session role, like the setup at the top:
+-- service_role cannot insert into auth.users.
 reset role;
-select set_config('request.jwt.claims', '{"role":"service_role"}', true);
-set local role service_role;
+select set_config('request.jwt.claims', '', true);
 
 insert into auth.users (
   id, aud, role, email, encrypted_password, email_confirmed_at,
