@@ -605,6 +605,17 @@ type RoulettePrizeProductRow = {
   updated_at: string;
 };
 
+type RouletteOverlayEventRow = {
+  id: string;
+  prize_key: string;
+  product_name: string;
+  product_image_url: string | null;
+  value_cents: number;
+  masked_display_name: string;
+  is_top_prize: boolean;
+  created_at: string;
+};
+
 type RouletteCoinBalanceRow = {
   auth_user_id: string;
   discord_user_id: string;
@@ -1387,6 +1398,15 @@ export type Database = {
           >,
         ];
       };
+      roulette_overlay_events: {
+        Row: RouletteOverlayEventRow;
+        Insert: InsertRow<
+          RouletteOverlayEventRow,
+          "prize_key" | "product_name" | "value_cents" | "masked_display_name"
+        >;
+        Update: UpdateRow<RouletteOverlayEventRow>;
+        Relationships: [];
+      };
       roulette_coin_balances: {
         Row: RouletteCoinBalanceRow;
         Insert: InsertRow<RouletteCoinBalanceRow, "auth_user_id" | "discord_user_id">;
@@ -1623,7 +1643,7 @@ export type Database = {
         }[];
       };
       spin_roulette: {
-        Args: { p_discord_user_id: string };
+        Args: { p_discord_user_id: string; p_display_name: string };
         Returns: {
           recorded_spin_id: string;
           won_prize_key: string;
@@ -1633,7 +1653,11 @@ export type Database = {
         }[];
       };
       spin_roulette_as_admin: {
-        Args: { p_auth_user_id: string; p_discord_user_id: string };
+        Args: {
+          p_auth_user_id: string;
+          p_discord_user_id: string;
+          p_display_name: string;
+        };
         Returns: {
           recorded_spin_id: string;
           won_prize_key: string;

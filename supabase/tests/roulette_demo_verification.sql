@@ -17,7 +17,8 @@ begin
     'roulette_coin_purchases',
     'roulette_coin_entries',
     'roulette_redemptions',
-    'roulette_redemption_items'
+    'roulette_redemption_items',
+    'roulette_overlay_events'
   ] loop
     if to_regclass('public.' || required_table) is null then
       raise exception 'Missing roulette table: %', required_table;
@@ -43,8 +44,8 @@ begin
     'release_roulette_coin_checkout_claim(uuid, uuid)',
     'claim_roulette_coin_provider_check(uuid, integer)',
     'confirm_roulette_coin_purchase(text, text, text, integer, text, timestamptz, text)',
-    'spin_roulette(text)',
-    'spin_roulette_as_admin(uuid, text)',
+    'spin_roulette(text, text)',
+    'spin_roulette_as_admin(uuid, text, text)',
     'sell_roulette_prizes(jsonb)',
     'redeem_roulette_prizes(jsonb)',
     'claim_roulette_redemption_ticket(uuid, uuid)',
@@ -72,7 +73,7 @@ begin
 
   if has_function_privilege(
     'authenticated',
-    'public.spin_roulette_as_admin(uuid, text)',
+    'public.spin_roulette_as_admin(uuid, text, text)',
     'EXECUTE'
   ) then
     raise exception 'authenticated must not reach the free administrator spin';
@@ -105,7 +106,7 @@ begin
     raise exception 'authenticated must reach the coin ledger only through the RPCs';
   end if;
 
-  if not has_function_privilege('authenticated', 'public.spin_roulette(text)', 'EXECUTE')
+  if not has_function_privilege('authenticated', 'public.spin_roulette(text, text)', 'EXECUTE')
     or not has_function_privilege('authenticated', 'public.sell_roulette_prizes(jsonb)', 'EXECUTE')
     or not has_function_privilege(
       'authenticated',
@@ -120,7 +121,7 @@ begin
     raise exception 'A player must be able to buy coins, spin and sell prizes';
   end if;
 
-  if has_function_privilege('anon', 'public.spin_roulette(text)', 'EXECUTE')
+  if has_function_privilege('anon', 'public.spin_roulette(text, text)', 'EXECUTE')
     or has_function_privilege('anon', 'public.sell_roulette_prizes(jsonb)', 'EXECUTE')
     or has_function_privilege('anon', 'public.redeem_roulette_prizes(jsonb)', 'EXECUTE') then
     raise exception 'The roulette must stay closed to anonymous visitors';
@@ -307,7 +308,7 @@ begin
   end if;
 
   begin
-    perform * from public.spin_roulette('900000000000000001');
+    perform * from public.spin_roulette('900000000000000001', 'Jogador Teste');
     raise exception 'A player spun the roulette without coins';
   exception
     when sqlstate 'P0007' then null;
@@ -317,7 +318,8 @@ begin
     perform *
     from public.spin_roulette_as_admin(
       '9a000000-0000-4000-8000-000000000001',
-      '900000000000000001'
+      '900000000000000001',
+      'Jogador Teste'
     );
     raise exception 'A player reached the free administrator spin';
   exception
@@ -398,7 +400,7 @@ declare
   v_spin record;
   v_sale record;
 begin
-  select * into v_spin from public.spin_roulette('900000000000000001');
+  select * into v_spin from public.spin_roulette('900000000000000001', 'Jogador Teste');
   if v_spin.won_prize_key <> 'premio_1' then
     raise exception 'The pinned wheel returned %', v_spin.won_prize_key;
   end if;
@@ -411,7 +413,7 @@ begin
 
   -- The same account cannot fire a second spin while the wheel is animating.
   begin
-    perform * from public.spin_roulette('900000000000000001');
+    perform * from public.spin_roulette('900000000000000001', 'Jogador Teste');
     raise exception 'A double click produced two spins';
   exception
     when sqlstate 'P0001' then null;
@@ -456,12 +458,12 @@ declare
   v_redemption record;
 begin
   perform pg_sleep(2.1);
-  select * into v_spin from public.spin_roulette('900000000000000001');
+  select * into v_spin from public.spin_roulette('900000000000000001', 'Jogador Teste');
   if v_spin.won_prize_key <> 'premio_1' then
     raise exception 'The pinned wheel returned %', v_spin.won_prize_key;
   end if;
   perform pg_sleep(2.1);
-  select * into v_spin from public.spin_roulette('900000000000000001');
+  select * into v_spin from public.spin_roulette('900000000000000001', 'Jogador Teste');
   if v_spin.won_inventory_quantity <> 2 then
     raise exception 'Two spins should stack to two units, found %',
       v_spin.won_inventory_quantity;
@@ -557,7 +559,8 @@ begin
   select * into v_spin
   from public.spin_roulette_as_admin(
     '9a000000-0000-4000-8000-000000000002',
-    '900000000000000002'
+    '900000000000000002',
+    'Admin Teste'
   );
   if v_spin.won_prize_key <> 'premio_1' then
     raise exception 'The administrator spin returned %', v_spin.won_prize_key;
@@ -605,6 +608,21 @@ begin
     where auth_user_id = '9a000000-0000-4000-8000-000000000002'
   ) then
     raise exception 'The administrator spin opened a coin purchase';
+  end if;
+
+  -- The public overlay feed may never carry a full player name.
+  if exists (
+    select 1
+    from public.roulette_overlay_events as event
+    where event.masked_display_name like '%Jogador%'
+      or event.masked_display_name like '%Admin%'
+      or char_length(event.masked_display_name) > 6
+  ) then
+    raise exception 'The overlay feed leaked a player name';
+  end if;
+
+  if (select count(*) from public.roulette_overlay_events) < 1 then
+    raise exception 'The spins did not reach the overlay feed';
   end if;
 
   -- One redemption line per prize, carrying both units.

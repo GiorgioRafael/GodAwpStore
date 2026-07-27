@@ -208,12 +208,14 @@ export async function spinRoulette(): Promise<SpinRouletteResult> {
     const { data, error } = await adminClient.rpc("spin_roulette_as_admin", {
       p_auth_user_id: identity.authUserId,
       p_discord_user_id: identity.discordId,
+      p_display_name: identity.displayName,
     });
     return readSpinResult(data?.[0], error);
   }
 
   const { data, error } = await supabase.rpc("spin_roulette", {
     p_discord_user_id: identity.discordId,
+    p_display_name: identity.displayName,
   });
   return readSpinResult(data?.[0], error);
 }
