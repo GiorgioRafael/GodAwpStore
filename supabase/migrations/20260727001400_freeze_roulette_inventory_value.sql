@@ -35,16 +35,20 @@ join public.products as product on product.id = slot.product_id
 where slot.prize_key = item.prize_key
   and (item.product_id is null or item.unit_value_cents = 0);
 
+-- A scalar subquery, not a lateral join: an UPDATE target cannot be referenced
+-- from its own FROM clause.
 update public.roulette_demo_inventory as item
-set unit_value_cents = frozen.value_cents
-from lateral (
-  select spin.prize_value_cents as value_cents
-  from public.roulette_demo_spins as spin
-  where spin.prize_key = item.prize_key
-    and spin.prize_value_cents > 0
-  order by spin.created_at desc
-  limit 1
-) as frozen
+set unit_value_cents = coalesce(
+  (
+    select spin.prize_value_cents
+    from public.roulette_demo_spins as spin
+    where spin.prize_key = item.prize_key
+      and spin.prize_value_cents > 0
+    order by spin.created_at desc
+    limit 1
+  ),
+  0
+)
 where item.unit_value_cents = 0;
 
 do $$
