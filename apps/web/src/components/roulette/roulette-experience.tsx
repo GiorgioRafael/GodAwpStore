@@ -21,6 +21,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -93,6 +94,7 @@ export function RouletteExperience({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [selected, setSelected] = useState<Record<string, number>>({});
+  const router = useRouter();
   const rotationRef = useRef(0);
   const phaseRef = useRef(phase);
   const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
@@ -145,6 +147,7 @@ export function RouletteExperience({
     }
 
     setBalanceCents(result.balanceCents);
+    router.refresh();
     const nextRotation = demoRouletteRotation(rotationRef.current, result.prizeKey);
     rotationRef.current = nextRotation;
     setRotation(nextRotation);
@@ -157,7 +160,7 @@ export function RouletteExperience({
     );
     setLastPrizeKey(result.prizeKey);
     setPhase("idle");
-  }, []);
+  }, [router]);
 
   // The coins land through the LivePix webhook, so the browser waits here until
   // the balance is credited.
@@ -177,6 +180,7 @@ export function RouletteExperience({
         return;
       }
       setBalanceCents(status.balanceCents);
+      router.refresh();
       if (status.status === "credited") {
         setNotice("Moedas creditadas. Bom giro!");
         setPhase("idle");
@@ -201,7 +205,7 @@ export function RouletteExperience({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [purchaseId, phase]);
+  }, [purchaseId, phase, router]);
 
   async function handleSpin() {
     if (isBusy || !available || !canSpin) return;
@@ -243,6 +247,7 @@ export function RouletteExperience({
     }
 
     setBalanceCents(sale.balanceCents);
+    router.refresh();
     applySettledLines(sale.lines);
     setNotice(
       `${sale.itemCount} ${sale.itemCount === 1 ? "item vendido" : "itens vendidos"} por ${formatCoins(sale.creditedCents)} moedas.`,
@@ -389,8 +394,14 @@ export function RouletteExperience({
                 {spinButtonLabel(phase, isAdmin, canSpin)}
               </button>
 
-              {!isAdmin ? (
-                <div className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#140f0a]/80 p-4">
+              <div className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-amber-300/25 bg-[#140f0a]/80 p-4">
+                {isAdmin ? (
+                  <p className="mb-3 rounded-lg border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-200">
+                    Modo administrador: o giro é grátis, mas a venda de itens credita moedas de
+                    verdade nesta conta.
+                  </p>
+                ) : null}
+                <div>
                   <div className="flex items-center justify-between gap-3">
                     <span className="flex items-center gap-2 text-sm font-semibold text-amber-200">
                       <Coins aria-hidden="true" className="size-4" />
@@ -447,11 +458,7 @@ export function RouletteExperience({
                     </button>
                   </div>
                 </div>
-              ) : (
-                <p className="mt-3 text-center text-xs leading-5 text-[#8f7a98]">
-                  Giro de teste interno: nenhuma moeda é gasta.
-                </p>
-              )}
+              </div>
 
               {phase === "awaiting_payment" ? (
                 <div

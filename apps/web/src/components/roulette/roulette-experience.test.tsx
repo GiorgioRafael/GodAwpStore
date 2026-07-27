@@ -12,6 +12,11 @@ const actionMocks = vi.hoisted(() => ({
 
 vi.mock("@/app/roleta/actions", () => actionMocks);
 
+// O chip de saldo do cabeçalho é servidor: o componente pede re-render depois
+// de mexer no saldo, e o router não existe fora do app.
+const routerMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => routerMocks }));
+
 import { RouletteExperience } from "./roulette-experience";
 import { buildRouletteWheelPrizes } from "@/lib/roulette/demo";
 
@@ -35,6 +40,7 @@ describe("RouletteExperience", () => {
     actionMocks.redeemRoulettePrizes.mockReset();
     actionMocks.startRouletteCoinPurchase.mockReset();
     actionMocks.getRouletteCoinPurchaseStatus.mockReset();
+    routerMocks.refresh.mockReset();
     vi.stubGlobal("open", vi.fn());
     Object.defineProperty(window, "matchMedia", {
       configurable: true,
@@ -99,6 +105,8 @@ describe("RouletteExperience", () => {
     });
     expect(screen.getByText("Saldo: 2,00 moedas")).toBeInTheDocument();
     expect(actionMocks.spinRoulette).toHaveBeenCalledTimes(1);
+    // O chip do cabeçalho vem do servidor e precisa ser revalidado.
+    expect(routerMocks.refresh).toHaveBeenCalled();
   });
 
   it("avisa quando o servidor recusa o giro por falta de moedas", async () => {
@@ -306,6 +314,37 @@ describe("RouletteExperience", () => {
       expect(screen.getByTestId("roulette-result")).toHaveTextContent("1x Dragonfly");
     });
     expect(actionMocks.startRouletteCoinPurchase).not.toHaveBeenCalled();
+  });
+
+  it("mostra o saldo ao administrador, que também acumula moedas vendendo", async () => {
+    actionMocks.sellRoulettePrizes.mockResolvedValue({
+      ok: true,
+      lines: [{ prizeKey: "premio_2", remainingQuantity: 0 }],
+      itemCount: 1,
+      creditedCents: 100,
+      balanceCents: 771,
+    });
+    const user = userEvent.setup();
+
+    render(
+      <RouletteExperience
+        prizes={prizes}
+        initialInventory={[{ prizeKey: "premio_2", quantity: 1 }]}
+        initialBalanceCents={671}
+        isAdmin
+      />,
+    );
+
+    // O saldo do admin não pode ficar escondido: ele acumula moeda vendendo.
+    expect(screen.getByText("Saldo: 6,71 moedas")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Selecionar 1x Dragonfly"));
+    await user.click(screen.getByRole("button", { name: "Vender selecionados" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saldo: 7,71 moedas")).toBeInTheDocument();
+    });
+    expect(routerMocks.refresh).toHaveBeenCalled();
   });
 
   it("mantém a roleta bloqueada quando o inventário não está disponível", () => {
