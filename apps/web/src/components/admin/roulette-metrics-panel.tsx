@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { formatBrl } from "@godawp/domain";
 import { MetricCard } from "@/components/admin/metric-card";
+import { RouletteRatesForm } from "@/components/admin/roulette-rates-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
@@ -222,32 +223,11 @@ export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) 
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <h2 className="text-base font-semibold tracking-tight">Premissas do cálculo</h2>
-          <p className="mt-1 text-sm text-muted">
-            Ajustáveis em <code className="text-muted-strong">platform_settings</code>. O custo do
-            prêmio sai do preço de tabela dividido pelo markup.
-          </p>
-        </CardHeader>
-        <CardContent className="grid gap-3 pt-0 sm:grid-cols-3">
-          <Liability
-            label="Markup sobre o custo"
-            value={formatBps(metrics.markupBps)}
-            detail={`Item comprado por ${formatBrl(100)} é vendido por ${formatBrl(100 + metrics.markupBps / 100)}`}
-          />
-          <Liability
-            label="Taxa do LivePix"
-            value={formatBps(metrics.feeBps)}
-            detail="Retida em cada Pix recebido"
-          />
-          <Liability
-            label="Recompra do prêmio"
-            value={formatBps(metrics.saleRateBps)}
-            detail="Moedas devolvidas quando o jogador revende"
-          />
-        </CardContent>
-      </Card>
+      <RouletteRatesForm
+        markupBps={metrics.markupBps}
+        feeBps={metrics.feeBps}
+        saleRateBps={metrics.saleRateBps}
+      />
     </div>
   );
 }

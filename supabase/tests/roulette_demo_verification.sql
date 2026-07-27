@@ -257,6 +257,20 @@ insert into public.products (
   '9a000000-0000-4000-8000-000000000002'
 );
 
+-- A second product so the repointing guard has somewhere to repoint to.
+insert into public.products (
+  id, substore_id, name, slug, minimum_price_cents, stock_quantity, status, created_by
+) values (
+  '9c000000-0000-4000-8000-000000000005',
+  '9c000000-0000-4000-8000-000000000002',
+  'Roulette Verification Rival',
+  'roulette-verification-rival',
+  15,
+  10,
+  'active',
+  '9a000000-0000-4000-8000-000000000002'
+);
+
 insert into public.guilds (id, discord_guild_id, owner_discord_id, name, status) values (
   '9c000000-0000-4000-8000-000000000004',
   '401264061101899820',
@@ -816,5 +830,78 @@ $$;
 
 reset role;
 select set_config('request.jwt.claims', '', true);
+
+-- The resale rounds half up, and a held prize keeps the product and the price
+-- it was won at no matter what happens to the catalog afterwards.
+do $$
+declare
+  v_held record;
+begin
+  -- Flooring turned the 15 cent prize into 7 cents while the store advertised
+  -- half of the value. Every rung of the real ladder is checked.
+  if private.roulette_sale_credit(15, 5000) <> 8 then
+    raise exception 'A 15 cent prize credits % cents', private.roulette_sale_credit(15, 5000);
+  end if;
+  if private.roulette_sale_credit(50, 5000) <> 25
+    or private.roulette_sale_credit(100, 5000) <> 50
+    or private.roulette_sale_credit(250, 5000) <> 125
+    or private.roulette_sale_credit(1000, 5000) <> 500 then
+    raise exception 'The resale no longer pays half of an even price';
+  end if;
+  -- 25 cents at 50% is 12,5 and has to round up, not down.
+  if private.roulette_sale_credit(25, 5000) <> 13 then
+    raise exception 'The resale rounds 12,5 cents down';
+  end if;
+  if private.roulette_sale_credit(0, 5000) <> 0 then
+    raise exception 'A worthless prize credits coins';
+  end if;
+
+  -- The administrator still holds the prize from the free spin.
+  select item.*
+  into v_held
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000002';
+
+  if v_held.product_id <> '9c000000-0000-4000-8000-000000000003'
+    or v_held.unit_value_cents <> 400 then
+    raise exception 'The spin did not freeze the product and the price: % at % cents',
+      v_held.product_id, v_held.unit_value_cents;
+  end if;
+
+  -- Editing the catalog price must not reprice what somebody already owns.
+  update public.products
+  set minimum_price_cents = 999
+  where id = '9c000000-0000-4000-8000-000000000003';
+
+  if (
+    select item.unit_value_cents
+    from public.roulette_demo_inventory as item
+    where item.auth_user_id = '9a000000-0000-4000-8000-000000000002'
+  ) <> 400 then
+    raise exception 'A catalog price edit reached a prize already won';
+  end if;
+
+  update public.products
+  set minimum_price_cents = 400
+  where id = '9c000000-0000-4000-8000-000000000003';
+end
+$$;
+
+-- Repointing a slot somebody holds units of has to be refused at commit.
+do $$
+begin
+  begin
+    update public.roulette_prize_products
+    set product_id = '9c000000-0000-4000-8000-000000000005'
+    where prize_key = 'premio_1';
+    -- The guard is a deferred constraint, so it only fires when the work is
+    -- about to become permanent.
+    set constraints all immediate;
+    raise exception 'A held slot was repointed at another product';
+  exception
+    when sqlstate 'P0014' then null;
+  end;
+end
+$$;
 
 rollback;
