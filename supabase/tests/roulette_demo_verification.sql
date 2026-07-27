@@ -546,16 +546,16 @@ begin
     select balance_cents
     from public.roulette_coin_balances
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 600 then
+  ) <> 500 then
     raise exception 'The player balance does not match the ledger path';
   end if;
 
-  -- purchase +500, spin -100, sale +200.
+  -- purchase +500, spin -100, sale +200, spin -100 (the redeemed prize).
   if (
     select count(*)
     from public.roulette_coin_entries
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 3 then
+  ) <> 4 then
     raise exception 'The coin ledger did not record every movement';
   end if;
 
@@ -563,7 +563,7 @@ begin
     select sum(amount_cents)
     from public.roulette_coin_entries
     where auth_user_id = '9a000000-0000-4000-8000-000000000001'
-  ) <> 600 then
+  ) <> 500 then
     raise exception 'The coin ledger does not add up to the balance';
   end if;
 
