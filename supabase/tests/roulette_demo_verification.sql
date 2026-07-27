@@ -523,8 +523,11 @@ begin
   if not v_first.claim_succeeded then
     raise exception 'The first redemption ticket lease was refused';
   end if;
-  if v_first.claimed_product_name <> 'Roulette Verification Prize' then
-    raise exception 'The lease returned the wrong prize';
+  if v_first.claimed_item_summary <> '2x Roulette Verification Prize' then
+    raise exception 'The lease summarised the bundle as %', v_first.claimed_item_summary;
+  end if;
+  if v_first.claimed_total_value_cents <> 800 then
+    raise exception 'The lease valued the bundle at %', v_first.claimed_total_value_cents;
   end if;
 
   select * into v_second
