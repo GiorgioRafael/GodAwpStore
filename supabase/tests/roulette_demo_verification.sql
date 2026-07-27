@@ -486,14 +486,6 @@ begin
     raise exception 'The redemption valued the bundle at %',
       v_redemption.redeemed_total_value_cents;
   end if;
-  if (
-    select count(*)
-    from public.roulette_redemption_items
-    where redemption_id = v_redemption.created_redemption_id
-  ) <> 1 then
-    raise exception 'The redemption did not record one line per prize';
-  end if;
-
   -- The prizes left the inventory, so they cannot be redeemed again.
   begin
     perform * from public.redeem_roulette_prizes(
@@ -610,6 +602,25 @@ begin
     where auth_user_id = '9a000000-0000-4000-8000-000000000002'
   ) then
     raise exception 'The administrator spin opened a coin purchase';
+  end if;
+
+  -- One redemption line per prize, carrying both units.
+  if (
+    select count(*)
+    from public.roulette_redemption_items as line
+    join public.roulette_redemptions as redemption on redemption.id = line.redemption_id
+    where redemption.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  ) <> 1 then
+    raise exception 'The redemption did not record one line per prize';
+  end if;
+
+  if (
+    select sum(line.quantity)
+    from public.roulette_redemption_items as line
+    join public.roulette_redemptions as redemption on redemption.id = line.redemption_id
+    where redemption.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+  ) <> 2 then
+    raise exception 'The redemption lines do not add up to the redeemed units';
   end if;
 end
 $$;
