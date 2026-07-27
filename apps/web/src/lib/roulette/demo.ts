@@ -71,7 +71,7 @@ const MAXIMUM_WHEEL_LABEL_LENGTH = 14;
 /** One coin is R$ 1,00. Balances and prize values are kept in coin cents. */
 export const COIN_CENTS = 100;
 export const SPIN_COST_CENTS = COIN_CENTS;
-export const MINIMUM_COIN_PURCHASE = 5;
+export const MINIMUM_COIN_PURCHASE = 1;
 export const MAXIMUM_COIN_PURCHASE = 100;
 
 export function formatCoins(cents: number) {

@@ -63,25 +63,26 @@ describe("RouletteExperience", () => {
     );
 
     expect(screen.getByRole("button", { name: "Sem moedas suficientes" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Comprar por R\$ 5,00/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Comprar por R\$ 1,00/ })).toBeEnabled();
     expect(actionMocks.spinRoulette).not.toHaveBeenCalled();
   });
 
-  it("não deixa comprar abaixo do mínimo de cinco moedas", async () => {
+  it("não deixa comprar abaixo de uma moeda", async () => {
     const user = userEvent.setup();
 
     render(
       <RouletteExperience prizes={prizes} initialInventory={[]} initialBalanceCents={0} />,
     );
 
-    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("5");
+    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("1");
     const less = screen.getByRole("button", { name: "Menos uma moeda" });
     expect(less).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Mais uma moeda" }));
-    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("6");
+    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("2");
     await user.click(screen.getByRole("button", { name: "Menos uma moeda" }));
-    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("5");
+    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("1");
+    expect(less).toBeDisabled();
   });
 
   it("gasta uma moeda por giro e atualiza o saldo", async () => {
@@ -149,14 +150,14 @@ describe("RouletteExperience", () => {
 
     await user.click(screen.getByRole("button", { name: "Mais uma moeda" }));
     await user.click(screen.getByRole("button", { name: "Mais uma moeda" }));
-    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("7");
+    expect(screen.getByTestId("coin-quantity")).toHaveTextContent("3");
 
-    await user.click(screen.getByRole("button", { name: /Comprar por R\$ 7,00/ }));
+    await user.click(screen.getByRole("button", { name: /Comprar por R\$ 3,00/ }));
 
     await waitFor(() => {
       expect(screen.getByText("Aguardando a confirmação do Pix")).toBeInTheDocument();
     });
-    expect(actionMocks.startRouletteCoinPurchase).toHaveBeenCalledWith(7);
+    expect(actionMocks.startRouletteCoinPurchase).toHaveBeenCalledWith(3);
     expect(screen.getByRole("link", { name: "Abrir o Pix" })).toHaveAttribute(
       "href",
       "https://checkout.livepix.gg/abc",
