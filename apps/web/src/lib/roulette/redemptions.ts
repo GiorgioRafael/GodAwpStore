@@ -96,9 +96,24 @@ export async function syncRouletteRedemptionTicketControls(redemptionId: string)
     },
     { existingChannelId: data.discord_ticket_channel_id, refuseCreate: true },
   );
-  return ticket.synchronized
-    ? { synchronized: true as const, channelId: ticket.channelId }
-    : { synchronized: false as const, reason: ticket.reason };
+  if (ticket.synchronized) {
+    return { synchronized: true as const, channelId: ticket.channelId };
+  }
+
+  // The channel is positively gone — we listed the guild and it was not there.
+  // Leaving the row saying "open" is a dead end: the panel would keep offering
+  // a refresh that can never work. Marking it failed brings back "Reabrir
+  // ticket", which opens a fresh one with the buttons.
+  if (ticket.reason === "channel-gone") {
+    await client
+      .rpc("fail_roulette_redemption_ticket", {
+        p_redemption_id: redemptionId,
+        p_error: "O canal do ticket não existe mais no Discord.",
+      })
+      .then(() => undefined, () => undefined);
+  }
+
+  return { synchronized: false as const, reason: ticket.reason };
 }
 
 /**

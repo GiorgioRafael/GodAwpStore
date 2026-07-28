@@ -86,7 +86,7 @@ export async function retryRouletteRedemptionTicketAction(
 const SYNC_FAILURE: Record<string, string> = {
   "no-channel": "Este resgate ainda não tem um ticket aberto.",
   "channel-gone":
-    "O canal deste ticket não existe mais no Discord. Entregue ou cancele o resgate pelo painel.",
+    "O canal deste ticket não existe mais no Discord. Use “Reabrir ticket” para criar um novo, já com os botões.",
   "welcome-missing":
     "A mensagem inicial do ticket não foi encontrada — pode ter sido apagada. Use os botões do painel para concluir.",
 };
