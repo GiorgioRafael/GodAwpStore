@@ -73,7 +73,17 @@ function ticketChannelName(itemSummary: string, redemptionId: string) {
  */
 export async function ensureRouletteRedemptionTicket(
   input: RouletteRedemptionTicketInput,
-  options: { fetcher?: typeof fetch } = {},
+  options: {
+    fetcher?: typeof fetch;
+    /** The channel already stored for this redemption, when there is one. */
+    existingChannelId?: string | null;
+    /**
+     * Refuses to open a new channel. The delivery button is bound to the stored
+     * channel, so a caller that only meant to refresh the buttons must never
+     * end up creating a second one.
+     */
+    refuseCreate?: boolean;
+  } = {},
 ) {
   if (!UUID_PATTERN.test(input.redemptionId)) {
     throw new Error("ID do resgate inválido.");
@@ -106,10 +116,28 @@ export async function ensureRouletteRedemptionTicket(
     {},
     fetcher,
   );
-  let channel = channels.find(
-    (candidate) => candidate.type === 0 && candidate.topic?.startsWith(marker),
-  );
+  // The stored id wins over the marker: an edited topic must not make the
+  // lookup miss and open a parallel ticket beside the live one.
+  let channel =
+    channels.find(
+      (candidate) =>
+        candidate.type === 0 &&
+        options.existingChannelId != null &&
+        candidate.id === options.existingChannelId,
+    ) ??
+    channels.find(
+      (candidate) => candidate.type === 0 && candidate.topic?.startsWith(marker),
+    );
   let created = false;
+
+  if (!channel && options.refuseCreate) {
+    return {
+      synchronized: false as const,
+      reason: options.existingChannelId
+        ? ("channel-gone" as const)
+        : ("no-channel" as const),
+    };
+  }
 
   if (!channel) {
     channel = await discordBotJson<DiscordChannel>(
@@ -170,10 +198,21 @@ export async function ensureRouletteRedemptionTicket(
   } else {
     // A ticket opened before the buttons existed still has to get them, and a
     // label change in the bot settings has to reach tickets already open.
-    await synchronizeControls(channel.id, input, components, botUserId, fetcher);
+    const patched = await synchronizeControls(
+      channel.id,
+      input,
+      components,
+      botUserId,
+      fetcher,
+    );
+    if (!patched) {
+      // Saying "updated" here would send the operator away believing the
+      // buttons are there when the welcome message could not be found.
+      return { synchronized: false as const, reason: "welcome-missing" as const };
+    }
   }
 
-  return { channelId: channel.id, created };
+  return { synchronized: true as const, channelId: channel.id, created };
 }
 
 function buildWelcomeEmbed(input: RouletteRedemptionTicketInput) {
@@ -204,7 +243,7 @@ async function synchronizeControls(
   components: ReturnType<typeof buildRouletteTicketControlComponents>,
   botUserId: string,
   fetcher: typeof fetch,
-) {
+): Promise<boolean> {
   const marker = rouletteWelcomeMessageMarker(input.redemptionId);
   const legacyMarker = `Resgate ${input.redemptionId.slice(0, 8)}`;
   let before: string | undefined;
@@ -217,7 +256,7 @@ async function synchronizeControls(
       {},
       fetcher,
     );
-    if (!messages.length) return;
+    if (!messages.length) return false;
 
     const welcome = messages.find(
       (message) =>
@@ -227,7 +266,7 @@ async function synchronizeControls(
         ),
     );
     if (welcome) {
-      if (JSON.stringify(welcome.components ?? []) === JSON.stringify(components)) return;
+      if (JSON.stringify(welcome.components ?? []) === JSON.stringify(components)) return true;
       await discordBotJson(
         `/channels/${channelId}/messages/${welcome.id}`,
         {
@@ -236,10 +275,11 @@ async function synchronizeControls(
         },
         fetcher,
       );
-      return;
+      return true;
     }
 
     before = messages[messages.length - 1]?.id;
-    if (!before) return;
+    if (!before) return false;
   }
+  return false;
 }

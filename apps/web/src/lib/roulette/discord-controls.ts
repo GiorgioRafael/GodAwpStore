@@ -308,6 +308,15 @@ export async function completeRouletteRedemptionDelivery(
       await updateOriginalInteractionSafely(raw, message.deliveryAlreadySentText, fetcher);
       return { status: "already_sent" as const };
     }
+    if (error?.code === "P0019") {
+      // Cancelled is not "already delivered": the prize went back to the player.
+      await updateOriginalInteractionSafely(
+        raw,
+        "Este resgate foi cancelado e o prêmio voltou para o inventário do jogador.",
+        fetcher,
+      );
+      return { status: "cancelled" as const };
+    }
     if (error || !row) {
       if (error) {
         console.error(`[roleta:ticket:entrega] ${error.code ?? "sem código"} ${error.message}`);
@@ -316,13 +325,24 @@ export async function completeRouletteRedemptionDelivery(
       return { status: "unavailable" as const };
     }
 
-    await postChannelMessageSafely(
+    // The redemption is already settled at this point — stock is out of the
+    // catalog and the row says delivered. If the player was never told, the
+    // operator has to hear it here, not read "entrega concluída" and walk away.
+    const announced = await postChannelMessageSafely(
       context.channelId,
       buildRouletteDeliveryMessage(row.player_discord_id, row.item_summary, message.deliveryMessageText),
       `gwstore-roulette-delivered:${interaction.redemptionId}`,
       fetcher,
       row.player_discord_id,
     );
+    if (!announced) {
+      await updateOriginalInteractionSafely(
+        raw,
+        "Entrega registrada, mas o aviso não foi postado no ticket. Avise o jogador por aqui.",
+        fetcher,
+      );
+      return { status: "settled_unannounced" as const, playerDiscordId: row.player_discord_id };
+    }
     await updateOriginalInteractionSafely(raw, message.deliverySuccessText, fetcher);
     return { status: "sent" as const, playerDiscordId: row.player_discord_id };
   } catch (error) {
@@ -458,9 +478,9 @@ async function postChannelMessageSafely(
   nonceSeed: string,
   fetcher: typeof fetch,
   mentionUserId?: string,
-) {
+): Promise<boolean> {
   try {
-    if (!SNOWFLAKE_PATTERN.test(channelId)) return;
+    if (!SNOWFLAKE_PATTERN.test(channelId)) return false;
     await discordBotJson(
       `/channels/${channelId}/messages`,
       {
@@ -476,9 +496,11 @@ async function postChannelMessageSafely(
       },
       fetcher,
     );
+    return true;
   } catch (error) {
     const detail = error instanceof Error ? error.message : "erro desconhecido";
     console.error(`[roleta:ticket:mensagem] ${detail}`);
+    return false;
   }
 }
 

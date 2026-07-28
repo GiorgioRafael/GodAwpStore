@@ -25,13 +25,19 @@ export async function openRouletteRedemptionTicket(redemptionId: string) {
   }
 
   try {
-    const ticket = await ensureRouletteRedemptionTicket({
-      redemptionId: data.claimed_redemption_id,
-      guildDiscordId: data.claimed_guild_discord_id,
-      playerDiscordId: data.claimed_discord_user_id,
-      itemSummary: data.claimed_item_summary,
-      totalValueCents: data.claimed_total_value_cents,
-    });
+    const ticket = await ensureRouletteRedemptionTicket(
+      {
+        redemptionId: data.claimed_redemption_id,
+        guildDiscordId: data.claimed_guild_discord_id,
+        playerDiscordId: data.claimed_discord_user_id,
+        itemSummary: data.claimed_item_summary,
+        totalValueCents: data.claimed_total_value_cents,
+      },
+      { existingChannelId: data.claimed_channel_id },
+    );
+    // This path is allowed to create, so a refusal is impossible here; the
+    // lease still has to be released rather than left claimed.
+    if (!ticket.synchronized) throw new Error("O ticket do resgate não pôde ser preparado.");
     const { error: completeError } = await client.rpc(
       "complete_roulette_redemption_ticket",
       { p_redemption_id: redemptionId, p_channel_id: ticket.channelId },
@@ -76,14 +82,23 @@ export async function syncRouletteRedemptionTicketControls(redemptionId: string)
     .map((line) => `${line.quantity}x ${line.product_name}`)
     .join("\n");
 
-  const ticket = await ensureRouletteRedemptionTicket({
-    redemptionId: data.id,
-    guildDiscordId: data.guilds.discord_guild_id,
-    playerDiscordId: data.discord_user_id,
-    itemSummary: itemSummary || "Prêmio da roleta",
-    totalValueCents: data.total_value_cents,
-  });
-  return { synchronized: true as const, channelId: ticket.channelId };
+  // Never create from here. The delivery button is bound to the stored channel
+  // — complete_roulette_redemption_discord_delivery refuses any other with
+  // P0017 — so a sync that opened a fresh channel would hand the player and the
+  // staff a button that can never work, and report success while doing it.
+  const ticket = await ensureRouletteRedemptionTicket(
+    {
+      redemptionId: data.id,
+      guildDiscordId: data.guilds.discord_guild_id,
+      playerDiscordId: data.discord_user_id,
+      itemSummary: itemSummary || "Prêmio da roleta",
+      totalValueCents: data.total_value_cents,
+    },
+    { existingChannelId: data.discord_ticket_channel_id, refuseCreate: true },
+  );
+  return ticket.synchronized
+    ? { synchronized: true as const, channelId: ticket.channelId }
+    : { synchronized: false as const, reason: ticket.reason };
 }
 
 /**

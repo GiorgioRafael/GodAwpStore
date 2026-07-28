@@ -668,6 +668,7 @@ type RouletteRedemptionRow = {
   game_nickname_at: string | null;
   delivered_at: string | null;
   delivered_by: string | null;
+  delivered_by_discord_user_id: string | null;
   created_at: string;
   updated_at: string;
 };

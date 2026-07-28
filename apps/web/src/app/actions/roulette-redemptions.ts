@@ -79,6 +79,18 @@ export async function retryRouletteRedemptionTicketAction(
   }
 }
 
+/**
+ * Why a refresh could not happen. Never "atualizado": the operator would walk
+ * away believing the buttons are in the ticket when they are not.
+ */
+const SYNC_FAILURE: Record<string, string> = {
+  "no-channel": "Este resgate ainda não tem um ticket aberto.",
+  "channel-gone":
+    "O canal deste ticket não existe mais no Discord. Entregue ou cancele o resgate pelo painel.",
+  "welcome-missing":
+    "A mensagem inicial do ticket não foi encontrada — pode ter sido apagada. Use os botões do painel para concluir.",
+};
+
 /** Re-posts the ticket buttons on a redemption whose ticket is already open. */
 export async function syncRouletteRedemptionControlsAction(
   _previousState: AdminActionState,
@@ -93,9 +105,10 @@ export async function syncRouletteRedemptionControlsAction(
     await requireAdmin();
     const result = await syncRouletteRedemptionTicketControls(redemptionId);
     revalidatePath("/resgates");
-    return result.synchronized
-      ? { ok: true, message: "Botões do ticket atualizados no Discord." }
-      : { ok: false, message: "Este resgate ainda não tem um ticket aberto." };
+    if (result.synchronized) {
+      return { ok: true, message: "Botões do ticket atualizados no Discord." };
+    }
+    return { ok: false, message: SYNC_FAILURE[result.reason ?? "no-channel"] };
   } catch (error) {
     const message = error instanceof Error ? error.message : "erro desconhecido";
     console.error(`[admin:resgate:controles] ${message}`);

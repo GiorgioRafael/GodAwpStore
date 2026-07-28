@@ -283,3 +283,45 @@ function stubFetcher() {
     return Response.json({ id: "900000000000000020" });
   }) as unknown as typeof fetch;
 }
+
+describe("defeitos que a revisão encontrou", () => {
+  it("avisa quando a entrega foi registrada mas o aviso não foi postado", async () => {
+    // O resgate já está liquidado neste ponto — o estoque saiu do catálogo. Dizer
+    // "entrega concluída" mandaria o operador embora sem o jogador saber de nada.
+    rpc.mockResolvedValue({
+      data: [
+        {
+          settled_redemption_id: REDEMPTION_ID,
+          settled_status: "delivered",
+          player_discord_id: PLAYER_ID,
+          item_summary: "1x Bamboo Seed",
+          delivered_nickname: null,
+        },
+      ],
+      error: null,
+    });
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/users/@me")) return Response.json({ id: "900000000000000099", bot: true });
+      if (url.includes("/guilds/")) return Response.json({ id: GUILD_ID });
+      // O Discord recusa a mensagem no canal.
+      if (url.includes("/messages") && (init?.method ?? "GET") === "POST") {
+        return new Response("{}", { status: 403 });
+      }
+      return Response.json({ id: "900000000000000020" });
+    }) as unknown as typeof fetch;
+
+    const result = await completeRouletteRedemptionDelivery(interaction(), SETTINGS, { fetcher });
+
+    expect(result.status).toBe("settled_unannounced");
+  });
+
+  it("distingue um resgate cancelado de um já entregue", async () => {
+    rpc.mockResolvedValue({ data: null, error: { code: "P0019", message: "cancelled" } });
+    const fetcher = stubFetcher();
+
+    const result = await completeRouletteRedemptionDelivery(interaction(), SETTINGS, { fetcher });
+
+    expect(result.status).toBe("cancelled");
+  });
+});

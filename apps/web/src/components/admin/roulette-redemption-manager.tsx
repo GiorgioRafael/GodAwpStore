@@ -67,12 +67,12 @@ export function RouletteRedemptionManager({
     syncRouletteRedemptionControlsAction,
     { ok: true, message: "" },
   );
-  const feedback = settleState.message || retryState.message || syncState.message;
-  const feedbackOk = settleState.message
-    ? settleState.ok
-    : retryState.message
-      ? retryState.ok
-      : syncState.ok;
+  // Each action keeps its own line. Folding three into one showed the result of
+  // a settle as though it had come from the button refresh the operator just
+  // pressed, because a state that never ran still carries the previous message.
+  const feedbacks = [settleState, retryState, syncState].filter(
+    (state) => state.message,
+  );
 
   if (!redemptions.length) {
     return (
@@ -86,18 +86,19 @@ export function RouletteRedemptionManager({
 
   return (
     <div className="space-y-4">
-      {feedback ? (
+      {feedbacks.map((state) => (
         <p
+          key={state.message}
           role="status"
           className={`rounded-xl border px-4 py-3 text-sm ${
-            feedbackOk
+            state.ok
               ? "border-emerald-400/25 bg-emerald-400/[0.07] text-emerald-200"
               : "border-rose-400/25 bg-rose-400/[0.07] text-rose-200"
           }`}
         >
-          {feedback}
+          {state.message}
         </p>
-      ) : null}
+      ))}
 
       <TableShell
         caption="Resgates da roleta"
