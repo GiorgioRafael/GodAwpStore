@@ -1,6 +1,7 @@
 import { after } from "next/server";
 
 import { ensurePaidOrderTicket } from "@/lib/bot/discord-ticket";
+import { reconcileLatePaidOrderTickets } from "@/lib/bot/late-payment-ticket";
 import { synchronizeDiscordCustomerRankRole } from "@/lib/bot/discord-customer-rank";
 import {
   drainDiscordStorefrontSyncQueue,
@@ -53,7 +54,23 @@ export async function POST(request: Request) {
     }
 
     if (!["paid", "processing", "delivered"].includes(confirmation.orderStatus)) {
-      return Response.json({ received: true, ticket: "not_applicable" });
+      // The money landed on an order the deadline had already cancelled. This
+      // used to return 200 and drop it: the buyer was charged, got no item and
+      // had no channel to ask in. Whether they get the item or a refund is the
+      // team's call — but they get somewhere to ask, always.
+      after(async () => {
+        try {
+          const recovery = await reconcileLatePaidOrderTickets({ limit: 5 });
+          if (recovery.failed > 0) {
+            console.error(
+              `[pagamento-atrasado] ${recovery.failed} pedido(s) sem canal de recuperação.`,
+            );
+          }
+        } catch (error) {
+          logWebhookError("late-payment", error);
+        }
+      });
+      return Response.json({ received: true, ticket: "late_payment_recovery" });
     }
 
     try {

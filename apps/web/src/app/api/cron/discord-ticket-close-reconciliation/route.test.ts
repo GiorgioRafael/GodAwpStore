@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   reconcileGiveaways: vi.fn(),
   reconcileLeadRecoveryOffers: vi.fn(),
   reconcileRouletteRedemptionTickets: vi.fn(),
+  reconcileLatePaidOrderTickets: vi.fn(),
 }));
 
 vi.mock("@/lib/bot/discord-ticket-close-reconciliation", () => ({
@@ -25,6 +26,9 @@ vi.mock("@/lib/bot/lead-recovery", () => ({
   reconcileLeadRecoveryOffers: mocks.reconcileLeadRecoveryOffers,
 }));
 
+vi.mock("@/lib/bot/late-payment-ticket", () => ({
+  reconcileLatePaidOrderTickets: mocks.reconcileLatePaidOrderTickets,
+}));
 vi.mock("@/lib/roulette/redemptions", () => ({
   reconcileRouletteRedemptionTickets: mocks.reconcileRouletteRedemptionTickets,
 }));
@@ -70,6 +74,9 @@ const leadRecoveryResult = {
 
 const rouletteRedemptionResult = { attempted: 1, opened: 1, failed: 0 };
 
+// Compradores que pagaram depois do prazo e ficaram sem canal para perguntar.
+const latePaymentResult = { pending: 2, opened: 2, failed: 0 };
+
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-secret-value");
   mocks.reconcileDiscordTicketCloseClaims.mockResolvedValue(result);
@@ -79,6 +86,7 @@ beforeEach(() => {
   mocks.reconcileGiveaways.mockResolvedValue(giveawayResult);
   mocks.reconcileLeadRecoveryOffers.mockResolvedValue(leadRecoveryResult);
   mocks.reconcileRouletteRedemptionTickets.mockResolvedValue(rouletteRedemptionResult);
+  mocks.reconcileLatePaidOrderTickets.mockResolvedValue(latePaymentResult);
 });
 
 afterEach(() => {
@@ -104,6 +112,7 @@ describe("Discord ticket close reconciliation cron", () => {
       expect(mocks.reconcileDeliveredDiscordTicketAutoCloses).not.toHaveBeenCalled();
       expect(mocks.reconcileGiveaways).not.toHaveBeenCalled();
       expect(mocks.reconcileLeadRecoveryOffers).not.toHaveBeenCalled();
+      expect(mocks.reconcileLatePaidOrderTickets).not.toHaveBeenCalled();
     },
   );
 
@@ -124,11 +133,14 @@ describe("Discord ticket close reconciliation cron", () => {
       giveaways: giveawayResult,
       leadRecovery: leadRecoveryResult,
       rouletteRedemptions: rouletteRedemptionResult,
+      latePayments: latePaymentResult,
     });
     expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
     expect(mocks.reconcileDeliveredDiscordTicketAutoCloses).toHaveBeenCalledOnce();
     expect(mocks.reconcileGiveaways).toHaveBeenCalledOnce();
     expect(mocks.reconcileLeadRecoveryOffers).toHaveBeenCalledOnce();
+    // A cada cinco minutos, ninguém que pagou fica sem canal.
+    expect(mocks.reconcileLatePaidOrderTickets).toHaveBeenCalledOnce();
   });
 
   it("retorna 503 sem expor detalhes internos quando o job falha", async () => {

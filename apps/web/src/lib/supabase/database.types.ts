@@ -664,6 +664,8 @@ type RouletteRedemptionRow = {
   discord_ticket_claim_token: string | null;
   discord_ticket_claimed_at: string | null;
   discord_ticket_error: string | null;
+  game_nickname: string | null;
+  game_nickname_at: string | null;
   delivered_at: string | null;
   delivered_by: string | null;
   created_at: string;
@@ -1709,11 +1711,53 @@ export type Database = {
         Args: { p_redemption_id: string; p_error: string };
         Returns: undefined;
       };
+      list_late_paid_orders_without_ticket: {
+        Args: { p_limit?: number };
+        Returns: {
+          late_order_id: string;
+          late_guild_discord_id: string;
+          late_buyer_discord_id: string;
+          late_product_name: string;
+          late_quantity: number;
+          late_amount_cents: number;
+          late_detected_at: string;
+        }[];
+      };
+      record_late_payment_ticket: {
+        Args: { p_order_id: string; p_channel_id: string };
+        Returns: { recorded_order_id: string; recorded_channel_id: string }[];
+      };
       admin_settle_roulette_redemption: {
         Args: { p_redemption_id: string; p_status: string };
         Returns: {
           settled_redemption_id: string;
           settled_status: "pending" | "delivered" | "cancelled";
+        }[];
+      };
+      complete_roulette_redemption_discord_delivery: {
+        Args: {
+          p_redemption_id: string;
+          p_admin_discord_id: string;
+          p_channel_id: string;
+        };
+        Returns: {
+          settled_redemption_id: string;
+          settled_status: "pending" | "delivered" | "cancelled";
+          player_discord_id: string;
+          item_summary: string;
+          delivered_nickname: string | null;
+        }[];
+      };
+      submit_roulette_redemption_nickname: {
+        Args: {
+          p_redemption_id: string;
+          p_player_discord_id: string;
+          p_nickname: string;
+        };
+        Returns: {
+          updated_redemption_id: string;
+          updated_nickname: string;
+          updated_player_discord_id: string;
         }[];
       };
       admin_roulette_metrics: {

@@ -51,6 +51,42 @@ export async function openRouletteRedemptionTicket(redemptionId: string) {
 }
 
 /**
+ * Brings an already-open ticket's buttons up to date. The lease refuses to
+ * re-claim an open ticket, so a redemption opened before the controls existed
+ * — or one whose button labels changed in the bot settings — has no other way
+ * back. It never touches the redemption state.
+ */
+export async function syncRouletteRedemptionTicketControls(redemptionId: string) {
+  const client = createAdminSupabaseClient();
+  if (!client) throw new Error("Supabase server-only não configurado.");
+
+  const { data, error } = await client
+    .from("roulette_redemptions")
+    .select(
+      "id,discord_user_id,total_value_cents,discord_ticket_channel_id,guilds(discord_guild_id),roulette_redemption_items(product_name,quantity)",
+    )
+    .eq("id", redemptionId)
+    .maybeSingle();
+  if (error) throw new Error("Falha ao ler o resgate.");
+  if (!data?.discord_ticket_channel_id || !data.guilds?.discord_guild_id) {
+    return { synchronized: false as const };
+  }
+
+  const itemSummary = (data.roulette_redemption_items ?? [])
+    .map((line) => `${line.quantity}x ${line.product_name}`)
+    .join("\n");
+
+  const ticket = await ensureRouletteRedemptionTicket({
+    redemptionId: data.id,
+    guildDiscordId: data.guilds.discord_guild_id,
+    playerDiscordId: data.discord_user_id,
+    itemSummary: itemSummary || "Prêmio da roleta",
+    totalValueCents: data.total_value_cents,
+  });
+  return { synchronized: true as const, channelId: ticket.channelId };
+}
+
+/**
  * Retries every redemption whose ticket never opened. Called by the same cron
  * that reconciles the order and giveaway tickets.
  */

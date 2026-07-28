@@ -45,6 +45,14 @@ import {
   createNativeDiscordTicketDeliveryResponse,
   parseNativeDiscordTicketDeliveryInteraction,
 } from "@/lib/bot/discord-ticket-delivery";
+import {
+  completeRouletteNicknameSubmission,
+  completeRouletteRedemptionDelivery,
+  createNativeRouletteDeliveryResponse,
+  createNativeRouletteNicknameResponse,
+  parseNativeRouletteDeliveryInteraction,
+  parseNativeRouletteNicknameInteraction,
+} from "@/lib/roulette/discord-controls";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import {
   loadBotMessageCustomization,
@@ -83,6 +91,7 @@ export async function POST(request: Request) {
         (
           native.scope === "ticket_close" ||
           native.scope === "ticket_delivery" ||
+          native.scope === "roulette_delivery" ||
           native.scope === "upsell" ||
           native.scope === "lead_recovery" ||
           (
@@ -163,6 +172,49 @@ export async function POST(request: Request) {
           } catch (error) {
             const message = error instanceof Error ? error.message : "erro desconhecido";
             console.error(`[discord-game-nickname] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
+      }
+
+      if (native.scope === "roulette_delivery") {
+        const settings = await loadBotRuntimeSettingsQuickly();
+        const delivery = createNativeRouletteDeliveryResponse(native.raw, settings);
+        if (delivery.authorized) {
+          after(async () => {
+            try {
+              await completeRouletteRedemptionDelivery(
+                native.raw,
+                await loadBotRuntimeSettings(),
+              );
+            } catch (error) {
+              const message = error instanceof Error ? error.message : "erro desconhecido";
+              console.error(`[roleta:ticket:entrega] ${message}`);
+            }
+          });
+        }
+        return Response.json(delivery.response);
+      }
+
+      if (native.scope === "roulette_nickname") {
+        if (native.interaction.kind === "open") {
+          return Response.json(
+            await createNativeRouletteNicknameResponse(
+              native.interaction.redemptionId,
+              loadBotMessageCustomization(),
+            ),
+          );
+        }
+
+        after(async () => {
+          try {
+            await completeRouletteNicknameSubmission(
+              native.raw,
+              await loadBotMessageCustomization(),
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[roleta:ticket:nick] ${message}`);
           }
         });
         return Response.json(native.interaction.response);
@@ -406,6 +458,26 @@ async function readNativeDiscordInteraction(request: Request) {
   const gameNickname = parseNativeDiscordGameNicknameInteraction(raw);
   if (gameNickname) {
     return { body, raw, scope: "game_nickname" as const, interaction: gameNickname };
+  }
+
+  const rouletteDelivery = parseNativeRouletteDeliveryInteraction(raw);
+  if (rouletteDelivery) {
+    return {
+      body,
+      raw,
+      scope: "roulette_delivery" as const,
+      interaction: rouletteDelivery,
+    };
+  }
+
+  const rouletteNickname = parseNativeRouletteNicknameInteraction(raw);
+  if (rouletteNickname) {
+    return {
+      body,
+      raw,
+      scope: "roulette_nickname" as const,
+      interaction: rouletteNickname,
+    };
   }
 
   const giveawayParticipation = parseNativeDiscordGiveawayParticipation(raw);

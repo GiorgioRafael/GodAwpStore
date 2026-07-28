@@ -2,6 +2,7 @@ import { reconcileDeliveredDiscordTicketAutoCloses } from "@/lib/bot/discord-tic
 import { reconcileDiscordTicketCloseClaims } from "@/lib/bot/discord-ticket-close-reconciliation";
 import { reconcileGiveaways } from "@/lib/giveaways/reconciliation";
 import { reconcileLeadRecoveryOffers } from "@/lib/bot/lead-recovery";
+import { reconcileLatePaidOrderTickets } from "@/lib/bot/late-payment-ticket";
 import { reconcileRouletteRedemptionTickets } from "@/lib/roulette/redemptions";
 
 export const runtime = "nodejs";
@@ -18,13 +19,21 @@ export async function GET(request: Request) {
   }
 
   try {
-    const [tickets, deliveredTicketAutoClose, giveaways, leadRecovery, rouletteRedemptions] =
+    const [
+      tickets,
+      deliveredTicketAutoClose,
+      giveaways,
+      leadRecovery,
+      rouletteRedemptions,
+      latePayments,
+    ] =
       await Promise.all([
         reconcileDiscordTicketCloseClaims(),
         reconcileDeliveredDiscordTicketAutoCloses(),
         reconcileGiveaways(),
         reconcileLeadRecoveryOffers(),
         reconcileRouletteRedemptionTickets(),
+        reconcileLatePaidOrderTickets(),
       ]);
     return Response.json(
       {
@@ -34,6 +43,7 @@ export async function GET(request: Request) {
         giveaways,
         leadRecovery,
         rouletteRedemptions,
+        latePayments,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

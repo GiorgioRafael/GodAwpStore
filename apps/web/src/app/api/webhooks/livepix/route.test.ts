@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   requestDiscordStorefrontSync: vi.fn(),
   drainDiscordStorefrontSyncQueue: vi.fn(),
   reconcileRouletteSpin: vi.fn(),
+  reconcileLatePaidOrderTickets: vi.fn(),
   afterTasks: [] as Array<() => void | Promise<void>>,
 }));
 
@@ -29,6 +30,9 @@ vi.mock("@/lib/livepix/runtime", () => ({
 }));
 vi.mock("@/lib/bot/discord-ticket", () => ({
   ensurePaidOrderTicket: mocks.ensurePaidOrderTicket,
+}));
+vi.mock("@/lib/bot/late-payment-ticket", () => ({
+  reconcileLatePaidOrderTickets: mocks.reconcileLatePaidOrderTickets,
 }));
 vi.mock("@/lib/bot/discord-customer-rank", () => ({
   synchronizeDiscordCustomerRankRole: mocks.synchronizeDiscordCustomerRankRole,
@@ -121,12 +125,19 @@ describe("LivePix webhook route", () => {
     expect(mocks.drainDiscordStorefrontSyncQueue).toHaveBeenCalledOnce();
   });
 
-  it("aceita o webhook tardio sem abrir ticket para o pedido cancelado", async () => {
+  it("abre um canal de recuperação quando o dinheiro cai depois do prazo", async () => {
+    // Este caso já respondeu `not_applicable` e não fez mais nada: o comprador
+    // era cobrado, não recebia o item e não tinha onde perguntar.
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
     mocks.reconcilePayment.mockResolvedValue({
       orderId,
       orderStatus: "cancelled",
       firstConfirmation: true,
+    });
+    mocks.reconcileLatePaidOrderTickets.mockResolvedValue({
+      pending: 1,
+      opened: 1,
+      failed: 0,
     });
 
     const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
@@ -134,12 +145,15 @@ describe("LivePix webhook route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       received: true,
-      ticket: "not_applicable",
+      ticket: "late_payment_recovery",
     });
+    // O pedido continua cancelado: entregar ou devolver é decisão da equipe.
     expect(mocks.claimTicket).not.toHaveBeenCalled();
     expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
     expect(mocks.requestDiscordStorefrontSync).not.toHaveBeenCalled();
-    expect(mocks.drainDiscordStorefrontSyncQueue).not.toHaveBeenCalled();
+
+    for (const task of mocks.afterTasks) await task();
+    expect(mocks.reconcileLatePaidOrderTickets).toHaveBeenCalled();
   });
 
   it("continua abrindo o ticket quando só a sincronização do cargo falha", async () => {

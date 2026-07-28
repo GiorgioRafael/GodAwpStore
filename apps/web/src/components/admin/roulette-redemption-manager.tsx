@@ -6,6 +6,7 @@ import { useActionState } from "react";
 import {
   retryRouletteRedemptionTicketAction,
   settleRouletteRedemptionAction,
+  syncRouletteRedemptionControlsAction,
 } from "@/app/actions/roulette-redemptions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ export type AdminRouletteRedemption = {
   ticketStatus: "pending" | "creating" | "open" | "failed";
   ticketChannelId: string | null;
   ticketError: string | null;
+  gameNickname: string | null;
   guildDiscordId: string | null;
   createdAt: string;
 };
@@ -61,8 +63,16 @@ export function RouletteRedemptionManager({
     retryRouletteRedemptionTicketAction,
     { ok: true, message: "" },
   );
-  const feedback = settleState.message || retryState.message;
-  const feedbackOk = settleState.message ? settleState.ok : retryState.ok;
+  const [syncState, syncControls, syncPending] = useActionState(
+    syncRouletteRedemptionControlsAction,
+    { ok: true, message: "" },
+  );
+  const feedback = settleState.message || retryState.message || syncState.message;
+  const feedbackOk = settleState.message
+    ? settleState.ok
+    : retryState.message
+      ? retryState.ok
+      : syncState.ok;
 
   if (!redemptions.length) {
     return (
@@ -126,6 +136,13 @@ export function RouletteRedemptionManager({
             </td>
             <td className="px-5 py-4 text-sm text-muted-strong">
               <code className="text-xs">{redemption.discordUserId}</code>
+              {redemption.gameNickname ? (
+                <p className="mt-1 text-xs text-muted">
+                  no jogo: <code className="text-xs">{redemption.gameNickname}</code>
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-muted/70">nick não informado</p>
+              )}
             </td>
             <td className="px-5 py-4">
               <Badge tone={redemption.status === "delivered" ? "success" : redemption.status === "cancelled" ? "neutral" : "warning"}>
@@ -193,7 +210,21 @@ export function RouletteRedemptionManager({
                       Reabrir ticket
                     </Button>
                   </form>
-                ) : null}
+                ) : (
+                  <form action={syncControls}>
+                    <input type="hidden" name="redemptionId" value={redemption.id} />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      variant="ghost"
+                      disabled={syncPending}
+                      title="Reenvia os botões de nick e entrega no ticket"
+                    >
+                      <RefreshCw aria-hidden="true" className="size-4" />
+                      Atualizar botões
+                    </Button>
+                  </form>
+                )}
               </div>
             </td>
           </tr>

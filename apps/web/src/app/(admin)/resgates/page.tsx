@@ -42,7 +42,7 @@ async function listRouletteRedemptions(): Promise<AdminRouletteRedemption[]> {
   const { data, error } = await supabase
     .from("roulette_redemptions")
     .select(
-      "id,discord_user_id,item_count,total_value_cents,status,discord_ticket_status,discord_ticket_channel_id,discord_ticket_error,created_at,guilds(discord_guild_id),roulette_redemption_items(prize_key,product_name,quantity,value_cents,products(stock_quantity))",
+      "id,discord_user_id,item_count,total_value_cents,status,discord_ticket_status,discord_ticket_channel_id,discord_ticket_error,game_nickname,created_at,guilds(discord_guild_id),roulette_redemption_items(prize_key,product_name,quantity,value_cents,products(stock_quantity))",
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -67,6 +67,7 @@ async function listRouletteRedemptions(): Promise<AdminRouletteRedemption[]> {
     ticketStatus: row.discord_ticket_status,
     ticketChannelId: row.discord_ticket_channel_id,
     ticketError: row.discord_ticket_error,
+    gameNickname: row.game_nickname,
     guildDiscordId: row.guilds?.discord_guild_id ?? null,
     createdAt: row.created_at,
   }));

@@ -13,6 +13,7 @@ import {
 import { loadBotRuntimeSettings } from "@/lib/bot/message-customization-server";
 import { STORE_NAME } from "@/lib/brand";
 import { formatCoins } from "@/lib/roulette/demo";
+import { buildRouletteTicketControlComponents } from "@/lib/roulette/discord-controls";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -24,6 +25,21 @@ type DiscordChannel = {
   topic?: string | null;
   permission_overwrites?: DiscordPermissionOverwrite[];
 };
+
+type DiscordMessage = {
+  id: string;
+  author?: { id?: string };
+  embeds?: Array<{ footer?: { text?: string } }>;
+  components?: unknown;
+};
+
+const DISCORD_MESSAGE_PAGE_SIZE = 100;
+const MAXIMUM_WELCOME_MESSAGE_PAGES = 5;
+
+/** Footer marker that lets a later run find the message carrying the buttons. */
+export function rouletteWelcomeMessageMarker(redemptionId: string) {
+  return `${STORE_NAME} resgate · ${redemptionId}`;
+}
 
 export type RouletteRedemptionTicketInput = {
   redemptionId: string;
@@ -127,6 +143,11 @@ export async function ensureRouletteRedemptionTicket(
     throw new Error("Discord retornou um canal de resgate inválido.");
   }
 
+  const components = buildRouletteTicketControlComponents(
+    input.redemptionId,
+    settings.customization,
+  );
+
   if (created) {
     const staffMentions = [
       ...new Set(settings.ticketNotificationDiscordUserIds),
@@ -139,29 +160,86 @@ export async function ensureRouletteRedemptionTicket(
         method: "POST",
         body: JSON.stringify({
           content: `<@${input.playerDiscordId}>${staffMentions ? ` ${staffMentions}` : ""}`,
-          embeds: [
-            {
-              title: "Resgate da roleta",
-              description:
-                `O prêmio saiu do seu inventário e a equipe da ${STORE_NAME} entrega por aqui.`,
-              color: 0xd946ef,
-              fields: [
-                { name: "Itens", value: input.itemSummary.slice(0, 1024), inline: false },
-                {
-                  name: "Valor total",
-                  value: `${formatCoins(input.totalValueCents)} moedas`,
-                  inline: true,
-                },
-              ],
-              footer: { text: `Resgate ${input.redemptionId.slice(0, 8)}` },
-            },
-          ],
+          embeds: [buildWelcomeEmbed(input)],
+          components,
           allowed_mentions: { parse: [], users: [input.playerDiscordId] },
         }),
       },
       fetcher,
     );
+  } else {
+    // A ticket opened before the buttons existed still has to get them, and a
+    // label change in the bot settings has to reach tickets already open.
+    await synchronizeControls(channel.id, input, components, botUserId, fetcher);
   }
 
   return { channelId: channel.id, created };
+}
+
+function buildWelcomeEmbed(input: RouletteRedemptionTicketInput) {
+  return {
+    title: "Resgate da roleta",
+    description: `O prêmio saiu do seu inventário e a equipe da ${STORE_NAME} entrega por aqui.`,
+    color: 0xd946ef,
+    fields: [
+      { name: "Itens", value: input.itemSummary.slice(0, 1024), inline: false },
+      {
+        name: "Valor total",
+        value: `${formatCoins(input.totalValueCents)} moedas`,
+        inline: true,
+      },
+    ],
+    footer: { text: rouletteWelcomeMessageMarker(input.redemptionId) },
+  };
+}
+
+/**
+ * Finds the message this ticket opened with and brings its buttons up to date.
+ * A ticket from before the controls existed has no marker in its footer, so the
+ * first bot message with the redemption embed is adopted and stamped.
+ */
+async function synchronizeControls(
+  channelId: string,
+  input: RouletteRedemptionTicketInput,
+  components: ReturnType<typeof buildRouletteTicketControlComponents>,
+  botUserId: string,
+  fetcher: typeof fetch,
+) {
+  const marker = rouletteWelcomeMessageMarker(input.redemptionId);
+  const legacyMarker = `Resgate ${input.redemptionId.slice(0, 8)}`;
+  let before: string | undefined;
+
+  for (let page = 0; page < MAXIMUM_WELCOME_MESSAGE_PAGES; page += 1) {
+    const query = new URLSearchParams({ limit: String(DISCORD_MESSAGE_PAGE_SIZE) });
+    if (before) query.set("before", before);
+    const messages = await discordBotJson<DiscordMessage[]>(
+      `/channels/${channelId}/messages?${query.toString()}`,
+      {},
+      fetcher,
+    );
+    if (!messages.length) return;
+
+    const welcome = messages.find(
+      (message) =>
+        message.author?.id === botUserId &&
+        message.embeds?.some(
+          (embed) => embed.footer?.text === marker || embed.footer?.text === legacyMarker,
+        ),
+    );
+    if (welcome) {
+      if (JSON.stringify(welcome.components ?? []) === JSON.stringify(components)) return;
+      await discordBotJson(
+        `/channels/${channelId}/messages/${welcome.id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ embeds: [buildWelcomeEmbed(input)], components }),
+        },
+        fetcher,
+      );
+      return;
+    }
+
+    before = messages[messages.length - 1]?.id;
+    if (!before) return;
+  }
 }
