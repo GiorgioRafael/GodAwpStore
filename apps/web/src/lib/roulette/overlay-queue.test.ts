@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  OVERLAY_BACKGROUNDS,
+  normalizeOverlayBackground,
+  withOverlayBackground,
   OVERLAY_QUEUE_DEFAULT,
   OVERLAY_QUEUE_MAXIMUM,
   OVERLAY_QUEUE_MINIMUM,
@@ -45,5 +48,42 @@ describe("fila do overlay", () => {
 
   it("devolve o valor original quando o endereço não é uma URL", () => {
     expect(withOverlayQueueLimit("nao-e-url", 12)).toBe("nao-e-url");
+  });
+});
+
+describe("fundo do overlay", () => {
+  it("cai em transparente, que é o que o OBS recorta sozinho", () => {
+    for (const value of [undefined, null, "", "azul", "TRANSPARENTE ", "chroma"]) {
+      expect(normalizeOverlayBackground(value)).toBe("transparente");
+    }
+  });
+
+  it("aceita as opções de chroma key", () => {
+    expect(normalizeOverlayBackground("verde")).toBe("verde");
+    expect(normalizeOverlayBackground(" Magenta ")).toBe("magenta");
+    expect(normalizeOverlayBackground("preto")).toBe("preto");
+  });
+
+  it("mantém o link curto no padrão e escreve só o que foge dele", () => {
+    expect(withOverlayBackground(OVERLAY, "transparente")).toBe(OVERLAY);
+    expect(withOverlayBackground(`${OVERLAY}&fundo=verde`, "transparente")).toBe(OVERLAY);
+    expect(new URL(withOverlayBackground(OVERLAY, "verde")).searchParams.get("fundo")).toBe("verde");
+  });
+
+  it("convive com a fila sem perder o token", () => {
+    const url = new URL(
+      withOverlayBackground(withOverlayQueueLimit(OVERLAY, 20), "verde"),
+    );
+
+    expect(url.searchParams.get("token")).toBe("segredo");
+    expect(url.searchParams.get("fila")).toBe("20");
+    expect(url.searchParams.get("fundo")).toBe("verde");
+  });
+
+  it("cada opção resolve para uma cor que dá para keyar", () => {
+    // Verde e magenta puros são o que o filtro do OBS espera de fábrica.
+    expect(OVERLAY_BACKGROUNDS.transparente).toBe("transparent");
+    expect(OVERLAY_BACKGROUNDS.verde).toBe("#00ff00");
+    expect(OVERLAY_BACKGROUNDS.magenta).toBe("#ff00ff");
   });
 });

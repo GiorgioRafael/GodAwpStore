@@ -8,7 +8,10 @@ import {
   normalizeRoulettePrizeProducts,
 } from "@/lib/roulette/demo";
 import {
+  OVERLAY_BACKGROUNDS,
+  OVERLAY_BACKGROUND_PARAM,
   OVERLAY_QUEUE_PARAM,
+  normalizeOverlayBackground,
   normalizeOverlayQueueLimit,
 } from "@/lib/roulette/overlay-queue";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -39,8 +42,21 @@ export default async function RouletteOverlayPage({
 
   const prizes = buildRouletteWheelPrizes(await readOverlayPrizes());
   const queueLimit = normalizeOverlayQueueLimit(single(query[OVERLAY_QUEUE_PARAM]));
+  const background = normalizeOverlayBackground(single(query[OVERLAY_BACKGROUND_PARAM]));
 
-  return <RouletteOverlay prizes={prizes} token={token} queueLimit={queueLimit} />;
+  return (
+    <>
+      {/*
+        The store paints `body { background: var(--background) }`, which is what
+        made the overlay show up black in OBS. A Browser Source composites the
+        page with alpha, so clearing it here is all transparency needs — no
+        chroma key, no filter. The other values exist for captures that flatten
+        alpha, like a window capture in TikTok Studio.
+      */}
+      <style>{`html,body{background:${OVERLAY_BACKGROUNDS[background]} !important;}`}</style>
+      <RouletteOverlay prizes={prizes} token={token} queueLimit={queueLimit} />
+    </>
+  );
 }
 
 async function readOverlayPrizes() {

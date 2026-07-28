@@ -7,12 +7,21 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Field, Input, Select } from "@/components/ui/form-field";
 import {
+  OVERLAY_BACKGROUND_DEFAULT,
   OVERLAY_QUEUE_DEFAULT,
   OVERLAY_QUEUE_MAXIMUM,
+  withOverlayBackground,
   withOverlayQueueLimit,
+  type OverlayBackground,
 } from "@/lib/roulette/overlay-queue";
 
 const QUEUE_CHOICES = [3, 5, OVERLAY_QUEUE_DEFAULT, 12, 20, OVERLAY_QUEUE_MAXIMUM];
+const BACKGROUND_CHOICES: Array<{ value: OverlayBackground; label: string }> = [
+  { value: "transparente", label: "Transparente (OBS)" },
+  { value: "verde", label: "Verde (chroma key)" },
+  { value: "magenta", label: "Magenta (chroma key)" },
+  { value: "preto", label: "Preto" },
+];
 const COPIED_FEEDBACK_MS = 2_000;
 
 /**
@@ -23,12 +32,13 @@ const COPIED_FEEDBACK_MS = 2_000;
 export function RouletteOverlayLink({ overlayUrl }: { overlayUrl: string }) {
   const fieldId = useId();
   const [queueLimit, setQueueLimit] = useState(OVERLAY_QUEUE_DEFAULT);
+  const [background, setBackground] = useState<OverlayBackground>(OVERLAY_BACKGROUND_DEFAULT);
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const url = useMemo(
-    () => withOverlayQueueLimit(overlayUrl, queueLimit),
-    [overlayUrl, queueLimit],
+    () => withOverlayBackground(withOverlayQueueLimit(overlayUrl, queueLimit), background),
+    [overlayUrl, queueLimit, background],
   );
 
   async function copy() {
@@ -97,7 +107,7 @@ export function RouletteOverlayLink({ overlayUrl }: { overlayUrl: string }) {
           </div>
         </Field>
 
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,14rem)_1fr] sm:items-end">
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_minmax(0,14rem)_1fr] sm:items-end">
           <Field
             label="Fila de animações"
             htmlFor={`${fieldId}-fila`}
@@ -111,6 +121,23 @@ export function RouletteOverlayLink({ overlayUrl }: { overlayUrl: string }) {
               {QUEUE_CHOICES.map((choice) => (
                 <option key={choice} value={choice}>
                   {choice} giros
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Fundo"
+            htmlFor={`${fieldId}-fundo`}
+            hint="OBS aceita transparente"
+          >
+            <Select
+              id={`${fieldId}-fundo`}
+              value={background}
+              onChange={(event) => setBackground(event.target.value as OverlayBackground)}
+            >
+              {BACKGROUND_CHOICES.map((choice) => (
+                <option key={choice.value} value={choice.value}>
+                  {choice.label}
                 </option>
               ))}
             </Select>
@@ -130,7 +157,10 @@ export function RouletteOverlayLink({ overlayUrl }: { overlayUrl: string }) {
         </div>
 
         <p className="text-xs leading-5 text-muted">
-          A fila segura quantos giros o overlay ainda vai animar quando muita gente joga ao mesmo
+          No OBS, adicione como <strong>Fonte de navegador</strong> e deixe o fundo transparente —
+          ele já recorta sozinho, sem filtro nenhum. Só use verde ou magenta se a captura achatar a
+          transparência, e aí aplique <strong>Chroma Key</strong> em cima. A fila segura quantos
+          giros o overlay ainda vai animar quando muita gente joga ao mesmo
           tempo. O site do jogador nunca espera por ela, e quem tira o prêmio máximo fura o limite.
           Os nomes aparecem sempre mascarados.
         </p>
