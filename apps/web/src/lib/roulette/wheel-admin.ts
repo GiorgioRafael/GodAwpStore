@@ -6,16 +6,23 @@ import type {
   WheelSlot,
 } from "@/components/admin/roulette-wheel-editor";
 
-export type RouletteWheelAdmin = {
-  slots: WheelSlot[];
-  candidates: WheelCandidate[];
-  enabled: boolean;
-};
+export type RouletteWheelAdmin =
+  | {
+      ok: true;
+      slots: WheelSlot[];
+      candidates: WheelCandidate[];
+      enabled: boolean;
+    }
+  | { ok: false; reason: string };
 
-/** Everything the wheel editor needs, or null when it cannot be read. */
-export async function getRouletteWheelAdmin(): Promise<RouletteWheelAdmin | null> {
+/**
+ * Everything the wheel editor needs. A failure carries its reason: this is an
+ * admin-only screen, and "could not load" with no cause leaves the operator
+ * with nothing to act on and nothing to report.
+ */
+export async function getRouletteWheelAdmin(): Promise<RouletteWheelAdmin> {
   const supabase = await createServerSupabaseClient();
-  if (!supabase) return null;
+  if (!supabase) return { ok: false, reason: "Supabase não está configurado." };
 
   const [wheel, candidates, settings] = await Promise.all([
     supabase.rpc("admin_roulette_wheel"),
@@ -23,14 +30,17 @@ export async function getRouletteWheelAdmin(): Promise<RouletteWheelAdmin | null
     supabase.from("platform_settings").select("roulette_enabled").eq("id", 1).maybeSingle(),
   ]);
 
-  if (wheel.error || candidates.error) {
-    console.error(
-      `[admin:roleta:roda] ${wheel.error?.message ?? candidates.error?.message ?? "erro"}`,
-    );
-    return null;
+  const failure = wheel.error ?? candidates.error;
+  if (failure) {
+    console.error(`[admin:roleta:roda] ${failure.code ?? "sem código"} ${failure.message}`);
+    return {
+      ok: false,
+      reason: `${failure.code ?? "sem código"}: ${failure.message}`,
+    };
   }
 
   return {
+    ok: true,
     slots: (wheel.data ?? []).map((slot) => ({
       prizeKey: slot.slot_prize_key,
       productId: slot.slot_product_id ?? "",

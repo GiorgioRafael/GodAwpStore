@@ -31,7 +31,7 @@ export default async function RouletteMetricsPage() {
 
   // O custo das moedas ainda em carteira depende do que a roda paga, então o
   // número vem da roda de verdade e não de uma constante.
-  const wheelReturnBps = wheel
+  const wheelReturnBps = wheel.ok
     ? wheelEconomics(wheel.slots, {
         markupBps: metrics?.markupBps ?? 7000,
         feeBps: metrics?.feeBps ?? 500,
@@ -51,7 +51,7 @@ export default async function RouletteMetricsPage() {
         continua na visão geral, sem soma nem sobreposição.
       </Notice>
 
-      {wheel ? (
+      {wheel.ok ? (
         <>
           <RoulettePowerSwitch enabled={wheel.enabled} />
           <RouletteWheelEditor
@@ -70,7 +70,7 @@ export default async function RouletteMetricsPage() {
               compact
               icon={CircleAlert}
               title="Não foi possível carregar os itens da roleta"
-              description="A roda não pôde ser lida agora. Recarregue a página; se continuar, confira se a sua conta ainda tem acesso de administrador."
+              description={`O banco recusou a leitura da roda — ${wheel.reason}`}
             />
           </CardContent>
         </Card>
