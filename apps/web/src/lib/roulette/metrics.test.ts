@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  finalProfit,
   hasPlayerActivity,
   prizeOutcomeShares,
   realisedReturnBps,
@@ -95,5 +96,46 @@ describe("métricas da roleta", () => {
     expect(hasPlayerActivity(metrics({ spinCount: 1 }))).toBe(true);
     // Um depósito sem giro nenhum já é movimento de jogador.
     expect(hasPlayerActivity(metrics({ depositCount: 1 }))).toBe(true);
+  });
+});
+
+describe("lucro final", () => {
+  it("desconta resgates na fila, inventário e as moedas ainda por girar", () => {
+    // R$ 10,00 em carteira, a 70% de retorno, viram R$ 7,00 de prêmio, que
+    // custam R$ 7,00/1,70 = R$ 4,12 para a loja.
+    const result = finalProfit(
+      metrics({
+        netProfitCents: 10_000,
+        pendingCostCents: 1_500,
+        heldCostCents: 2_500,
+        coinLiabilityCents: 1_000,
+        markupBps: 7000,
+      }),
+      7000,
+    );
+
+    expect(result.coinPrizeCostCents).toBe(412);
+    expect(result.outstandingCostCents).toBe(4_412);
+    expect(result.profitCents).toBe(5_588);
+  });
+
+  it("com a carteira vazia, é o mesmo do pior caso", () => {
+    const base = metrics({
+      netProfitCents: 10_000,
+      pendingCostCents: 1_500,
+      heldCostCents: 2_500,
+      coinLiabilityCents: 0,
+    });
+
+    expect(finalProfit(base, 7000).profitCents).toBe(worstCaseProfitCents(base));
+  });
+
+  it("aceita ficar negativo, que é o aviso de ter prometido demais", () => {
+    const result = finalProfit(
+      metrics({ netProfitCents: 100, heldCostCents: 900, coinLiabilityCents: 500 }),
+      7000,
+    );
+
+    expect(result.profitCents).toBeLessThan(0);
   });
 });

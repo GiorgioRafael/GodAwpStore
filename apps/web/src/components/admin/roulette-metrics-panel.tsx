@@ -15,16 +15,22 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
 import {
+  finalProfit,
   prizeOutcomeShares,
   realisedReturnBps,
-  worstCaseProfitCents,
   type RouletteMetrics,
 } from "@/lib/roulette/metrics";
 
-export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) {
+export function RouletteMetricsPanel({
+  metrics,
+  wheelReturnBps,
+}: {
+  metrics: RouletteMetrics;
+  wheelReturnBps: number;
+}) {
   const shares = prizeOutcomeShares(metrics);
   const returnBps = realisedReturnBps(metrics);
-  const worstCase = worstCaseProfitCents(metrics);
+  const outcome = finalProfit(metrics, wheelReturnBps);
   const netRevenue = metrics.depositGrossCents - metrics.providerFeeCents;
   const exposure =
     metrics.coinLiabilityCents + metrics.pendingCostCents + metrics.heldCostCents;
@@ -49,11 +55,11 @@ export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) 
       icon: PackageCheck,
     },
     {
-      label: "Lucro líquido estimado",
-      value: formatBrl(metrics.netProfitCents),
-      detail: "Depósitos − taxa − custo do que já saiu",
+      label: "Lucro final estimado",
+      value: formatBrl(outcome.profitCents),
+      detail: `Já descontando ${formatBrl(outcome.outstandingCostCents)} em aberto`,
       icon: TrendingUp,
-      trend: (metrics.netProfitCents >= 0 ? "up" : "down") as "up" | "down",
+      trend: (outcome.profitCents >= 0 ? "up" : "down") as "up" | "down",
     },
   ];
 
@@ -177,7 +183,7 @@ export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) 
           <div>
             <h2 className="text-base font-semibold tracking-tight">Compromissos em aberto</h2>
             <p className="mt-1 text-sm text-muted">
-              O que a loja ainda deve entregar. O lucro acima só desconta o que já saiu.
+              O que a loja ainda deve entregar — tudo isto já está descontado do lucro final.
             </p>
           </div>
           <Badge tone={exposure > metrics.netProfitCents ? "warning" : "neutral"}>
@@ -205,19 +211,23 @@ export function RouletteMetricsPanel({ metrics }: { metrics: RouletteMetrics }) 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/35 px-4 py-3.5">
             <div>
               <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">
-                Lucro se tudo pendente for entregue
+                Lucro final da roleta
               </p>
-              <p className="mt-1 text-xs text-muted">
-                Cenário mais pessimista: ninguém revende, todo mundo resgata.
+              <p className="mt-1 max-w-xl text-xs leading-5 text-muted">
+                {formatBrl(metrics.netProfitCents)} no caixa, menos{" "}
+                {formatBrl(metrics.pendingCostCents)} de resgates na fila,{" "}
+                {formatBrl(metrics.heldCostCents)} de prêmios guardados e{" "}
+                {formatBrl(outcome.coinPrizeCostCents)} do que as moedas em carteira ainda vão
+                sortear. É o que sobra se tudo que está aberto for entregue hoje.
               </p>
             </div>
             <p
               className={cn(
-                "text-lg font-semibold tracking-[-0.03em]",
-                worstCase >= 0 ? "text-success" : "text-danger",
+                "text-2xl font-semibold tracking-[-0.03em]",
+                outcome.profitCents >= 0 ? "text-success" : "text-danger",
               )}
             >
-              {formatBrl(worstCase)}
+              {formatBrl(outcome.profitCents)}
             </p>
           </div>
         </CardContent>

@@ -1,9 +1,12 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
 import { formatBrl } from "@godawp/domain";
-import { saveRouletteWheelAction } from "@/app/actions/roulette-wheel";
+import {
+  saveRoulettePrizePriceAction,
+  saveRouletteWheelAction,
+} from "@/app/actions/roulette-wheel";
 import { ActionFeedback, initialAdminActionState } from "./action-feedback";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,6 +86,12 @@ export function RouletteWheelEditor({
             }
           : slot,
       ),
+    );
+  }
+
+  function setValue(prizeKey: string, valueCents: number) {
+    setDraft((current) =>
+      current.map((slot) => (slot.prizeKey === prizeKey ? { ...slot, valueCents } : slot)),
     );
   }
 
@@ -174,8 +183,12 @@ export function RouletteWheelEditor({
                           disabled={!locked}
                         />
                       </td>
-                      <td className="py-3 pr-3 tabular-nums text-muted-strong">
-                        {formatBrl(slot.valueCents)}
+                      <td className="py-3 pr-3">
+                        <PrizePrice
+                          productId={slot.productId}
+                          valueCents={slot.valueCents}
+                          onSaved={(cents) => setValue(slot.prizeKey, cents)}
+                        />
                       </td>
                       <td className="py-3 pr-3">
                         <Input
@@ -240,7 +253,9 @@ export function RouletteWheelEditor({
           <p className="text-xs leading-5 text-muted">
             As {HIGHLIGHTED_PRIZE_COUNT} fatias mais caras ganham a moldura dourada na roleta e no
             overlay, e são elas que soltam confete. O destaque acompanha o que você põe aqui — não
-            existe valor fixo.
+            existe valor fixo. O preço é o do catálogo: mudar aqui muda também o que a loja cobra
+            pelo item, e salva na hora, separado do botão da roda. Prêmio que alguém já ganhou
+            mantém o valor de quando foi ganho.
           </p>
         </CardContent>
         <CardFooter className="flex items-center justify-between gap-4">
@@ -254,6 +269,86 @@ export function RouletteWheelEditor({
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+/**
+ * The prize value, editable in place. It saves on its own rather than with the
+ * wheel: it writes to the catalog, which the store shares, so it should not
+ * ride along with a weight change the operator was only experimenting with.
+ *
+ * The action is called directly instead of through a <form> — this lives inside
+ * the wheel's own form, and nesting forms is invalid HTML.
+ */
+function PrizePrice({
+  productId,
+  valueCents,
+  onSaved,
+}: {
+  productId: string;
+  valueCents: number;
+  onSaved: (valueCents: number) => void;
+}) {
+  const [price, setPrice] = useState((valueCents / 100).toFixed(2).replace(".", ","));
+  const [error, setError] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  function save() {
+    setError("");
+    const cents = Math.round(Number(price.replace(",", ".")) * 100);
+    if (!Number.isFinite(cents) || cents < 1) {
+      setError("Preço inválido.");
+      return;
+    }
+    const data = new FormData();
+    data.set("productId", productId);
+    data.set("price", price);
+    startTransition(async () => {
+      const result = await saveRoulettePrizePriceAction(initialAdminActionState, data);
+      if (result.ok) {
+        // The RTP beside it must stop showing the old price immediately.
+        onSaved(cents);
+      } else {
+        setError(result.message);
+      }
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="relative">
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-2.5 grid place-items-center text-xs text-muted"
+        >
+          R$
+        </span>
+        <Input
+          aria-label="Preço do prêmio"
+          className="h-10 w-28 pl-8 tabular-nums"
+          inputMode="decimal"
+          value={price}
+          onChange={(event) => setPrice(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            // Enter here must not submit the wheel around it.
+            event.preventDefault();
+            save();
+          }}
+        />
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        disabled={pending}
+        onClick={save}
+        title="Salvar o preço no catálogo"
+      >
+        {pending ? "..." : "Salvar"}
+      </Button>
+      {error ? <span className="text-xs text-danger">{error}</span> : null}
+    </div>
   );
 }
 

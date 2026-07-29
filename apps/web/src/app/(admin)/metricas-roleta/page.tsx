@@ -14,6 +14,7 @@ import { STORE_SLUG } from "@/lib/brand";
 import { hasPlayerActivity, getRouletteMetrics } from "@/lib/roulette/metrics";
 import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
 import { getRouletteWheelAdmin } from "@/lib/roulette/wheel-admin";
+import { wheelEconomics } from "@/lib/roulette/wheel-economics";
 
 export const metadata: Metadata = { title: "Métricas da roleta" };
 export const dynamic = "force-dynamic";
@@ -27,6 +28,15 @@ export default async function RouletteMetricsPage() {
     getRouletteMetrics(),
     getRouletteWheelAdmin(),
   ]);
+
+  // O custo das moedas ainda em carteira depende do que a roda paga, então o
+  // número vem da roda de verdade e não de uma constante.
+  const wheelReturnBps = wheel
+    ? wheelEconomics(wheel.slots, {
+        markupBps: metrics?.markupBps ?? 7000,
+        feeBps: metrics?.feeBps ?? 500,
+      }).returnBps
+    : 0;
 
   return (
     <div className="space-y-7">
@@ -83,7 +93,7 @@ export default async function RouletteMetricsPage() {
           description="Não foi possível ler os dados da roleta agora. Recarregue a página; se continuar, confira se a sua conta ainda tem acesso de administrador."
         />
       ) : hasPlayerActivity(metrics) ? (
-        <RouletteMetricsPanel metrics={metrics} />
+        <RouletteMetricsPanel metrics={metrics} wheelReturnBps={wheelReturnBps} />
       ) : (
         <EmptyState
           icon={ChartNoAxesCombined}

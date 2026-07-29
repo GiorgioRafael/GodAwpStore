@@ -46,12 +46,10 @@ export function RouletteRatesForm({
               hint="Quanto você cobra acima do que pagou"
               error={fieldError(state, "markupPercent")}
             >
-              <Input
+              <PercentInput
                 id={`${formId}-markup`}
                 name="markupPercent"
-                inputMode="decimal"
                 defaultValue={formatPercent(markupBps)}
-                aria-describedby={`${formId}-markup-example`}
               />
             </Field>
             <Field
@@ -60,10 +58,9 @@ export function RouletteRatesForm({
               hint="Retida em cada Pix recebido"
               error={fieldError(state, "feePercent")}
             >
-              <Input
+              <PercentInput
                 id={`${formId}-fee`}
                 name="feePercent"
-                inputMode="decimal"
                 defaultValue={formatPercent(feeBps)}
               />
             </Field>
@@ -79,17 +76,16 @@ export function RouletteRatesForm({
               hint="Moedas devolvidas na venda"
               error={fieldError(state, "salePercent")}
             >
-              <Input
+              <PercentInput
                 id={`${formId}-sale`}
                 name="salePercent"
-                inputMode="decimal"
                 defaultValue={formatPercent(saleRateBps)}
               />
             </Field>
             <p className="text-xs leading-5 text-muted">
               Esta muda o jogo, não só a conta: o valor é lido na hora da venda, então baixá-la tira
               valor de todo prêmio que já está no inventário de alguém. Um prêmio de{" "}
-              {formatBrl(100)} devolve {formatBrl(Math.round(saleRateBps))} hoje.
+              {formatBrl(100)} devolve {formatBrl(Math.round(saleRateBps / 100))} hoje.
             </p>
           </div>
         </CardContent>
@@ -101,6 +97,35 @@ export function RouletteRatesForm({
         </CardFooter>
       </form>
     </Card>
+  );
+}
+
+/** A % lives inside the field so nobody has to guess the unit. */
+function PercentInput({
+  id,
+  name,
+  defaultValue,
+}: {
+  id: string;
+  name: string;
+  defaultValue: string;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        name={name}
+        inputMode="decimal"
+        defaultValue={defaultValue}
+        className="pr-9 tabular-nums"
+      />
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-y-0 right-3.5 grid place-items-center text-sm font-medium text-muted"
+      >
+        %
+      </span>
+    </div>
   );
 }
 

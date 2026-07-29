@@ -86,6 +86,41 @@ export function worstCaseProfitCents(metrics: RouletteMetrics) {
   return metrics.netProfitCents - metrics.pendingCostCents - metrics.heldCostCents;
 }
 
+export type FinalProfit = {
+  /** What the coins still in wallets will cost once they are spun. */
+  coinPrizeCostCents: number;
+  /** Everything still owed: queued redemptions, held prizes and those coins. */
+  outstandingCostCents: number;
+  /** What is left once every open obligation is settled. */
+  profitCents: number;
+};
+
+/**
+ * The bottom line: what the roulette is worth if everything open settles today.
+ *
+ * The banked figure only subtracts prizes already handed over, which flatters
+ * the result while a queue exists. This also subtracts the redemptions waiting,
+ * the prizes sitting in inventories, and the coins still in wallets — those are
+ * paid-for spins that have not happened yet, and each one will hand out a prize
+ * at the wheel's own payout rate.
+ */
+export function finalProfit(
+  metrics: RouletteMetrics,
+  wheelReturnBps: number,
+): FinalProfit {
+  const markup = 1 + Math.max(metrics.markupBps, 0) / 10000;
+  const payout = Math.max(wheelReturnBps, 0) / 10000;
+  const coinPrizeCostCents = Math.round((metrics.coinLiabilityCents * payout) / markup);
+  const outstandingCostCents =
+    metrics.pendingCostCents + metrics.heldCostCents + coinPrizeCostCents;
+
+  return {
+    coinPrizeCostCents,
+    outstandingCostCents,
+    profitCents: metrics.netProfitCents - outstandingCostCents,
+  };
+}
+
 /** How the prizes a spin created ended up, as shares of the units won. */
 export function prizeOutcomeShares(metrics: RouletteMetrics) {
   const total =
