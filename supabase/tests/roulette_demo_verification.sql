@@ -52,7 +52,10 @@ begin
     'complete_roulette_redemption_ticket(uuid, text)',
     'fail_roulette_redemption_ticket(uuid, text)',
     'admin_settle_roulette_redemption(uuid, text)',
-    'admin_roulette_metrics()'
+    'admin_roulette_metrics()',
+    'admin_roulette_wheel()',
+    'admin_roulette_prize_candidates()',
+    'admin_save_roulette_wheel(jsonb)'
   ] loop
     if to_regprocedure('public.' || required_function) is null then
       raise exception 'Missing roulette function: %', required_function;
