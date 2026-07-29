@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { ChartNoAxesCombined, MonitorPlay } from "lucide-react";
+import { ChartNoAxesCombined, CircleAlert, MonitorPlay } from "lucide-react";
 
 import { Notice } from "@/components/admin/notice";
 import { PageHeader } from "@/components/admin/page-header";
@@ -51,16 +51,30 @@ export default async function RouletteMetricsPage() {
         continua na visão geral, sem soma nem sobreposição.
       </Notice>
 
-      {wheel ? <RoulettePowerSwitch enabled={wheel.enabled} /> : null}
-
       {wheel ? (
-        <RouletteWheelEditor
-          slots={wheel.slots}
-          candidates={wheel.candidates}
-          markupBps={metrics?.markupBps ?? 7000}
-          feeBps={metrics?.feeBps ?? 500}
-        />
-      ) : null}
+        <>
+          <RoulettePowerSwitch enabled={wheel.enabled} />
+          <RouletteWheelEditor
+            slots={wheel.slots}
+            candidates={wheel.candidates}
+            markupBps={metrics?.markupBps ?? 7000}
+            feeBps={metrics?.feeBps ?? 500}
+          />
+        </>
+      ) : (
+        // Esconder isto em silêncio manda o admin procurar o editor numa página
+        // que decidiu não mostrá-lo.
+        <Card>
+          <CardContent>
+            <EmptyState
+              compact
+              icon={CircleAlert}
+              title="Não foi possível carregar os itens da roleta"
+              description="A roda não pôde ser lida agora. Recarregue a página; se continuar, confira se a sua conta ainda tem acesso de administrador."
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {overlay.status === "ready" ? (
         <RouletteOverlayLink overlayUrl={overlay.url} />

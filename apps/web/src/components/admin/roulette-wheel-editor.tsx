@@ -102,10 +102,12 @@ export function RouletteWheelEditor({
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
-          <h2 className="text-base font-semibold tracking-tight">A roda</h2>
+          <h2 className="text-base font-semibold tracking-tight">
+            Itens da roleta
+          </h2>
           <p className="mt-1 text-sm text-muted">
-            Qual produto fica em cada fatia e com que frequência ele sai. Os números abaixo
-            recalculam enquanto você digita — o que aparece aqui é o que vale depois de salvar.
+            É aqui que se troca o prêmio de cada fatia e a frequência com que ele sai. Os números
+            recalculam enquanto você mexe — o que aparece é o que vale depois de salvar.
           </p>
         </div>
         <Badge tone={verdict.tone === "success" ? "success" : verdict.tone === "warning" ? "warning" : "danger"}>
@@ -121,7 +123,7 @@ export function RouletteWheelEditor({
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-[0.12em] text-muted">
                   <th className="pb-2 pr-3 font-medium">Fatia</th>
-                  <th className="pb-2 pr-3 font-medium">Prêmio</th>
+                  <th className="pb-2 pr-3 font-medium">Item sorteado</th>
                   <th className="pb-2 pr-3 font-medium">Valor na loja</th>
                   <th className="pb-2 pr-3 font-medium">Peso</th>
                   <th className="pb-2 pr-3 font-medium">Chance</th>
