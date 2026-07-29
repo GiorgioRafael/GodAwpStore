@@ -8,11 +8,13 @@ import { RouletteMetricsPanel } from "@/components/admin/roulette-metrics-panel"
 import { RoulettePowerSwitch } from "@/components/admin/roulette-power-switch";
 import { RouletteWheelEditor } from "@/components/admin/roulette-wheel-editor";
 import { RouletteOverlayLink } from "@/components/admin/roulette-overlay-link";
+import { RoulettePromotionEditor } from "@/components/admin/roulette-promotion-editor";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { STORE_SLUG } from "@/lib/brand";
 import { hasPlayerActivity, getRouletteMetrics } from "@/lib/roulette/metrics";
 import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
+import { getRoulettePromotionSettings } from "@/lib/roulette/promotion-admin";
 import { getRouletteWheelAdmin } from "@/lib/roulette/wheel-admin";
 import { wheelEconomics } from "@/lib/roulette/wheel-economics";
 
@@ -23,10 +25,11 @@ export default async function RouletteMetricsPage() {
   // A roleta existe só na GWStore; nas outras lojas a rota não deve nem existir.
   if (STORE_SLUG !== "gwstore") notFound();
 
-  const [overlay, metrics, wheel] = await Promise.all([
+  const [overlay, metrics, wheel, promotion] = await Promise.all([
     getRouletteOverlayLink(),
     getRouletteMetrics(),
     getRouletteWheelAdmin(),
+    getRoulettePromotionSettings(),
   ]);
 
   // O custo das moedas ainda em carteira depende do que a roda paga, então o
@@ -75,6 +78,8 @@ export default async function RouletteMetricsPage() {
           </CardContent>
         </Card>
       )}
+
+      <RoulettePromotionEditor settings={promotion.settings} />
 
       {overlay.status === "ready" ? (
         <RouletteOverlayLink overlayUrl={overlay.url} />

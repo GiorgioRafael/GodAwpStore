@@ -76,6 +76,11 @@ type PlatformSettingsRow = {
   roulette_markup_bps: number;
   livepix_fee_bps: number;
   roulette_enabled: boolean;
+  roulette_promotion_title: string;
+  roulette_promotion_description: string;
+  roulette_promotion_button_label: string;
+  roulette_promotion_channel_id: string | null;
+  roulette_promotion_message_id: string | null;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
