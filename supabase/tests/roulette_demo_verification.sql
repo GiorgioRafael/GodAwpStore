@@ -1356,13 +1356,21 @@ begin
   if v_saved.saved_slot_count <> 2 then
     raise exception 'The wheel saved % slot(s), expected 2', v_saved.saved_slot_count;
   end if;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- A leitura direta da tabela é do papel da sessão: authenticated só enxerga a
+-- roda pelas funções.
+do $$
+begin
   if exists (select 1 from public.roulette_prize_products where prize_key = 'premio_10') then
     raise exception 'The removed slot is still on the wheel';
   end if;
 end
 $$;
-
-reset role;
 
 -- Nada do que foi ganho se mexeu.
 do $$
