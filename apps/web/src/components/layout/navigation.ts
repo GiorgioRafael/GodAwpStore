@@ -35,7 +35,7 @@ const rouletteItems: NavigationItem[] =
   STORE_SLUG === "gwstore"
     ? [
         { label: "Resgates", href: "/resgates", icon: PackageCheck },
-        { label: "Métricas da roleta", href: "/metricas-roleta", icon: ChartNoAxesCombined },
+        { label: "Roleta", href: "/metricas-roleta", icon: ChartNoAxesCombined },
       ]
     : [];
 

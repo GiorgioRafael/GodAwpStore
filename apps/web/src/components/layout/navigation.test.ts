@@ -31,7 +31,7 @@ describe("navegação da customização do bot", () => {
     expect(hrefs).toContain("/resgates");
     expect(hrefs).toContain("/metricas-roleta");
     expect(hrefs.indexOf("/metricas-roleta")).toBe(hrefs.indexOf("/resgates") + 1);
-    expect(getCurrentPageLabel("/metricas-roleta")).toBe("Métricas da roleta");
+    expect(getCurrentPageLabel("/metricas-roleta")).toBe("Roleta");
   });
 
   it("marca a rota e suas páginas filhas como ativas", () => {

@@ -16,7 +16,7 @@ import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
 import { getRouletteWheelAdmin } from "@/lib/roulette/wheel-admin";
 import { wheelEconomics } from "@/lib/roulette/wheel-economics";
 
-export const metadata: Metadata = { title: "Métricas da roleta" };
+export const metadata: Metadata = { title: "Roleta" };
 export const dynamic = "force-dynamic";
 
 export default async function RouletteMetricsPage() {
@@ -41,14 +41,14 @@ export default async function RouletteMetricsPage() {
   return (
     <div className="space-y-7">
       <PageHeader
-        eyebrow="Roleta"
-        title="Métricas"
-        description="Resultado da roleta em separado dos pedidos da loja: o que os jogadores depositaram, o que a roleta pagou em prêmios e o que sobrou."
+        eyebrow="Gestão"
+        title="Roleta"
+        description="A roda, as taxas, o overlay e o resultado — tudo o que a roleta tem, em um lugar só. Os números ficam separados dos pedidos da loja."
       />
       <Notice>
-        Estes números vêm apenas das moedas e dos prêmios da roleta, e só de contas de jogador — os
-        giros de teste da equipe ficam de fora. A receita dos pedidos pagos continua na visão geral,
-        sem soma nem sobreposição com o que aparece aqui.
+        Mudanças aqui valem na hora, sem deploy. Os números contam apenas moedas e prêmios de contas
+        de jogador — os giros de teste da equipe ficam de fora, e a receita dos pedidos pagos
+        continua na visão geral, sem soma nem sobreposição.
       </Notice>
 
       {wheel ? <RoulettePowerSwitch enabled={wheel.enabled} /> : null}
