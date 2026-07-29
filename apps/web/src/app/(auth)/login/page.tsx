@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { AlertTriangle, ArrowRight, LockKeyhole, MessageCircleMore, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, LockKeyhole, MessageCircleMore, ShieldCheck, Sparkles } from "lucide-react";
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { STORE_SLUG } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Entrar",
@@ -48,6 +49,18 @@ export default async function LoginPage({
           </span>
           <ArrowRight aria-hidden="true" className="size-4" />
         </LinkButton>
+
+        {/* A raiz do site é o painel, então é aqui que cai quem só queria
+            jogar. Sem esta saída ele lê "apenas IDs autorizados" e desiste. */}
+        {STORE_SLUG === "gwstore" ? (
+          <LinkButton href="/roleta" variant="secondary" size="lg" className="mt-3 w-full justify-between px-4">
+            <span className="flex items-center gap-2.5">
+              <Sparkles aria-hidden="true" className="size-[18px]" />
+              Só quero jogar a roleta
+            </span>
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </LinkButton>
+        ) : null}
 
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-border bg-surface-muted p-3.5">
           <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-success" />

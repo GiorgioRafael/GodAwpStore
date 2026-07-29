@@ -60,6 +60,18 @@ export default async function RoulettePage({
             <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#aa94b3]">
               Identifique sua conta pelo Discord para salvar cada prêmio no seu inventário.
             </p>
+            {/* Uma tentativa que falhou volta para cá, não para o login do
+                painel: lá a resposta é "apenas IDs autorizados", que um jogador
+                lê como recusa em vez de "tente de novo". */}
+            {query.erro === "login" ? (
+              <p
+                role="alert"
+                className="mx-auto mt-5 max-w-md rounded-2xl border border-amber-300/25 bg-amber-400/[0.07] px-4 py-3 text-xs leading-5 text-amber-200"
+              >
+                O Discord não concluiu a entrada dessa vez. Tente novamente — a roleta é aberta a
+                qualquer conta, não precisa de autorização.
+              </p>
+            ) : null}
             <LinkButton
               href="/auth/login?next=/roleta"
               size="lg"

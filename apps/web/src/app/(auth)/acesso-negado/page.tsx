@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { ArrowLeft, Ban, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Ban, ShieldAlert, Sparkles } from "lucide-react";
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { STORE_SLUG } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Acesso negado",
@@ -21,6 +22,21 @@ export default function AccessDeniedPage() {
           Sua conta Discord foi autenticada, mas o ID não está na lista de administradores deste painel.
         </p>
 
+        {/* Sem isto a página é um beco sem saída: a raiz do site é o painel, e
+            um jogador que entra por ela autentica, é recusado aqui, e a única
+            saída o devolve ao login do painel. A roleta é o que ele veio usar. */}
+        {STORE_SLUG === "gwstore" ? (
+          <>
+            <LinkButton href="/roleta" size="lg" className="mt-7 w-full">
+              <Sparkles aria-hidden="true" className="size-4" />
+              Ir para a roleta
+            </LinkButton>
+            <p className="mt-3 text-xs leading-5 text-muted">
+              A roleta é aberta a qualquer conta do Discord — você já está logado.
+            </p>
+          </>
+        ) : null}
+
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-border bg-surface-muted p-3.5 text-left">
           <ShieldAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-warning" />
           <p className="text-xs leading-5 text-muted">
@@ -28,7 +44,7 @@ export default function AccessDeniedPage() {
           </p>
         </div>
 
-        <LinkButton href="/login" variant="secondary" className="mt-7 w-full">
+        <LinkButton href="/login" variant="secondary" className="mt-4 w-full">
           <ArrowLeft aria-hidden="true" className="size-4" />
           Voltar para o login
         </LinkButton>

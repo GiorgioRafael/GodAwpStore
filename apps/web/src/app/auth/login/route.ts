@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getSiteUrl } from "@/lib/env";
+import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -27,5 +28,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL("/login?erro=oauth", siteOrigin));
   }
 
-  return NextResponse.redirect(data.url);
+  const response = NextResponse.redirect(data.url);
+  // Where to land is also kept here, not only in the callback URL. The query
+  // string makes a round trip through Supabase and Discord; anything that drops
+  // it sends the player to the fallback, which is inside the panel, and the
+  // panel answers a non-administrator with "acesso não autorizado" — a login
+  // that worked, reported as a login that was refused.
+  response.cookies.set(AUTH_NEXT_COOKIE, next, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: siteOrigin.startsWith("https:"),
+    path: "/",
+    maxAge: AUTH_NEXT_MAX_AGE,
+  });
+  return response;
 }
