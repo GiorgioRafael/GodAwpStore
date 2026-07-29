@@ -38,6 +38,7 @@ export default async function RouletteMetricsPage() {
     ? wheelEconomics(wheel.slots, {
         markupBps: metrics?.markupBps ?? 7000,
         feeBps: metrics?.feeBps ?? 500,
+        saleRateBps: metrics?.saleRateBps ?? 5000,
       }).returnBps
     : 0;
 
@@ -62,6 +63,7 @@ export default async function RouletteMetricsPage() {
             candidates={wheel.candidates}
             markupBps={metrics?.markupBps ?? 7000}
             feeBps={metrics?.feeBps ?? 500}
+            saleRateBps={metrics?.saleRateBps ?? 5000}
           />
         </>
       ) : (

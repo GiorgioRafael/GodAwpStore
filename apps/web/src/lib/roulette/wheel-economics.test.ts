@@ -161,6 +161,82 @@ describe("fatia com quantidade", () => {
   });
 });
 
+describe("recompra que devolve moeda", () => {
+  // A moeda que volta compra outro giro, então a recompra não é só uma saída
+  // para o jogador: é quantas vezes um único depósito roda a roleta.
+  const wheel = (valueCents: number) => [
+    { prizeKey: "premio_1", productId: "a", productName: "x", valueCents, quantity: 1, drawWeight: 1 },
+  ];
+
+  it("moedas de volta é o RTP vezes a recompra", () => {
+    const meio = wheelEconomics(wheel(64), { markupBps: 7000, feeBps: 500, saleRateBps: 5000 });
+    expect(meio.returnBps).toBe(6400);
+    expect(meio.coinReturnBps).toBe(3200);
+
+    const cheio = wheelEconomics(wheel(64), { markupBps: 7000, feeBps: 500, saleRateBps: 10000 });
+    expect(cheio.coinReturnBps).toBe(6400);
+    // O mesmo depósito roda mais que o dobro de vezes.
+    expect(cheio.spinsPerCoin).toBeCloseTo(2.78, 2);
+    expect(meio.spinsPerCoin).toBeCloseTo(1.47, 2);
+  });
+
+  it("a 100% de recompra o teto cai de 161,5% para 100% de RTP", () => {
+    // É a faixa perigosa: entre os dois, a conta de custo ainda diz lucro.
+    const cheio = wheelEconomics(wheel(100), { markupBps: 7000, feeBps: 500, saleRateBps: 10000 });
+    expect(cheio.breakEvenBps).toBe(16150);
+    expect(cheio.recyclingCeilingBps).toBe(10000);
+    expect(cheio.safeCeilingBps).toBe(10000);
+
+    const meio = wheelEconomics(wheel(100), { markupBps: 7000, feeBps: 500, saleRateBps: 5000 });
+    expect(meio.recyclingCeilingBps).toBe(20000);
+    // A metade não aperta: quem manda é o custo do prêmio.
+    expect(meio.safeCeilingBps).toBe(16150);
+  });
+
+  it("acusa giros infinitos onde o break-even ainda diria lucro", () => {
+    // RTP 120% com recompra de 100%: cada giro devolve 1,20 moeda. O saldo
+    // cresce sozinho. Pela conta de custo (teto 161,5%) isto passaria.
+    const rates = { markupBps: 7000, feeBps: 500, saleRateBps: 10000 };
+    const furo = wheelEconomics(wheel(120), rates);
+    expect(furo.returnBps).toBe(12000);
+    expect(furo.returnBps).toBeLessThan(furo.breakEvenBps);
+    expect(furo.coinReturnBps).toBeGreaterThanOrEqual(10000);
+    expect(furo.spinsPerCoin).toBe(Number.POSITIVE_INFINITY);
+
+    const verdict = wheelVerdict(furo, { markupBps: 7000 });
+    expect(verdict.tone).toBe("danger");
+    expect(verdict.title).toContain("infinitos");
+  });
+
+  it("a roda de hoje continua segura a 100% de recompra", () => {
+    // O que o dono quer fazer: recompra cheia, RTP atual de ~64%.
+    const hoje = wheelEconomics(
+      [
+        // Preço UNITÁRIO: a fatia #1 entrega 2 x 5 = 10, e a #3 entrega 2 x 50 = 100.
+        { prizeKey: "premio_1", productId: "a", productName: "1", valueCents: 5, quantity: 2, drawWeight: 48000 },
+        { prizeKey: "premio_2", productId: "b", productName: "2", valueCents: 40, quantity: 1, drawWeight: 28000 },
+        { prizeKey: "premio_3", productId: "c", productName: "3", valueCents: 50, quantity: 2, drawWeight: 15000 },
+        { prizeKey: "premio_4", productId: "d", productName: "4", valueCents: 200, quantity: 1, drawWeight: 7000 },
+        { prizeKey: "premio_5", productId: "e", productName: "5", valueCents: 700, quantity: 1, drawWeight: 1000 },
+        { prizeKey: "premio_6", productId: "f", productName: "6", valueCents: 800, quantity: 1, drawWeight: 1500 },
+      ],
+      { markupBps: 7000, feeBps: 500, saleRateBps: 10000 },
+    );
+    expect(hoje.returnBps).toBeLessThan(hoje.safeCeilingBps);
+    expect(hoje.coinReturnBps).toBeLessThan(10000);
+    expect(wheelVerdict(hoje, { markupBps: 7000 }).tone).not.toBe("danger");
+    // A margem do pior caso — tudo resgatado — não muda com a recompra.
+    expect(Math.round(hoje.marginCents)).toBe(58);
+  });
+
+  it("recompra zero não inventa um teto", () => {
+    const seca = wheelEconomics(wheel(100), { markupBps: 7000, feeBps: 500, saleRateBps: 0 });
+    expect(seca.coinReturnBps).toBe(0);
+    expect(seca.spinsPerCoin).toBe(1);
+    expect(seca.safeCeilingBps).toBe(16150);
+  });
+});
+
 describe("chances somando 100%", () => {
   const slots = (weights: number[]) =>
     weights.map((drawWeight, index) => ({

@@ -46,11 +46,13 @@ export function RouletteWheelEditor({
   candidates,
   markupBps,
   feeBps,
+  saleRateBps,
 }: {
   slots: WheelSlot[];
   candidates: WheelCandidate[];
   markupBps: number;
   feeBps: number;
+  saleRateBps: number;
 }) {
   const [draft, setDraft] = useState(slots);
   const [state, action, pending] = useActionState(
@@ -60,8 +62,8 @@ export function RouletteWheelEditor({
 
   const byId = useMemo(() => new Map(candidates.map((c) => [c.id, c])), [candidates]);
   const economics = useMemo(
-    () => wheelEconomics(draft, { markupBps, feeBps }),
-    [draft, markupBps, feeBps],
+    () => wheelEconomics(draft, { markupBps, feeBps, saleRateBps }),
+    [draft, markupBps, feeBps, saleRateBps],
   );
   const verdict = useMemo(
     () => wheelVerdict(economics, { markupBps }),
@@ -357,7 +359,33 @@ export function RouletteWheelEditor({
             <Figure
               label="Sobra por giro"
               value={formatBrl(Math.round(economics.marginCents))}
-              detail={`Prejuízo a partir de ${(economics.breakEvenBps / 100).toFixed(1)}%`}
+              detail={`Prejuízo a partir de ${(economics.safeCeilingBps / 100).toFixed(1)}%`}
+            />
+          </div>
+
+          {/* A recompra devolve moeda, e moeda compra giro. Sem estes dois
+              números o operador só vê a margem de UM giro e não vê quantos
+              giros um depósito paga — nem que acima de 100% ele paga infinitos. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Figure
+              label="Moedas de volta por giro"
+              value={`${(economics.coinReturnBps / 100).toFixed(1)}%`}
+              tone={economics.coinReturnBps >= 10000 ? "danger" : undefined}
+              detail={`${(economics.returnBps / 100).toFixed(1)}% de RTP × ${(saleRateBps / 100).toFixed(0)}% de recompra`}
+            />
+            <Figure
+              label="Giros por moeda depositada"
+              value={
+                Number.isFinite(economics.spinsPerCoin)
+                  ? economics.spinsPerCoin.toFixed(2)
+                  : "∞"
+              }
+              tone={Number.isFinite(economics.spinsPerCoin) ? undefined : "danger"}
+              detail={
+                Number.isFinite(economics.spinsPerCoin)
+                  ? `Se o jogador vender tudo de volta. O saldo acaba em ${(economics.recyclingCeilingBps / 100).toFixed(0)}% de RTP`
+                  : "O saldo do jogador nunca acaba"
+              }
             />
           </div>
 
@@ -399,15 +427,31 @@ function Figure({
   label,
   value,
   detail,
+  tone,
 }: {
   label: string;
   value: string;
   detail: string;
+  tone?: "danger";
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface-muted/35 px-4 py-3.5">
+    <div
+      className={cn(
+        "rounded-xl border px-4 py-3.5",
+        tone === "danger"
+          ? "border-danger/30 bg-danger/[0.06]"
+          : "border-border bg-surface-muted/35",
+      )}
+    >
       <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted">{label}</p>
-      <p className="mt-2 text-lg font-semibold tracking-[-0.03em] text-foreground">{value}</p>
+      <p
+        className={cn(
+          "mt-2 text-lg font-semibold tracking-[-0.03em]",
+          tone === "danger" ? "text-danger" : "text-foreground",
+        )}
+      >
+        {value}
+      </p>
       <p className="mt-1 text-xs leading-5 text-muted">{detail}</p>
     </div>
   );
