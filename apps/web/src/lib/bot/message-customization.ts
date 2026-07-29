@@ -128,10 +128,10 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
     paginatedTitle: `🛍️✨ ${STORE_NAME_UPPER} • PRODUTOS {page}/{pages} ✨🛍️`,
     subtitle: `🎮 ${STORE_CATALOG_LABEL} • ⚡ Compra rápida, privada e segura`,
     welcome: `👋💜 **Bem-vindo(a) à ${STORE_NAME}!** 💜👋`,
-    catalogText: "🎮 Monte seu carrinho com até 3 produtos e turbine sua conta! 🚀✨",
+    catalogText: "🎮 Monte seu carrinho com até 5 produtos e turbine sua conta! 🚀✨",
     privacyText: "🔒 Somente **você** verá os detalhes, o pedido e o link de pagamento. 🛡️",
     paymentText: "💠 Pagamento rápido e seguro via **Pix com LivePix**. ⚡✅",
-    prompt: "👇🛒 **Escolha de 1 a 3 produtos no seletor abaixo:**",
+    prompt: "👇🛒 **Escolha de 1 a 5 produtos no seletor abaixo:**",
     selectLabel: "🛒 Catálogo de produtos",
     selectPlaceholder: "Selecione um ou mais produtos",
     emptyTitle: `🛍️✨ ${STORE_NAME_UPPER} • LOJA OFICIAL ✨🛍️`,
@@ -185,7 +185,7 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
     subtitle: "💜 Comprar é rápido, privado e seguro!",
     body: [
       "1️⃣ Vá até o canal da loja e abra a **lista de produtos**. 🛍️✨",
-      "2️⃣ Escolha de 1 a 3 produtos no menu suspenso. 👇🎁",
+      "2️⃣ Escolha de 1 a 5 produtos no menu suspenso. 👇🎁",
       "3️⃣ Informe a quantidade desejada de cada produto.",
       "4️⃣ O total do carrinho precisa atingir o mínimo de **R$ 1,00** da LivePix. 💠",
       "5️⃣ Pague com segurança pelo checkout da **LivePix**. 🔒✅",
@@ -394,16 +394,37 @@ export function normalizeBotMessageCustomization(value: Json | unknown): BotMess
     root.storefront,
     DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
   );
+  const help = normalizeSection(root.help, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.help);
+  const legacyHelpBody = DEFAULT_BOT_MESSAGE_CUSTOMIZATION.help.body.replace(
+    "2️⃣ Escolha de 1 a 5 produtos no menu suspenso. 👇🎁",
+    "2️⃣ Escolha de 1 a 3 produtos no menu suspenso. 👇🎁",
+  );
   return {
     version: BOT_MESSAGE_CONFIG_VERSION,
     storefront: {
       ...storefront,
       bannerUrl: normalizeBotMessageImageUrl(storefront.bannerUrl),
+      catalogText:
+        storefront.catalogText ===
+        "🎮 Monte seu carrinho com até 3 produtos e turbine sua conta! 🚀✨"
+          ? DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront.catalogText
+          : storefront.catalogText,
+      prompt:
+        storefront.prompt ===
+        "👇🛒 **Escolha de 1 a 3 produtos no seletor abaixo:**"
+          ? DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront.prompt
+          : storefront.prompt,
     },
     product: normalizeSection(root.product, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.product),
     quantity: normalizeSection(root.quantity, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.quantity),
     order: normalizeSection(root.order, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.order),
-    help: normalizeSection(root.help, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.help),
+    help: {
+      ...help,
+      body:
+        help.body === legacyHelpBody
+          ? DEFAULT_BOT_MESSAGE_CUSTOMIZATION.help.body
+          : help.body,
+    },
     error: normalizeSection(root.error, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.error),
     ticket: normalizeSection(root.ticket, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket),
   };

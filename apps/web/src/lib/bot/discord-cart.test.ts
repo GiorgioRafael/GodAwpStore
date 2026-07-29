@@ -10,8 +10,16 @@ const productIds = [
   "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
   "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f",
   "5f8199d0-67f7-45ec-b597-8d5149568707",
+  "4e7188cb-1ee8-40e3-a696-19034f77c61d",
+  "6b7fbad5-f7ed-4781-b5ef-05bf4c615871",
 ];
-const productNames = ["Super Watering", "Super Sprinkler", "Dragon's Breath"];
+const productNames = [
+  "Super Watering",
+  "Super Sprinkler",
+  "Dragon's Breath",
+  "Star Fruit",
+  "Sun Bloom",
+];
 const selections: DiscordCartSelection[] = productIds.map((productId, index) => ({
   productId,
   productName: productNames[index] ?? "Produto",
@@ -23,12 +31,14 @@ const selectionValues = selections.map((selection) =>
 let createNativeDiscordCartResponse: typeof import("./discord-cart").createNativeDiscordCartResponse;
 let createNativeDiscordCartReviewResponse: typeof import("./discord-cart").createNativeDiscordCartReviewResponse;
 let parseNativeDiscordCartInteraction: typeof import("./discord-cart").parseNativeDiscordCartInteraction;
+let readNativeDiscordCartModalItems: typeof import("./discord-cart").readNativeDiscordCartModalItems;
 
 beforeAll(async () => {
   ({
     createNativeDiscordCartResponse,
     createNativeDiscordCartReviewResponse,
     parseNativeDiscordCartInteraction,
+    readNativeDiscordCartModalItems,
   } = await import("./discord-cart"));
 });
 
@@ -78,6 +88,18 @@ describe("carrinho nativo do Discord", () => {
           description: "Produto 3",
           emoji: { id: "423456789012345672", name: "gw_product_2", animated: false },
         },
+        {
+          label: productNames[3],
+          value: selectionValues[3],
+          description: "Produto 4",
+          emoji: { id: "423456789012345673", name: "gw_product_3", animated: false },
+        },
+        {
+          label: productNames[4],
+          value: selectionValues[4],
+          description: "Produto 5",
+          emoji: { id: "423456789012345674", name: "gw_product_4", animated: false },
+        },
       ],
     });
     if (!initial || initial.kind !== "review") throw new Error("Revisão inicial não criada.");
@@ -91,7 +113,7 @@ describe("carrinho nativo do Discord", () => {
       type: 4,
       data: {
         flags: 64,
-        content: expect.stringContaining("Carrinho: 1/3"),
+        content: expect.stringContaining("Carrinho: 1/5"),
         components: [
           { components: [{ type: 2, label: "Super Watering", disabled: true }] },
           {
@@ -99,11 +121,13 @@ describe("carrinho nativo do Discord", () => {
               {
                 type: 3,
                 custom_id: "gwc:add",
-                max_values: 2,
-                placeholder: "Adicionar até 2 produtos (1/3)",
+                max_values: 4,
+                placeholder: "Adicionar até 4 produtos (1/5)",
                 options: [
                   { emoji: { id: "423456789012345671", name: "gw_product_1" } },
                   { emoji: { id: "423456789012345672", name: "gw_product_2" } },
+                  { emoji: { id: "423456789012345673", name: "gw_product_3" } },
+                  { emoji: { id: "423456789012345674", name: "gw_product_4" } },
                 ],
               },
             ],
@@ -117,7 +141,7 @@ describe("carrinho nativo do Discord", () => {
       type: 3,
       data: {
         custom_id: "gwc:add",
-        values: [selectionValues[1], selectionValues[2]],
+        values: selectionValues.slice(1),
       },
       message: firstReview.data,
     });
@@ -146,16 +170,24 @@ describe("carrinho nativo do Discord", () => {
     expect(secondReview).toMatchObject({
       type: 7,
       data: {
-        content: expect.stringContaining("Carrinho: 3/3"),
+        content: expect.stringContaining("Carrinho: 5/5"),
         components: [
-          { components: [{ label: "Super Watering" }, { label: "Super Sprinkler" }, { label: "Dragon's Breath" }] },
-          { components: [{ custom_id: "gwc:continue", label: "Continuar com 3 produtos" }] },
+          {
+            components: [
+              { label: "Super Watering" },
+              { label: "Super Sprinkler" },
+              { label: "Dragon's Breath" },
+              { label: "Star Fruit" },
+              { label: "Sun Bloom" },
+            ],
+          },
+          { components: [{ custom_id: "gwc:continue", label: "Continuar com 5 produtos" }] },
         ],
       },
     });
   });
 
-  it("aceita três produtos diretamente no seletor inicial", () => {
+  it("aceita cinco produtos diretamente no seletor inicial", () => {
     const interaction = parseNativeDiscordCartInteraction({
       type: 3,
       data: { custom_id: "select_products", values: selectionValues },
@@ -202,24 +234,67 @@ describe("carrinho nativo do Discord", () => {
     ).toBeNull();
   });
 
-  it("abre um campo de quantidade para cada produto depois da confirmação", () => {
+  it("abre os cinco campos de quantidade com IDs compactos por produto", () => {
     const response = createNativeDiscordCartResponse(selections);
 
     expect(response).toMatchObject({
       type: 9,
       data: {
-        title: "Quantidades (3/3)",
+        custom_id: "gwc:submit",
+        title: "Quantidades (5/5)",
         components: [
-          { components: [{ custom_id: "quantity_0", label: "Super Watering", value: "1" }] },
-          { components: [{ custom_id: "quantity_1", label: "Super Sprinkler", value: "1" }] },
-          { components: [{ custom_id: "quantity_2", label: "Dragon's Breath", value: "1" }] },
+          {
+            components: [
+              {
+                custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
+                label: "Super Watering",
+                value: "1",
+              },
+            ],
+          },
+          {
+            components: [
+              {
+                custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
+                label: "Super Sprinkler",
+                value: "1",
+              },
+            ],
+          },
+          {
+            components: [
+              {
+                custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
+                label: "Dragon's Breath",
+                value: "1",
+              },
+            ],
+          },
+          {
+            components: [
+              {
+                custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
+                label: "Star Fruit",
+                value: "1",
+              },
+            ],
+          },
+          {
+            components: [
+              {
+                custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
+                label: "Sun Bloom",
+                value: "1",
+              },
+            ],
+          },
         ],
       },
     });
     if (!("data" in response) || !("custom_id" in response.data)) {
       throw new Error("O modal do carrinho não foi criado.");
     }
-    expect(String(response.data.custom_id)).toHaveLength(72);
+    expect(response.data.custom_id).toBe("gwc:submit");
     expect(
       parseNativeDiscordCartInteraction({
         type: 5,
@@ -229,6 +304,16 @@ describe("carrinho nativo do Discord", () => {
         },
       }),
     ).toEqual({ kind: "submit", response: { type: 5, data: { flags: 64 } } });
+    expect(
+      readNativeDiscordCartModalItems({
+        data: {
+          custom_id: response.data.custom_id,
+          components: response.data.components,
+        },
+      }),
+    ).toEqual(
+      productIds.map((productId) => ({ productId, quantity: 1 })),
+    );
   });
 
   it("abre o carrinho com quantidades válidas depois do desconto", () => {
@@ -256,6 +341,8 @@ describe("carrinho nativo do Discord", () => {
               }),
             ],
           },
+          { components: [{ value: "1" }] },
+          { components: [{ value: "1" }] },
           { components: [{ value: "1" }] },
           { components: [{ value: "1" }] },
         ],

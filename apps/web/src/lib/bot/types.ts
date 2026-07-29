@@ -5,7 +5,7 @@ import type {
 } from "./customer-rank";
 import type { DiscordProductEmoji } from "./discord-product-emoji-shared";
 
-export const MAXIMUM_CART_ITEMS = 3;
+export const MAXIMUM_CART_ITEMS = 5;
 
 export type BotCatalogProduct = {
   id: string;

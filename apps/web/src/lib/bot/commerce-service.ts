@@ -404,6 +404,11 @@ export class BotCommerceService {
     if (!isValidCartInput(input)) {
       return { kind: "not_offered" };
     }
+    // A Discord quantity modal supports five product fields. Do not let an
+    // upsell create a sixth distinct line after the buyer fills the cart.
+    if (input.items.length >= MAX_CART_ITEMS) {
+      return { kind: "not_offered" };
+    }
 
     const productIds = input.items.map((item) => item.productId);
     const [existing, guild, products] = await Promise.all([

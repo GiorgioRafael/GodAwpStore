@@ -635,6 +635,30 @@ describe("BotCommerceService", () => {
     });
   });
 
+  it("não oferece upsell quando o carrinho já possui cinco produtos", async () => {
+    const repo = repository();
+    const service = new BotCommerceService(repo);
+    const items = [
+      product.id,
+      secondProduct.id,
+      "5f8199d0-67f7-45ec-b597-8d5149568707",
+      "4e7188cb-1ee8-40e3-a696-19034f77c61d",
+      "6b7fbad5-f7ed-4781-b5ef-05bf4c615871",
+    ].map((productId) => ({ productId, quantity: 1 }));
+
+    await expect(
+      service.prepareUpsell({
+        interactionId: input.interactionId,
+        buyerDiscordId: input.buyerDiscordId,
+        guild,
+        isServerBooster: false,
+        items,
+      }),
+    ).resolves.toEqual({ kind: "not_offered" });
+    expect(repo.ensureGuild).not.toHaveBeenCalled();
+    expect(repo.createUpsellOffer).not.toHaveBeenCalled();
+  });
+
   it("rejeita em profundidade uma oferta acima do teto de 5%", async () => {
     const repo = repository({
       createUpsellOffer: vi.fn(async () => ({

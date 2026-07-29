@@ -45,6 +45,33 @@ values
     300,
     5,
     'active'
+  ),
+  (
+    '84000000-0000-4000-8000-000000000003',
+    '83000000-0000-4000-8000-000000000001',
+    'Star Fruit',
+    'cart-star-fruit',
+    100,
+    5,
+    'active'
+  ),
+  (
+    '84000000-0000-4000-8000-000000000004',
+    '83000000-0000-4000-8000-000000000001',
+    'Sun Bloom',
+    'cart-sun-bloom',
+    120,
+    5,
+    'active'
+  ),
+  (
+    '84000000-0000-4000-8000-000000000005',
+    '83000000-0000-4000-8000-000000000001',
+    'Dragon Breath',
+    'cart-dragon-breath',
+    140,
+    5,
+    'active'
   );
 
 insert into public.guilds (
@@ -148,6 +175,60 @@ begin
   if (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000001') <> 5
     or (select stock_quantity from public.products where id = '84000000-0000-4000-8000-000000000002') <> 5 then
     raise exception 'repeated cart expiration changed stock';
+  end if;
+end
+$$;
+
+do $$
+declare
+  created record;
+  item_count integer;
+  positions integer[];
+begin
+  select * into strict created
+  from public.create_ranked_bot_cart_with_reservation(
+    '860000000000000003',
+    '85000000-0000-4000-8000-000000000001',
+    '81000000-0000-4000-8000-000000000001',
+    '870000000000000001',
+    '[
+      {"product_id":"84000000-0000-4000-8000-000000000001","quantity":1},
+      {"product_id":"84000000-0000-4000-8000-000000000002","quantity":1},
+      {"product_id":"84000000-0000-4000-8000-000000000003","quantity":1},
+      {"product_id":"84000000-0000-4000-8000-000000000004","quantity":1},
+      {"product_id":"84000000-0000-4000-8000-000000000005","quantity":1}
+    ]'::jsonb,
+    0,
+    null,
+    1000
+  );
+
+  select count(*), array_agg(position order by position)
+  into item_count, positions
+  from public.order_items
+  where order_id = created.checkout_order_id;
+
+  if not created.was_created
+    or created.out_of_stock
+    or created.checkout_order_id is null
+    or item_count <> 5
+    or positions <> array[1, 2, 3, 4, 5] then
+    raise exception 'five-product cart was not created with stable positions';
+  end if;
+
+  if exists (
+    select 1
+    from public.products
+    where id in (
+      '84000000-0000-4000-8000-000000000001',
+      '84000000-0000-4000-8000-000000000002',
+      '84000000-0000-4000-8000-000000000003',
+      '84000000-0000-4000-8000-000000000004',
+      '84000000-0000-4000-8000-000000000005'
+    )
+      and stock_quantity <> 5
+  ) then
+    raise exception 'five-product unpaid cart hid stock';
   end if;
 end
 $$;

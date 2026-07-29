@@ -126,7 +126,7 @@ describe("Discord native quantity interactions", () => {
       type: 4,
       data: {
         flags: 64,
-        content: expect.stringContaining("Carrinho: 1/3"),
+        content: expect.stringContaining("Carrinho: 1/5"),
         components: [
           { components: [{ label: "Super Watering", disabled: true }] },
           { components: [{ custom_id: "gwc:continue" }] },
@@ -146,11 +146,12 @@ describe("Discord native quantity interactions", () => {
     await expect(modalResponse.json()).resolves.toMatchObject({
       type: 9,
       data: {
+        custom_id: "gwc:submit",
         title: "Quantidades (1/1)",
         components: [
           {
             components: [{
-              custom_id: "quantity_0",
+              custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
               label: "Super Watering (mín. 10)",
             }],
           },

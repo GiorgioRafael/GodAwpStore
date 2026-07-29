@@ -36,6 +36,8 @@ const CART_ADD_ACTION = "gwc:add";
 const CART_CONTINUE_ACTION = "gwc:continue";
 const CART_ITEM_PREFIX = "gwc:item:";
 const CART_MODAL_PREFIX = "gwc:";
+const CART_MODAL_SUBMIT_ID = "gwc:submit";
+const CART_QUANTITY_PREFIX = "gwc:q:";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type DiscordCartOption = {
@@ -121,7 +123,10 @@ export function parseNativeDiscordCartInteraction(
   if (
     raw.type === DISCORD_MODAL_SUBMIT &&
     typeof raw.data.custom_id === "string" &&
-    decodeCartProductIds(raw.data.custom_id)
+    (
+      raw.data.custom_id === CART_MODAL_SUBMIT_ID ||
+      decodeLegacyCartProductIds(raw.data.custom_id)
+    )
   ) {
     return {
       kind: "submit",
@@ -259,7 +264,7 @@ export function createNativeDiscordCartResponse(
   return {
     type: DISCORD_MODAL_RESPONSE,
     data: {
-      custom_id: encodeCartProductIds(productIds),
+      custom_id: CART_MODAL_SUBMIT_ID,
       title: `Quantidades (${productIds.length}/${productIds.length})`,
       components: selections.map((selection, index) => {
         const minimumQuantity =
@@ -270,7 +275,9 @@ export function createNativeDiscordCartResponse(
           components: [
             {
               type: 4,
-              custom_id: `quantity_${index}`,
+              custom_id: `${CART_QUANTITY_PREFIX}${encodeCompactProductId(
+                selection.productId,
+              )}`,
               label: truncate(
                 minimumQuantity > 1
                   ? `${productName} (mín. ${minimumQuantity})`
@@ -298,7 +305,7 @@ export async function completeDiscordCartPurchase(
   let stockChanged = false;
   try {
     const context = readDiscordInteraction(raw, "");
-    const items = readCartModalItems(raw);
+    const items = readNativeDiscordCartModalItems(raw);
     if (!context.interactionId || !context.guildId || !context.userId || !items) {
       await updateDiscordEphemeralResponse(
         raw,
@@ -363,13 +370,6 @@ export async function completeDiscordCartPurchase(
   return stockChanged;
 }
 
-function encodeCartProductIds(productIds: string[]) {
-  const encoded = productIds.map(encodeCompactProductId);
-  const customId = `${CART_MODAL_PREFIX}${encoded.join(".")}`;
-  if (customId.length > 100) throw new Error("Carrinho excede o limite do Discord.");
-  return customId;
-}
-
 function encodeCompactProductId(productId: string) {
   const normalized = productId.replaceAll("-", "");
   if (!UUID_PATTERN.test(productId) || normalized.length !== 32) {
@@ -386,7 +386,7 @@ function decodeCompactProductId(value: string) {
   return UUID_PATTERN.test(productId) ? productId : null;
 }
 
-function decodeCartProductIds(customId: string) {
+function decodeLegacyCartProductIds(customId: string) {
   if (!customId.startsWith(CART_MODAL_PREFIX)) return null;
   const encoded = customId.slice(CART_MODAL_PREFIX.length).split(".");
   if (encoded.length < 1 || encoded.length > MAXIMUM_CART_ITEMS) return null;
@@ -494,12 +494,48 @@ function readDiscordOptionEmoji(value: unknown): DiscordCartOption["emoji"] | nu
   };
 }
 
-function readCartModalItems(raw: unknown) {
+export function readNativeDiscordCartModalItems(raw: unknown) {
   if (!isObject(raw) || !isObject(raw.data) || typeof raw.data.custom_id !== "string") {
     return null;
   }
-  const productIds = decodeCartProductIds(raw.data.custom_id);
-  if (!productIds || !Array.isArray(raw.data.components)) return null;
+  if (!Array.isArray(raw.data.components)) return null;
+  if (raw.data.custom_id === CART_MODAL_SUBMIT_ID) {
+    const items: Array<{ productId: string; quantity: number }> = [];
+    let invalid = false;
+    visitComponents(raw.data.components, (component) => {
+      if (
+        typeof component.custom_id !== "string" ||
+        !component.custom_id.startsWith(CART_QUANTITY_PREFIX)
+      ) {
+        return;
+      }
+      const productId = decodeCompactProductId(
+        component.custom_id.slice(CART_QUANTITY_PREFIX.length),
+      );
+      const value =
+        typeof component.value === "string" ? component.value.trim() : "";
+      const quantity = /^\d{1,5}$/.test(value) ? Number(value) : Number.NaN;
+      if (
+        !productId ||
+        !Number.isInteger(quantity) ||
+        quantity < 1 ||
+        quantity > MAXIMUM_ORDER_QUANTITY
+      ) {
+        invalid = true;
+        return;
+      }
+      items.push({ productId, quantity });
+    });
+    return !invalid &&
+      items.length >= 1 &&
+      items.length <= MAXIMUM_CART_ITEMS &&
+      new Set(items.map((item) => item.productId)).size === items.length
+      ? items
+      : null;
+  }
+
+  const productIds = decodeLegacyCartProductIds(raw.data.custom_id);
+  if (!productIds) return null;
   const values = new Map<string, string>();
   visitComponents(raw.data.components, (component) => {
     if (typeof component.custom_id === "string" && typeof component.value === "string") {

@@ -65,7 +65,7 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain("/rank");
   });
 
-  it("configura o seletor inicial para escolher até três produtos", () => {
+  it("configura o seletor inicial para escolher até cinco produtos", () => {
     const payload = {
       components: [
         {
@@ -75,7 +75,14 @@ describe("Discord catalog cards", () => {
               type: 3,
               custom_id: "select_products",
               max_values: 1,
-              options: [{ value: "a" }, { value: "b" }, { value: "c" }, { value: "d" }],
+              options: [
+                { value: "a" },
+                { value: "b" },
+                { value: "c" },
+                { value: "d" },
+                { value: "e" },
+                { value: "f" },
+              ],
             },
           ],
         },
@@ -85,7 +92,7 @@ describe("Discord catalog cards", () => {
     configureDiscordProductEntrySelect(payload);
     expect(payload.components[0]?.components[0]).toMatchObject({
       min_values: 1,
-      max_values: 3,
+      max_values: 5,
     });
   });
 

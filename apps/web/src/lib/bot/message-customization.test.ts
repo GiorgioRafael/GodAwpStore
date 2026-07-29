@@ -55,6 +55,34 @@ describe("personalização das mensagens do bot", () => {
     ).toBe("Ghost Pepper custa R$ 1,00; {unknown}");
   });
 
+  it("atualiza somente a cópia padrão legada do carrinho de três para cinco itens", () => {
+    const legacyHelpBody = DEFAULT_BOT_MESSAGE_CUSTOMIZATION.help.body.replace(
+      "2️⃣ Escolha de 1 a 5 produtos no menu suspenso. 👇🎁",
+      "2️⃣ Escolha de 1 a 3 produtos no menu suspenso. 👇🎁",
+    );
+    const normalized = normalizeBotMessageCustomization({
+      version: 1,
+      storefront: {
+        catalogText:
+          "🎮 Monte seu carrinho com até 3 produtos e turbine sua conta! 🚀✨",
+        prompt: "👇🛒 **Escolha de 1 a 3 produtos no seletor abaixo:**",
+      },
+      help: { body: legacyHelpBody },
+    });
+
+    expect(normalized.storefront.catalogText).toContain("até 5 produtos");
+    expect(normalized.storefront.prompt).toContain("1 a 5 produtos");
+    expect(normalized.help.body).toContain("1 a 5 produtos");
+
+    const custom = normalizeBotMessageCustomization({
+      version: 1,
+      storefront: { prompt: "Selecione até três ofertas especiais." },
+    });
+    expect(custom.storefront.prompt).toBe(
+      "Selecione até três ofertas especiais.",
+    );
+  });
+
   it("aceita os padrões completos e remove caracteres de controle", () => {
     const parsed = botMessageCustomizationSchema.safeParse({
       ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,

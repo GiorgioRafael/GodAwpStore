@@ -2,6 +2,7 @@ import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import type { Json } from "@/lib/supabase/database.types";
+import { MAXIMUM_CART_ITEMS } from "./types";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
 
@@ -133,7 +134,7 @@ function readItems(value: Json): LeadRecoveryItem[] {
       discountAmountCents: readNonnegativeInteger(entry.discount_amount_cents),
     };
   });
-  if (items.length < 1 || items.length > 3) {
+  if (items.length < 1 || items.length > MAXIMUM_CART_ITEMS) {
     throw new Error("Carrinho de recuperação inválido.");
   }
   return items;
