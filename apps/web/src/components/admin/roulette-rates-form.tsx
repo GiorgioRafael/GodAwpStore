@@ -72,13 +72,24 @@ export function RouletteRatesForm({
             Com {formatPercent(markupBps)}% de markup, um item que você comprou por{" "}
             {formatBrl(100)} aparece na roleta valendo {formatBrl(100 + markupBps / 100)}.
           </p>
-          <div className="rounded-xl border border-warning/20 bg-warning/[0.05] px-4 py-3.5">
-            <p className="text-sm font-medium text-foreground">
-              Recompra do prêmio: {formatPercent(saleRateBps)}%
-            </p>
-            <p className="mt-1 text-xs leading-5 text-muted">
-              Esta não se edita por aqui de propósito. O valor de recompra é lido na hora da venda,
-              então baixá-la tiraria valor de todo prêmio que já está no inventário de alguém.
+          <div className="space-y-2 rounded-xl border border-warning/20 bg-warning/[0.05] px-4 py-3.5">
+            <Field
+              label="Recompra do prêmio"
+              htmlFor={`${formId}-sale`}
+              hint="Moedas devolvidas na venda"
+              error={fieldError(state, "salePercent")}
+            >
+              <Input
+                id={`${formId}-sale`}
+                name="salePercent"
+                inputMode="decimal"
+                defaultValue={formatPercent(saleRateBps)}
+              />
+            </Field>
+            <p className="text-xs leading-5 text-muted">
+              Esta muda o jogo, não só a conta: o valor é lido na hora da venda, então baixá-la tira
+              valor de todo prêmio que já está no inventário de alguém. Um prêmio de{" "}
+              {formatBrl(100)} devolve {formatBrl(Math.round(saleRateBps))} hoje.
             </p>
           </div>
         </CardContent>

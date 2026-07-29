@@ -5,12 +5,15 @@ import { ChartNoAxesCombined, MonitorPlay } from "lucide-react";
 import { Notice } from "@/components/admin/notice";
 import { PageHeader } from "@/components/admin/page-header";
 import { RouletteMetricsPanel } from "@/components/admin/roulette-metrics-panel";
+import { RoulettePowerSwitch } from "@/components/admin/roulette-power-switch";
+import { RouletteWheelEditor } from "@/components/admin/roulette-wheel-editor";
 import { RouletteOverlayLink } from "@/components/admin/roulette-overlay-link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { STORE_SLUG } from "@/lib/brand";
 import { hasPlayerActivity, getRouletteMetrics } from "@/lib/roulette/metrics";
 import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
+import { getRouletteWheelAdmin } from "@/lib/roulette/wheel-admin";
 
 export const metadata: Metadata = { title: "Métricas da roleta" };
 export const dynamic = "force-dynamic";
@@ -19,9 +22,10 @@ export default async function RouletteMetricsPage() {
   // A roleta existe só na GWStore; nas outras lojas a rota não deve nem existir.
   if (STORE_SLUG !== "gwstore") notFound();
 
-  const [overlay, metrics] = await Promise.all([
+  const [overlay, metrics, wheel] = await Promise.all([
     getRouletteOverlayLink(),
     getRouletteMetrics(),
+    getRouletteWheelAdmin(),
   ]);
 
   return (
@@ -36,6 +40,17 @@ export default async function RouletteMetricsPage() {
         giros de teste da equipe ficam de fora. A receita dos pedidos pagos continua na visão geral,
         sem soma nem sobreposição com o que aparece aqui.
       </Notice>
+
+      {wheel ? <RoulettePowerSwitch enabled={wheel.enabled} /> : null}
+
+      {wheel ? (
+        <RouletteWheelEditor
+          slots={wheel.slots}
+          candidates={wheel.candidates}
+          markupBps={metrics?.markupBps ?? 7000}
+          feeBps={metrics?.feeBps ?? 500}
+        />
+      ) : null}
 
       {overlay.status === "ready" ? (
         <RouletteOverlayLink overlayUrl={overlay.url} />

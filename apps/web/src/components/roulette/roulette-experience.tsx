@@ -22,7 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   getRouletteCoinPurchaseStatus,
@@ -49,7 +49,7 @@ import {
 } from "@/lib/roulette/demo";
 import {
   EXTRA_TURNS,
-  isBigRoulettePrize,
+  highlightedPrizeValues,
   spinWheelTo,
   wheelLabelPoint,
   wheelSegmentPath,
@@ -299,7 +299,11 @@ export function RouletteExperience({
 
   const lastPrize = lastPrizeKey ? rouletteWheelPrize(prizes, lastPrizeKey) : null;
   const topPrizeCents = prizes.reduce((top, prize) => Math.max(top, prize.valueCents), 0);
-  const bigPrize = Boolean(lastPrize && isBigRoulettePrize(lastPrize.valueCents));
+  const highlighted = useMemo(
+    () => highlightedPrizeValues(prizes.map((prize) => prize.valueCents)),
+    [prizes],
+  );
+  const bigPrize = Boolean(lastPrize && highlighted.has(lastPrize.valueCents));
   const topPrize = Boolean(lastPrize && lastPrize.valueCents >= topPrizeCents && topPrizeCents > 0);
   const celebrating = landed && bigPrize;
 
@@ -501,7 +505,7 @@ export function RouletteExperience({
                     <g ref={wheelRef} style={{ transformOrigin: "50% 50%" }}>
                       {prizes.map((prize, index) => {
                         const label = wheelLabelPoint(index, prizes.length);
-                        const highlight = isBigRoulettePrize(prize.valueCents);
+                        const highlight = highlighted.has(prize.valueCents);
                         return (
                           <g key={prize.key}>
                             <path

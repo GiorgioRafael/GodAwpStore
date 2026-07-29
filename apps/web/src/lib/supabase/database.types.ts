@@ -75,6 +75,7 @@ type PlatformSettingsRow = {
   roulette_sale_rate_bps: number;
   roulette_markup_bps: number;
   livepix_fee_bps: number;
+  roulette_enabled: boolean;
   updated_by: string | null;
   created_at: string;
   updated_at: string;
@@ -1759,6 +1760,37 @@ export type Database = {
           updated_redemption_id: string;
           updated_nickname: string;
           updated_player_discord_id: string;
+        }[];
+      };
+      admin_roulette_wheel: {
+        Args: Record<string, never>;
+        Returns: {
+          slot_prize_key: string;
+          slot_product_id: string | null;
+          slot_product_name: string;
+          slot_value_cents: number;
+          slot_stock_quantity: number;
+          slot_draw_weight: number;
+          slot_draw_chance_bps: number;
+          slot_held_units: number;
+          slot_archived: boolean;
+        }[];
+      };
+      admin_roulette_prize_candidates: {
+        Args: Record<string, never>;
+        Returns: {
+          candidate_id: string;
+          candidate_name: string;
+          candidate_value_cents: number;
+          candidate_stock_quantity: number;
+        }[];
+      };
+      admin_save_roulette_wheel: {
+        Args: { p_slots: Json };
+        Returns: {
+          saved_slot_count: number;
+          saved_total_weight: number;
+          saved_return_bps: number;
         }[];
       };
       admin_roulette_metrics: {

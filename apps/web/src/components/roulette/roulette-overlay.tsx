@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { readRouletteOverlayEvents } from "@/app/roleta/overlay/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
@@ -15,7 +15,7 @@ import {
 } from "@/lib/roulette/demo";
 import {
   EXTRA_TURNS,
-  isBigRoulettePrize,
+  highlightedPrizeValues,
   spinWheelTo,
   wheelLabelPoint,
   wheelSegmentPath,
@@ -173,7 +173,11 @@ export function RouletteOverlay({
 
   const prize = current ? rouletteWheelPrize(prizes, current.prizeKey) : null;
   const jackpot = Boolean(current?.isTopPrize);
-  const big = Boolean(current && isBigRoulettePrize(current.valueCents));
+  const highlighted = useMemo(
+    () => highlightedPrizeValues(prizes.map((prize) => prize.valueCents)),
+    [prizes],
+  );
+  const big = Boolean(current && highlighted.has(current.valueCents));
   const celebrating = landed && big;
 
   return (
@@ -254,7 +258,7 @@ export function RouletteOverlay({
           <g ref={wheelRef} style={{ transformOrigin: "50% 50%" }}>
             {prizes.map((slot, index) => {
               const label = wheelLabelPoint(index, prizes.length);
-              const highlight = isBigRoulettePrize(slot.valueCents);
+              const highlight = highlighted.has(slot.valueCents);
               return (
                 <g key={slot.key}>
                   <path

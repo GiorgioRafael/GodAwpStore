@@ -1,18 +1,24 @@
-import { SPIN_COST_CENTS } from "./demo";
-
 export const WHEEL_SIZE = 360;
 export const WHEEL_CENTER = WHEEL_SIZE / 2;
 export const WHEEL_RADIUS = 158;
 /** Extra full turns on top of the alignment, so the wheel really travels. */
 export const EXTRA_TURNS = 6;
 
+/** How many of the richest slots wear the gold outline. */
+export const HIGHLIGHTED_PRIZE_COUNT = 2;
+
 /**
- * A prize that pays at least twice the spin gets the glowing treatment: it is
- * the payout worth watching for, and the rule follows the ladder instead of
- * hard-coding which slots are the good ones.
+ * The values that get the glowing treatment: the two richest slots on the
+ * wheel, whatever they happen to be worth. Ranking beats a fixed threshold
+ * because the wheel is editable — a rebuilt ladder must not end up with every
+ * slot glowing, or none.
+ *
+ * Ties are kept together: two slots sharing the top price both glow, and the
+ * second tier is the next distinct price below them.
  */
-export function isBigRoulettePrize(valueCents: number) {
-  return valueCents >= 2 * SPIN_COST_CENTS;
+export function highlightedPrizeValues(valuesCents: readonly number[]): Set<number> {
+  const distinct = [...new Set(valuesCents.filter((value) => value > 0))];
+  return new Set(distinct.sort((a, b) => b - a).slice(0, HIGHLIGHTED_PRIZE_COUNT));
 }
 
 export function wheelSegmentPath(index: number, total: number) {

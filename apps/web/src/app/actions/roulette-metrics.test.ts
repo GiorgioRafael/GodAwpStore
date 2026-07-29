@@ -19,10 +19,11 @@ import { saveRouletteRatesAction } from "./roulette-metrics";
 
 const EMPTY = { ok: false, message: "" };
 
-function form(markup: string, fee: string) {
+function form(markup: string, fee: string, sale = "50") {
   const data = new FormData();
   data.set("markupPercent", markup);
   data.set("feePercent", fee);
+  data.set("salePercent", sale);
   return data;
 }
 
@@ -40,6 +41,7 @@ describe("premissas da roleta", () => {
     expect(update).toHaveBeenCalledWith({
       roulette_markup_bps: 15_000,
       livepix_fee_bps: 500,
+      roulette_sale_rate_bps: 5_000,
     });
   });
 
@@ -49,20 +51,24 @@ describe("premissas da roleta", () => {
     expect(update).toHaveBeenCalledWith({
       roulette_markup_bps: 7_050,
       livepix_fee_bps: 499,
+      roulette_sale_rate_bps: 5_000,
     });
   });
 
   it("recusa valores fora da faixa sem tocar no banco", async () => {
     // Uma taxa de 50% não existe em provedor nenhum, e um markup de 20.000%
     // faria o painel reportar lucro que não existe.
-    for (const [markup, fee] of [
-      ["70", "50"],
-      ["20000", "5"],
-      ["-1", "5"],
-      ["", "5"],
-      ["abc", "5"],
+    for (const [markup, fee, sale] of [
+      ["70", "50", "50"],
+      ["20000", "5", "50"],
+      ["-1", "5", "50"],
+      ["", "5", "50"],
+      ["abc", "5", "50"],
+      // A recompra passa a ser editável, mas não pode devolver mais que o item.
+      ["70", "5", "120"],
+      ["70", "5", "abc"],
     ]) {
-      const result = await saveRouletteRatesAction(EMPTY, form(markup, fee));
+      const result = await saveRouletteRatesAction(EMPTY, form(markup, fee, sale));
       expect(result.ok).toBe(false);
     }
 

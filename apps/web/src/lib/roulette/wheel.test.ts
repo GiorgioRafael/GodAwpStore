@@ -4,21 +4,33 @@ vi.mock("server-only", () => ({}));
 
 import {
   EXTRA_TURNS,
-  isBigRoulettePrize,
+  highlightedPrizeValues,
   spinWheelTo,
   wheelLabelPoint,
   WHEEL_CENTER,
 } from "./wheel";
 
 describe("roulette wheel", () => {
-  it("destaca só o prêmio que paga ao menos o dobro do giro", () => {
-    // A escada em produção: 0,15 / 0,50 / 1,00 / 2,50 / 10,00.
-    expect(isBigRoulettePrize(15)).toBe(false);
-    expect(isBigRoulettePrize(50)).toBe(false);
-    // Empatar o giro não é destaque.
-    expect(isBigRoulettePrize(100)).toBe(false);
-    expect(isBigRoulettePrize(250)).toBe(true);
-    expect(isBigRoulettePrize(1_000)).toBe(true);
+  it("acende os dois slots mais caros, seja qual for a escada", () => {
+    // A roda é editável: uma regra de valor fixo acenderia tudo ou nada quando
+    // o admin trocasse os prêmios.
+    const ladder = [15, 50, 100, 250, 1_000];
+    expect(highlightedPrizeValues(ladder)).toEqual(new Set([1_000, 250]));
+
+    // Escada mais cara: o destaque sobe junto.
+    expect(highlightedPrizeValues([500, 1_000, 2_000, 5_000])).toEqual(
+      new Set([5_000, 2_000]),
+    );
+  });
+
+  it("mantém empates juntos e ignora slot sem preço", () => {
+    // Dois slots valendo o mesmo topo acendem os dois, e o segundo nível é o
+    // próximo preço distinto abaixo deles.
+    expect(highlightedPrizeValues([100, 1_000, 1_000, 250])).toEqual(
+      new Set([1_000, 250]),
+    );
+    expect(highlightedPrizeValues([0, 0, 50])).toEqual(new Set([50]));
+    expect(highlightedPrizeValues([])).toEqual(new Set());
   });
 
   it("empilha nome e valor no eixo vertical, nunca no raio", () => {

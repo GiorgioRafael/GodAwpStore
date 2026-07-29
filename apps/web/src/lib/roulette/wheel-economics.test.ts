@@ -1,0 +1,110 @@
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+import { slotChanceBps, wheelEconomics, wheelVerdict } from "./wheel-economics";
+
+const RATES = { markupBps: 7000, feeBps: 500 };
+
+/** A escada que está em produção. */
+const LADDER = [
+  { prizeKey: "premio_1", productId: "a", productName: "0,15", valueCents: 15, drawWeight: 48000 },
+  { prizeKey: "premio_2", productId: "b", productName: "0,50", valueCents: 50, drawWeight: 28000 },
+  { prizeKey: "premio_3", productId: "c", productName: "1,00", valueCents: 100, drawWeight: 15000 },
+  { prizeKey: "premio_4", productId: "d", productName: "2,50", valueCents: 250, drawWeight: 7000 },
+  { prizeKey: "premio_5", productId: "e", productName: "10,00", valueCents: 1000, drawWeight: 1534 },
+];
+
+describe("economia da roda", () => {
+  it("reproduz o RTP que a roda de produção foi calibrada para ter", () => {
+    const economics = wheelEconomics(LADDER, RATES);
+
+    // 69,3632% é o alvo que a migração de rebalanceamento resolve.
+    expect(economics.returnBps).toBe(6936);
+    expect(economics.totalWeight).toBe(99_534);
+  });
+
+  it("sabe onde o giro deixa de dar lucro", () => {
+    // Uma moeda entra valendo R$ 0,95 depois da taxa, e o prêmio custa o preço
+    // de tabela dividido por 1,70. Empata em 0,95 × 1,70 = 161,5%.
+    expect(wheelEconomics(LADDER, RATES).breakEvenBps).toBe(16_150);
+    // Markup maior aguenta pagar mais.
+    expect(wheelEconomics(LADDER, { markupBps: 15000, feeBps: 500 }).breakEvenBps).toBe(23_750);
+  });
+
+  it("calcula quanto sobra por giro", () => {
+    const economics = wheelEconomics(LADDER, RATES);
+
+    // R$ 0,95 de receita menos R$ 0,694/1,70 de custo.
+    expect(economics.expectedValueCents).toBeCloseTo(69.36, 1);
+    expect(economics.expectedCostCents).toBeCloseTo(40.8, 1);
+    expect(economics.marginCents).toBeCloseTo(54.2, 1);
+  });
+
+  it("não divide por zero quando a roda está sem peso", () => {
+    const economics = wheelEconomics(
+      LADDER.map((slot) => ({ ...slot, drawWeight: 0 })),
+      RATES,
+    );
+
+    expect(economics.returnBps).toBe(0);
+    expect(economics.totalWeight).toBe(0);
+    expect(Number.isFinite(economics.marginCents)).toBe(true);
+  });
+
+  it("reparte a chance pelo peso", () => {
+    const total = wheelEconomics(LADDER, RATES).totalWeight;
+
+    expect(slotChanceBps(LADDER[0], total)).toBe(4822);
+    expect(slotChanceBps(LADDER[4], total)).toBe(154);
+    expect(slotChanceBps(LADDER[0], 0)).toBe(0);
+  });
+});
+
+describe("recomendação de RTP", () => {
+  const verdict = (slots: typeof LADDER, rates = RATES) =>
+    wheelVerdict(wheelEconomics(slots, rates), rates);
+
+  it("acusa prejuízo quando o prêmio custa mais que a moeda", () => {
+    // Todo mundo ganhando o prêmio de R$ 10,00: 1000% de retorno.
+    const ruinous = LADDER.map((slot) => ({ ...slot, valueCents: 1000, drawWeight: 1 }));
+
+    expect(verdict(ruinous).tone).toBe("danger");
+    expect(verdict(ruinous).title).toContain("Prejuízo");
+  });
+
+  it("avisa quando a roleta rende menos que vender o item direto", () => {
+    // 110% de retorno: ainda longe do prejuízo em 161,5%, mas sobra R$ 0,30 por
+    // giro — abaixo dos 41,2% que o markup de 70% já daria numa venda normal.
+    const thin = LADDER.map((slot) =>
+      slot.prizeKey === "premio_5" ? { ...slot, drawWeight: 6_100 } : slot,
+    );
+
+    const result = verdict(thin);
+    expect(result.tone).toBe("warning");
+    expect(result.detail).toContain("venda normal");
+  });
+
+  it("avisa quando devolve pouco demais para o jogador voltar", () => {
+    const stingy = LADDER.map((slot) =>
+      slot.prizeKey === "premio_1" ? { ...slot, drawWeight: 900_000 } : slot,
+    );
+
+    const result = verdict(stingy);
+    expect(result.tone).toBe("warning");
+    expect(result.title).toContain("Pouco generoso");
+  });
+
+  it("aprova a faixa em que sobra mais que uma venda e o jogador não desiste", () => {
+    // A roda de produção: 69,4% devolvido, R$ 0,54 de sobra.
+    expect(verdict(LADDER).tone).toBe("success");
+    expect(verdict(LADDER).title).toContain("Equilibrado");
+  });
+
+  it("recusa uma roda sem peso nenhum", () => {
+    const dead = LADDER.map((slot) => ({ ...slot, drawWeight: 0 }));
+
+    expect(verdict(dead).tone).toBe("danger");
+    expect(verdict(dead).title).toContain("peso");
+  });
+});
