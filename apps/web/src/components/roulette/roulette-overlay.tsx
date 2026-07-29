@@ -181,11 +181,11 @@ export function RouletteOverlay({
   const celebrating = landed && big;
 
   return (
-    <div className="relative flex h-screen w-full flex-col items-center justify-start gap-[2vh] overflow-hidden bg-transparent px-[3vh] pt-[5vh]">
+    <div className="relative flex h-screen w-full flex-col items-center justify-center overflow-hidden bg-transparent p-[3vh]">
       {celebrating ? <RouletteConfetti gold={jackpot} /> : null}
 
       <div
-        className={`relative aspect-square w-[min(52vh,440px)] shrink-0 transition-transform duration-500 ${
+        className={`@container relative aspect-square w-[min(52vh,440px)] shrink-0 transition-transform duration-500 ${
           celebrating ? "scale-[1.03]" : "scale-100"
         }`}
       >
@@ -306,63 +306,72 @@ export function RouletteOverlay({
           />
         </svg>
 
-        <span className="pointer-events-none absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full">
+        <span
+          className={`pointer-events-none absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full transition-opacity duration-300 ${
+            prize && current && cardVisible ? "opacity-0" : "opacity-100"
+          }`}
+        >
           <BrandMark className="rounded-full" />
         </span>
-      </div>
 
-      {/* A altura é reservada sempre, senão a roda sobe quando o card aparece. */}
-      <div
-        aria-live="polite"
-        className="flex h-[26vh] w-full max-w-[92vw] shrink-0 items-start justify-center"
-      >
-        {prize && current ? (
-          <div
-            data-testid="overlay-result"
-            style={{ transitionDuration: `${FADE_MS}ms` }}
-            className={`max-w-full rounded-3xl border-2 px-[3vh] py-[2vh] text-center shadow-[0_24px_70px_rgba(0,0,0,.7)] backdrop-blur transition-all ease-out ${
-              cardVisible
-                ? "translate-y-0 scale-100 opacity-100"
-                : "translate-y-3 scale-95 opacity-0"
-            } ${
-              jackpot
-                ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
-                : big
-                  ? "border-emerald-300/70 bg-gradient-to-b from-[#062018]/95 to-[#03120d]/95"
-                  : "border-fuchsia-300/60 bg-gradient-to-b from-[#1d0f26]/95 to-[#0f0714]/95"
-            }`}
-          >
-            {jackpot ? (
-              <p className="mb-1 text-[1.5vh] font-black uppercase tracking-[0.28em] text-amber-300">
-                ★ Prêmio máximo ★
-              </p>
-            ) : big ? (
-              <p className="mb-1 text-[1.5vh] font-black uppercase tracking-[0.22em] text-emerald-300">
-                Prêmio raro
-              </p>
-            ) : null}
-            <p className="text-[2.4vh] font-bold leading-tight text-white">
-              <span className={jackpot ? "text-amber-300" : big ? "text-emerald-300" : "text-fuchsia-300"}>
-                {current.maskedDisplayName}
-              </span>{" "}
-              ganhou
-            </p>
-            <p className="mt-[0.4vh] truncate text-[3.6vh] font-black leading-tight tracking-[-0.035em] text-white">
-              {prize.displayName}
-            </p>
-            <p
-              className={`mt-[0.8vh] inline-block rounded-full px-[1.6vh] py-[0.4vh] text-[2vh] font-black ${
+        {/* No miolo da roda. Sobreposto e fora do fluxo, então aparecer e sumir
+            não move nada — que era o motivo de a altura ficar reservada quando
+            o card vivia embaixo. */}
+        <div
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 z-20 grid place-items-center p-[9%]"
+        >
+          {prize && current ? (
+            <div
+              data-testid="overlay-result"
+              style={{ transitionDuration: `${FADE_MS}ms` }}
+              className={`w-full rounded-[8cqw] border-2 px-[6cqw] py-[5cqw] text-center shadow-[0_24px_70px_rgba(0,0,0,.7)] backdrop-blur-md transition-all ease-out ${
+                cardVisible ? "scale-100 opacity-100" : "scale-90 opacity-0"
+              } ${
                 jackpot
-                  ? "bg-amber-400/25 text-amber-200"
+                  ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
                   : big
-                    ? "bg-emerald-400/20 text-emerald-200"
-                    : "bg-fuchsia-400/20 text-fuchsia-200"
+                    ? "border-emerald-300/70 bg-gradient-to-b from-[#062018]/95 to-[#03120d]/95"
+                    : "border-fuchsia-300/60 bg-gradient-to-b from-[#1d0f26]/95 to-[#0f0714]/95"
               }`}
             >
-              {formatCoins(current.valueCents)} moedas
-            </p>
-          </div>
-        ) : null}
+              {jackpot ? (
+                <p className="mb-[1cqw] text-[3.2cqw] font-black uppercase tracking-[0.26em] text-amber-300">
+                  ★ Prêmio máximo ★
+                </p>
+              ) : big ? (
+                <p className="mb-[1cqw] text-[3.2cqw] font-black uppercase tracking-[0.2em] text-emerald-300">
+                  Prêmio raro
+                </p>
+              ) : null}
+              <p className="text-[4.6cqw] font-bold leading-tight text-white">
+                <span
+                  className={jackpot ? "text-amber-300" : big ? "text-emerald-300" : "text-fuchsia-300"}
+                >
+                  {current.maskedDisplayName}
+                </span>{" "}
+                ganhou
+              </p>
+              {/* Duas linhas em vez de cortar: o card agora tem a largura da
+                  roda, e um nome de pacote como "10x Super Watering Can" some
+                  quase inteiro numa linha só. */}
+              <p className="mt-[1cqw] line-clamp-2 text-balance break-words text-[7cqw] font-black leading-[1.05] tracking-[-0.035em] text-white">
+                {prize.displayName}
+              </p>
+              <p
+                className={`mt-[2cqw] inline-block rounded-full px-[3.5cqw] py-[1cqw] text-[4.2cqw] font-black ${
+                  jackpot
+                    ? "bg-amber-400/25 text-amber-200"
+                    : big
+                      ? "bg-emerald-400/20 text-emerald-200"
+                      : "bg-fuchsia-400/20 text-fuchsia-200"
+                }`}
+              >
+                {formatCoins(current.valueCents)} moedas
+              </p>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {/* Fora do fluxo, senão aparecer ou sumir também empurra a roda. */}

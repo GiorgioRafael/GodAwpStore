@@ -139,16 +139,26 @@ describe("RouletteOverlay", () => {
     });
   });
 
-  it("reserva a área do ganhador para a roda não subir e descer", async () => {
+  it("anuncia o ganhador no miolo da roda, sem mexer nela", async () => {
     const { container } = mount(4);
     await waitForConnection();
 
-    // A faixa do resultado existe mesmo sem prêmio: sem ela, o card entrando
-    // recentraliza a coluna e a roda pula de lugar.
     const slot = container.querySelector('[aria-live="polite"]');
     expect(slot).not.toBeNull();
-    expect(slot!.className).toContain("h-[26vh]");
+    // Sobreposto e fora do fluxo: entrar e sair não pode reposicionar a roda,
+    // que na transmissão fica enquadrada num lugar fixo.
+    expect(slot!.className).toContain("absolute");
+    expect(slot!.className).toContain("inset-0");
     expect(screen.queryByTestId("overlay-result")).not.toBeInTheDocument();
+
+    // E está dentro da roda, não abaixo dela.
+    const wheel = container.querySelector("svg")?.parentElement;
+    expect(wheel).not.toBeNull();
+    expect(wheel!.contains(slot!)).toBe(true);
+
+    emit(spinEvent("centro"));
+    const card = await screen.findByTestId("overlay-result");
+    expect(wheel!.contains(card)).toBe(true);
   });
 
   it("apaga o card do ganhador antes de removê-lo", async () => {
