@@ -243,23 +243,15 @@ async function provisionDiscordCustomerRankRoles(
       !rankRoleIds.has(role.id) &&
       role.name.toLocaleLowerCase("pt-BR").includes("seguidor"),
   );
-  const rankRolesBelowFollower = followerRole
-    ? hierarchy.filter(
-        (roleId) => (roleById.get(roleId)?.position ?? 0) < followerRole.position,
-      ).length
-    : 0;
-  const followerPosition = followerRole
-    ? Math.max(1, followerRole.position - rankRolesBelowFollower)
-    : 0;
-  const desiredPositions = [
-    ...(followerRole
-      ? [{ id: followerRole.id, position: followerPosition }]
-      : []),
-    ...hierarchy.map((roleId, index) => ({
-      id: roleId,
-      position: followerPosition + index + 1,
-    })),
-  ];
+  const desiredPositions = followerRole
+    ? hierarchy.map((roleId, index) => ({
+        id: roleId,
+        position: followerRole.position + index + 1,
+      }))
+    : hierarchy.map((roleId, index) => ({
+        id: roleId,
+        position: index + 1,
+      }));
   if (
     desiredPositions.some(
       (entry) => roleById.get(entry.id)?.position !== entry.position,

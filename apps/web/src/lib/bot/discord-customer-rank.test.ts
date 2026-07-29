@@ -173,9 +173,8 @@ describe("Discord customer rank roles", () => {
     );
 
     expect(hierarchyBody).toEqual([
-      { id: followerRoleId, position: 1 },
-      { id: bronzeRoleId, position: 2 },
-      { id: silverRoleId, position: 3 },
+      { id: bronzeRoleId, position: 4 },
+      { id: silverRoleId, position: 5 },
     ]);
   });
 
