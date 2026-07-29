@@ -18,7 +18,10 @@ const routerMocks = vi.hoisted(() => ({ refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => routerMocks }));
 
 import { RouletteExperience } from "./roulette-experience";
-import { buildRouletteWheelPrizes } from "@/lib/roulette/demo";
+import {
+  buildRouletteWheelPrizes,
+  type DemoRouletteInventoryItem,
+} from "@/lib/roulette/demo";
 
 const prizes = buildRouletteWheelPrizes([
   {
@@ -32,6 +35,22 @@ const prizes = buildRouletteWheelPrizes([
   },
 ]);
 const purchaseId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+const DRAGONFLY = "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c";
+const OUTRO = "1e8c6a3d-3a8d-4c3e-8b2a-7a2e1e8c6a3d";
+
+/** Um prêmio como o servidor o devolve: com o item e o preço já congelados. */
+function held(overrides: Partial<DemoRouletteInventoryItem> = {}): DemoRouletteInventoryItem {
+  return {
+    prizeKey: "premio_2",
+    productId: DRAGONFLY,
+    name: "1x Dragonfly",
+    imageUrl: null,
+    valueCents: 200,
+    saleValueCents: 100,
+    quantity: 1,
+    ...overrides,
+  };
+}
 
 describe("RouletteExperience", () => {
   beforeEach(() => {
@@ -103,11 +122,95 @@ describe("RouletteExperience", () => {
     expect(screen.queryByText("Você ganhou")).not.toBeInTheDocument();
   });
 
+  it("mostra o item que foi ganho, não o que a fatia aponta agora", async () => {
+    // O admin repontou premio_2 do Dragonfly de 200 para outro item de 5. Quem
+    // já tinha o Dragonfly continua com ele: quem mentia era só a tela, que
+    // relia nome, imagem e preço da fatia.
+    const rodaTrocada = buildRouletteWheelPrizes([
+      {
+        prizeKey: "premio_2",
+        productId: OUTRO,
+        name: "Chaveiro Barato",
+        imageUrl: null,
+        valueCents: 5,
+        saleValueCents: 3,
+        drawChanceBps: 10000,
+      },
+    ]);
+    const user = userEvent.setup();
+
+    render(
+      <RouletteExperience
+        prizes={rodaTrocada}
+        initialInventory={[held({ quantity: 1 })]}
+        initialBalanceCents={0}
+      />,
+    );
+
+    expect(screen.getByText("1x Dragonfly")).toBeInTheDocument();
+    expect(screen.queryByText("Chaveiro Barato")).not.toBeInTheDocument();
+    expect(screen.getByText("vale 2,00 moedas")).toBeInTheDocument();
+
+    // E a prévia de venda promete o valor congelado, que é o que o servidor paga.
+    await user.click(screen.getByLabelText("Selecionar 1x Dragonfly"));
+    expect(screen.getByText(/venda rende 1,00 moedas/)).toBeInTheDocument();
+  });
+
+  it("prêmio de uma fatia removida continua na tela e vendível", async () => {
+    // A roda não tem mais premio_5. O prêmio é do jogador de qualquer forma.
+    const user = userEvent.setup();
+
+    render(
+      <RouletteExperience
+        prizes={prizes}
+        initialInventory={[
+          held({
+            prizeKey: "premio_5",
+            productId: OUTRO,
+            name: "Item Aposentado",
+            valueCents: 800,
+            saleValueCents: 400,
+            quantity: 1,
+          }),
+        ]}
+        initialBalanceCents={0}
+      />,
+    );
+
+    expect(screen.getByText("Item Aposentado")).toBeInTheDocument();
+    expect(screen.getByText("vale 8,00 moedas")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Selecionar Item Aposentado"));
+    expect(screen.getByText(/venda rende 4,00 moedas/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Vender selecionados" })).toBeEnabled();
+  });
+
+  it("dois itens da mesma fatia são selecionáveis separadamente", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <RouletteExperience
+        prizes={prizes}
+        initialInventory={[
+          held({ quantity: 1 }),
+          held({ productId: OUTRO, name: "Chaveiro", valueCents: 20, saleValueCents: 10 }),
+        ]}
+        initialBalanceCents={0}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Selecionar Chaveiro"));
+    expect(screen.getByText(/1 item selecionado · venda rende 0,10 moedas/)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Selecionar 1x Dragonfly"));
+    expect(screen.getByText(/2 itens selecionados · venda rende 1,10 moedas/)).toBeInTheDocument();
+  });
+
   it("leva ao inventário pela barra fixa, com a contagem de itens", () => {
     render(
       <RouletteExperience
         prizes={prizes}
-        initialInventory={[{ prizeKey: "premio_2", quantity: 3 }]}
+        initialInventory={[held({ quantity: 3 })]}
         initialBalanceCents={0}
       />,
     );
@@ -243,8 +346,8 @@ describe("RouletteExperience", () => {
     actionMocks.sellRoulettePrizes.mockResolvedValue({
       ok: true,
       lines: [
-        { prizeKey: "premio_2", remainingQuantity: 0 },
-        { prizeKey: "premio_5", remainingQuantity: 1 },
+        { prizeKey: "premio_2", productId: DRAGONFLY, unitValueCents: 200, remainingQuantity: 0 },
+        { prizeKey: "premio_5", productId: OUTRO, unitValueCents: 0, remainingQuantity: 1 },
       ],
       itemCount: 3,
       creditedCents: 250,
@@ -256,8 +359,8 @@ describe("RouletteExperience", () => {
       <RouletteExperience
         prizes={prizes}
         initialInventory={[
-          { prizeKey: "premio_2", quantity: 1 },
-          { prizeKey: "premio_5", quantity: 3 },
+          held(),
+          held({ prizeKey: "premio_5", productId: OUTRO, name: "Prêmio 5", valueCents: 0, saleValueCents: 0, quantity: 3 }),
         ]}
         initialBalanceCents={0}
       />,
@@ -273,8 +376,8 @@ describe("RouletteExperience", () => {
       expect(screen.getByText("3 itens vendidos por 2,50 moedas.")).toBeInTheDocument();
     });
     expect(actionMocks.sellRoulettePrizes).toHaveBeenCalledWith([
-      { prizeKey: "premio_2", quantity: 1 },
-      { prizeKey: "premio_5", quantity: 2 },
+      { prizeKey: "premio_2", productId: DRAGONFLY, unitValueCents: 200, quantity: 1 },
+      { prizeKey: "premio_5", productId: OUTRO, unitValueCents: 0, quantity: 2 },
     ]);
     expect(screen.getByTestId("roulette-balance")).toHaveTextContent("2,50");
   });
@@ -282,7 +385,9 @@ describe("RouletteExperience", () => {
   it("resgata vários itens num único ticket", async () => {
     actionMocks.redeemRoulettePrizes.mockResolvedValue({
       ok: true,
-      lines: [{ prizeKey: "premio_2", remainingQuantity: 0 }],
+      lines: [
+        { prizeKey: "premio_2", productId: DRAGONFLY, unitValueCents: 200, remainingQuantity: 0 },
+      ],
       itemCount: 2,
       productNames: ["2x 1x Dragonfly"],
       ticketOpened: true,
@@ -292,7 +397,7 @@ describe("RouletteExperience", () => {
     render(
       <RouletteExperience
         prizes={prizes}
-        initialInventory={[{ prizeKey: "premio_2", quantity: 2 }]}
+        initialInventory={[held({ quantity: 2 })]}
         initialBalanceCents={0}
       />,
     );
@@ -307,7 +412,7 @@ describe("RouletteExperience", () => {
       );
     });
     expect(actionMocks.redeemRoulettePrizes).toHaveBeenCalledWith([
-      { prizeKey: "premio_2", quantity: 2 },
+      { prizeKey: "premio_2", productId: DRAGONFLY, unitValueCents: 200, quantity: 2 },
     ]);
     expect(screen.getByText("Seu inventário está vazio")).toBeInTheDocument();
   });
@@ -316,7 +421,7 @@ describe("RouletteExperience", () => {
     render(
       <RouletteExperience
         prizes={prizes}
-        initialInventory={[{ prizeKey: "premio_2", quantity: 1 }]}
+        initialInventory={[held()]}
         initialBalanceCents={0}
       />,
     );
@@ -332,7 +437,7 @@ describe("RouletteExperience", () => {
     render(
       <RouletteExperience
         prizes={prizes}
-        initialInventory={[{ prizeKey: "premio_2", quantity: 2 }]}
+        initialInventory={[held({ quantity: 2 })]}
         initialBalanceCents={0}
       />,
     );
@@ -372,7 +477,9 @@ describe("RouletteExperience", () => {
   it("mostra o saldo ao administrador, que também acumula moedas vendendo", async () => {
     actionMocks.sellRoulettePrizes.mockResolvedValue({
       ok: true,
-      lines: [{ prizeKey: "premio_2", remainingQuantity: 0 }],
+      lines: [
+        { prizeKey: "premio_2", productId: DRAGONFLY, unitValueCents: 200, remainingQuantity: 0 },
+      ],
       itemCount: 1,
       creditedCents: 100,
       balanceCents: 771,
@@ -382,7 +489,7 @@ describe("RouletteExperience", () => {
     render(
       <RouletteExperience
         prizes={prizes}
-        initialInventory={[{ prizeKey: "premio_2", quantity: 1 }]}
+        initialInventory={[held()]}
         initialBalanceCents={671}
         isAdmin
       />,

@@ -3,6 +3,15 @@
  * listed, and every projection is driven by what the server returned. */
 export const MAXIMUM_WHEEL_SLOTS = 10;
 
+/**
+ * How many distinct prizes one sale or redemption may carry.
+ *
+ * Counted per line, not per slice: a slice repointed a few times leaves the
+ * same player holding several different items that all came from it. Has to
+ * match the cap in read_roulette_item_selection.
+ */
+export const MAXIMUM_SELECTION_LINES = 50;
+
 const PRIZE_KEY_PATTERN = /^premio_([1-9][0-9]?)$/;
 
 /**
@@ -52,10 +61,31 @@ export type DemoRoulettePrize = {
 /** A key is a slot label; which ones exist is the wheel's business, not a type's. */
 export type DemoRoulettePrizeKey = string;
 
+/**
+ * A prize a player owns.
+ *
+ * It carries its own product, name, image and price because that is what was
+ * frozen when it was won. Reading any of those from the slot it came from means
+ * an administrator repointing that slot rewrites what the player appears to
+ * own, while the server still pays and delivers the original — the screen
+ * would be the only part of the system lying.
+ */
 export type DemoRouletteInventoryItem = {
   prizeKey: DemoRoulettePrizeKey;
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+  valueCents: number;
+  saleValueCents: number;
   quantity: number;
 };
+
+/** Same owner, slot, product and frozen price: the same thing to own. */
+export function rouletteInventoryKey(
+  item: Pick<DemoRouletteInventoryItem, "prizeKey" | "productId" | "valueCents">,
+) {
+  return `${item.prizeKey}:${item.productId}:${item.valueCents}`;
+}
 
 /** Catalog product currently attached to a wheel slot. */
 export type RoulettePrizeProduct = {
@@ -220,32 +250,72 @@ function normalizeImageUrl(value: string | null) {
   }
 }
 
+/**
+ * One entry per thing owned. Two prizes won on the same slot before and after
+ * an administrator repointed it are two different items, so they are never
+ * folded together: doing that would hide one of them behind the other's name
+ * and price.
+ */
 export function normalizeDemoRouletteInventory(
-  rows: Array<{ prize_key: string; quantity: number }>,
+  rows: Array<{
+    prize_key: string;
+    product_id: string;
+    product_name: string | null;
+    product_image_url: string | null;
+    unit_value_cents: number;
+    unit_sale_value_cents: number;
+    quantity: number;
+  }>,
 ): DemoRouletteInventoryItem[] {
-  const quantities = new Map<string, number>();
+  const byIdentity = new Map<string, DemoRouletteInventoryItem>();
   for (const row of rows) {
     if (!isDemoRoulettePrizeKey(row.prize_key)) continue;
+    if (typeof row.product_id !== "string" || !row.product_id) continue;
     if (!Number.isSafeInteger(row.quantity) || row.quantity <= 0) continue;
-    // A slot can appear more than once if it was rebuilt; keep every unit.
-    quantities.set(row.prize_key, (quantities.get(row.prize_key) ?? 0) + row.quantity);
+
+    const item: DemoRouletteInventoryItem = {
+      prizeKey: row.prize_key,
+      productId: row.product_id,
+      name: (typeof row.product_name === "string" && row.product_name.trim()) || "Prêmio da roleta",
+      imageUrl: normalizeImageUrl(row.product_image_url),
+      valueCents: safeCents(row.unit_value_cents),
+      saleValueCents: safeCents(row.unit_sale_value_cents),
+      quantity: row.quantity,
+    };
+    const key = rouletteInventoryKey(item);
+    const seen = byIdentity.get(key);
+    byIdentity.set(key, seen ? { ...seen, quantity: seen.quantity + item.quantity } : item);
   }
-  return [...quantities.entries()]
-    .map(([prizeKey, quantity]) => ({ prizeKey, quantity }))
-    .sort((a, b) => compareRouletteSlots(a.prizeKey, b.prizeKey));
+  return sortRouletteInventory([...byIdentity.values()]);
 }
 
+/**
+ * Applies what the server said is left of one line, leaving the others alone.
+ * Keyed by the item, so selling the cheap prize on a slot cannot delete the
+ * expensive one won on that same slot before it was repointed.
+ */
 export function mergeDemoRouletteInventory(
   inventory: DemoRouletteInventoryItem[],
-  prizeKey: DemoRoulettePrizeKey,
-  quantity: number,
+  line: DemoRouletteInventoryItem,
 ) {
-  const byKey = new Map(inventory.map((item) => [item.prizeKey, item.quantity]));
-  byKey.set(prizeKey, quantity);
-  return [...byKey.entries()]
-    .filter(([, nextQuantity]) => nextQuantity > 0)
-    .map(([key, nextQuantity]) => ({ prizeKey: key, quantity: nextQuantity }))
-    .sort((a, b) => compareRouletteSlots(a.prizeKey, b.prizeKey));
+  const byIdentity = new Map(inventory.map((item) => [rouletteInventoryKey(item), item]));
+  const key = rouletteInventoryKey(line);
+  const known = byIdentity.get(key);
+  byIdentity.set(key, { ...(known ?? line), quantity: line.quantity });
+  return sortRouletteInventory(
+    [...byIdentity.values()].filter((item) => item.quantity > 0),
+  );
+}
+
+function sortRouletteInventory(items: DemoRouletteInventoryItem[]) {
+  // Never throws on a malformed line: this runs inside a state updater, and an
+  // exception here takes the whole page down rather than dropping one row.
+  return items.sort(
+    (a, b) =>
+      compareRouletteSlots(a.prizeKey, b.prizeKey) ||
+      (b.valueCents || 0) - (a.valueCents || 0) ||
+      String(a.productId ?? "").localeCompare(String(b.productId ?? "")),
+  );
 }
 
 /**

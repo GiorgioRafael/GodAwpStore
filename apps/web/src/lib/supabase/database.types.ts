@@ -1560,6 +1560,11 @@ export type Database = {
         Args: Record<never, never>;
         Returns: {
           prize_key: string;
+          product_id: string;
+          product_name: string | null;
+          product_image_url: string | null;
+          unit_value_cents: number;
+          unit_sale_value_cents: number;
           quantity: number;
           updated_at: string;
         }[];
@@ -1655,6 +1660,9 @@ export type Database = {
         Returns: {
           recorded_spin_id: string;
           won_prize_key: string;
+          won_product_id: string;
+          won_unit_value_cents: number;
+          won_unit_sale_value_cents: number;
           won_inventory_quantity: number;
           coin_balance_cents: number;
           spun_at: string;
@@ -1669,6 +1677,9 @@ export type Database = {
         Returns: {
           recorded_spin_id: string;
           won_prize_key: string;
+          won_product_id: string;
+          won_unit_value_cents: number;
+          won_unit_sale_value_cents: number;
           won_inventory_quantity: number;
           coin_balance_cents: number;
           spun_at: string;
@@ -1773,6 +1784,7 @@ export type Database = {
           slot_draw_weight: number;
           slot_draw_chance_bps: number;
           slot_held_units: number;
+          slot_retired_units: number;
           slot_archived: boolean;
         }[];
       };

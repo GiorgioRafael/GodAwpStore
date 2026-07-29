@@ -49,6 +49,10 @@ export async function getRouletteWheelAdmin(): Promise<RouletteWheelAdmin> {
       drawWeight: Number(slot.slot_draw_weight) || 0,
       stockQuantity: Number(slot.slot_stock_quantity) || 0,
       heldUnits: Number(slot.slot_held_units) || 0,
+      // Won on this slice before it was repointed. Still owed, still sellable,
+      // but not this product — folding the two into one number describes an
+      // item that does not exist.
+      retiredUnits: Number(slot.slot_retired_units) || 0,
       archived: Boolean(slot.slot_archived),
     })),
     candidates: (candidates.data ?? []).map((candidate) => ({

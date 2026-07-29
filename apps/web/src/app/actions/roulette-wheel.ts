@@ -67,22 +67,8 @@ export async function saveRouletteWheelAction(
     if (!client) throw new Error("Supabase não configurado.");
 
     const { data, error } = await client.rpc("admin_save_roulette_wheel", { p_slots: slots });
-    if (error?.code === "P0014") {
-      return {
-        ok: false,
-        message:
-          "Uma das fatias tem prêmio na mão de algum jogador e não pode trocar de produto. Espere a entrega ou o resgate antes de mexer nela.",
-      };
-    }
     if (error?.code === "23503") {
       return { ok: false, message: "Um dos produtos escolhidos não está mais à venda." };
-    }
-    if (error?.code === "P0022") {
-      return {
-        ok: false,
-        message:
-          "Uma fatia que você tirou ainda tem prêmio na mão de jogadores. Espere a entrega ou o resgate antes de removê-la.",
-      };
     }
     if (error) throw new Error(error.message);
 

@@ -1118,20 +1118,63 @@ begin
 end
 $$;
 
--- Repointing a slot somebody holds units of has to be refused at commit.
+-- Repointing a slot somebody holds units of is the administrator's to make, and
+-- it must not touch a single thing already won. The guard that refused this had
+-- to exist while the inventory row was keyed by the slot; now the row is keyed
+-- by the item, so there is nothing left to protect and refusing only cost the
+-- store the ability to run its own wheel.
+do $$
+declare
+  v_before jsonb;
+  v_after jsonb;
+begin
+  select jsonb_agg(jsonb_build_array(item.id, item.product_id, item.unit_value_cents, item.quantity)
+                   order by item.id)
+  into v_before
+  from public.roulette_demo_inventory as item
+  where item.prize_key = 'premio_1';
+
+  if v_before is null then
+    raise exception 'The fixture holds no premio_1 units, so this proves nothing';
+  end if;
+
+  update public.roulette_prize_products
+  set product_id = '9c000000-0000-4000-8000-000000000005'
+  where prize_key = 'premio_1';
+  -- The old guard was a deferred constraint trigger: it only fired when the
+  -- work was about to become permanent, so the check has to reach that point.
+  set constraints all immediate;
+
+  select jsonb_agg(jsonb_build_array(item.id, item.product_id, item.unit_value_cents, item.quantity)
+                   order by item.id)
+  into v_after
+  from public.roulette_demo_inventory as item
+  where item.prize_key = 'premio_1';
+
+  if v_after is distinct from v_before then
+    raise exception 'Repointing a slot rewrote what its holders own: % -> %', v_before, v_after;
+  end if;
+
+  -- Put it back so the assertions further down still describe the same wheel.
+  update public.roulette_prize_products
+  set product_id = '9c000000-0000-4000-8000-000000000003'
+  where prize_key = 'premio_1';
+  set constraints all immediate;
+end
+$$;
+
+-- And the guard is actually gone, not merely unreachable.
 do $$
 begin
-  begin
-    update public.roulette_prize_products
-    set product_id = '9c000000-0000-4000-8000-000000000005'
-    where prize_key = 'premio_1';
-    -- The guard is a deferred constraint, so it only fires when the work is
-    -- about to become permanent.
-    set constraints all immediate;
-    raise exception 'A held slot was repointed at another product';
-  exception
-    when sqlstate 'P0014' then null;
-  end;
+  if to_regprocedure('private.assert_roulette_inventory_intact()') is not null then
+    raise exception 'The inventory guard survived the migration';
+  end if;
+  if exists (
+    select 1 from pg_catalog.pg_trigger
+    where tgname = 'roulette_prize_products_keep_inventory'
+  ) then
+    raise exception 'The deferred constraint trigger survived the migration';
+  end if;
 end
 $$;
 
@@ -1221,16 +1264,6 @@ $$;
 
 do $$
 begin
-  -- Tirar da roda uma fatia que alguém ainda tem na mão precisa ser recusado.
-  begin
-    perform * from public.admin_save_roulette_wheel(
-      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","draw_weight":1}]'::jsonb
-    );
-    raise exception 'A slot with prizes in player hands was removed from the wheel';
-  exception
-    when sqlstate 'P0022' then null;
-  end;
-
   -- E onze fatias não existem.
   begin
     perform * from public.admin_save_roulette_wheel(
@@ -1249,6 +1282,363 @@ begin
   exception
     when sqlstate '22023' then null;
   end;
+end
+$$;
+
+-- ---------------------------------------------------------------------------
+-- O pedido do dono, provado de ponta a ponta: o admin troca e remove o que
+-- quiser, e quem já ganhou recebe exatamente o que ganhou.
+-- ---------------------------------------------------------------------------
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+insert into public.products (
+  id, substore_id, name, slug, minimum_price_cents, stock_quantity, status, created_by
+) values
+  (
+    '9c000000-0000-4000-8000-000000000007',
+    '9c000000-0000-4000-8000-000000000002',
+    'Item Antigo',
+    'item-antigo',
+    900,
+    10,
+    'active',
+    '9a000000-0000-4000-8000-000000000002'
+  ),
+  (
+    '9c000000-0000-4000-8000-000000000008',
+    '9c000000-0000-4000-8000-000000000002',
+    'Item Novo',
+    'item-novo',
+    100,
+    10,
+    'active',
+    '9a000000-0000-4000-8000-000000000002'
+  );
+
+insert into public.roulette_prize_products (prize_key, product_id, draw_weight)
+values ('premio_9', '9c000000-0000-4000-8000-000000000007', 1);
+
+-- O jogador ganhou duas unidades do Item Antigo por 9,00 cada.
+insert into public.roulette_demo_inventory (
+  auth_user_id, discord_user_id, prize_key, product_id, unit_value_cents, quantity
+) values (
+  '9a000000-0000-4000-8000-000000000001',
+  '900000000000000001',
+  'premio_9',
+  '9c000000-0000-4000-8000-000000000007',
+  900,
+  2
+);
+
+-- O admin reescreve a roda inteira: premio_9 passa a valer outro item e
+-- premio_10 sai da roda de vez, ambos com prêmio na mão de gente.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_saved record;
+begin
+  select * into v_saved
+  from public.admin_save_roulette_wheel(
+    '[
+      {"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","draw_weight":1},
+      {"prize_key":"premio_9","product_id":"9c000000-0000-4000-8000-000000000008","draw_weight":1}
+    ]'::jsonb
+  );
+
+  if v_saved.saved_slot_count <> 2 then
+    raise exception 'The wheel saved % slot(s), expected 2', v_saved.saved_slot_count;
+  end if;
+  if exists (select 1 from public.roulette_prize_products where prize_key = 'premio_10') then
+    raise exception 'The removed slot is still on the wheel';
+  end if;
+end
+$$;
+
+reset role;
+
+-- Nada do que foi ganho se mexeu.
+do $$
+declare
+  v_item public.roulette_demo_inventory%rowtype;
+begin
+  select * into v_item
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.prize_key = 'premio_9';
+
+  if not found
+    or v_item.product_id <> '9c000000-0000-4000-8000-000000000007'
+    or v_item.unit_value_cents <> 900
+    or v_item.quantity <> 2 then
+    raise exception 'Repointing premio_9 changed what the player owns: %', v_item;
+  end if;
+
+  -- E a fatia removida não levou o prêmio de ninguém junto.
+  select * into v_item
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000002'
+    and item.prize_key = 'premio_10';
+
+  if not found
+    or v_item.product_id <> '9c000000-0000-4000-8000-000000000006'
+    or v_item.unit_value_cents <> 800 then
+    raise exception 'Removing premio_10 took the prize with it: %', v_item;
+  end if;
+end
+$$;
+
+-- A tela do jogador tem que receber o item congelado, não a fatia de hoje.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_row record;
+  v_rate integer;
+begin
+  select coalesce(settings.roulette_sale_rate_bps, 5000)
+  into v_rate
+  from public.platform_settings as settings
+  where settings.id = 1;
+
+  select * into v_row
+  from public.get_demo_roulette_inventory()
+  where prize_key = 'premio_9';
+
+  if not found then
+    raise exception 'The inventory RPC dropped the prize';
+  end if;
+  if v_row.product_id <> '9c000000-0000-4000-8000-000000000007'
+    or v_row.product_name <> 'Item Antigo'
+    or v_row.unit_value_cents <> 900 then
+    raise exception 'The inventory RPC described the slot instead of the prize: %', v_row;
+  end if;
+  -- O botão promete o mesmo número que a venda credita.
+  if v_row.unit_sale_value_cents <> (900 * v_rate + 5000) / 10000 then
+    raise exception 'The quoted resale % is not what the sale pays', v_row.unit_sale_value_cents;
+  end if;
+end
+$$;
+
+-- Resgatar entrega o item que foi ganho, pelo valor de quando foi ganho.
+do $$
+declare
+  v_redemption record;
+  v_line record;
+begin
+  select * into v_redemption
+  from public.redeem_roulette_prizes(
+    '[{"prize_key":"premio_9","product_id":"9c000000-0000-4000-8000-000000000007","unit_value_cents":900,"quantity":1}]'::jsonb
+  );
+
+  select * into v_line
+  from public.roulette_redemption_items as line
+  where line.redemption_id = v_redemption.created_redemption_id;
+
+  if v_line.product_id <> '9c000000-0000-4000-8000-000000000007'
+    or v_line.product_name <> 'Item Antigo'
+    or v_line.value_cents <> 900 then
+    raise exception 'The ticket promised the new slot item instead of the prize: %', v_line;
+  end if;
+end
+$$;
+
+-- Duas identidades convivem na mesma fatia, e vender uma não some com a outra.
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+insert into public.roulette_demo_inventory (
+  auth_user_id, discord_user_id, prize_key, product_id, unit_value_cents, quantity
+) values (
+  '9a000000-0000-4000-8000-000000000001',
+  '900000000000000001',
+  'premio_9',
+  '9c000000-0000-4000-8000-000000000008',
+  100,
+  1
+);
+
+-- Um giro na fatia trocada abre a segunda linha em vez de engordar a primeira.
+-- A roda fica com uma fatia só para o giro ser determinístico.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+select * from public.admin_save_roulette_wheel(
+  '[{"prize_key":"premio_9","product_id":"9c000000-0000-4000-8000-000000000008","draw_weight":1}]'::jsonb
+);
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+do $$
+declare
+  v_spin record;
+  v_antigo integer;
+  v_novo integer;
+begin
+  select * into v_spin
+  from public.spin_roulette_as_admin(
+    '9a000000-0000-4000-8000-000000000001',
+    '900000000000000001',
+    'Jogador Teste'
+  );
+
+  select item.quantity into v_antigo
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.prize_key = 'premio_9'
+    and item.product_id = '9c000000-0000-4000-8000-000000000007';
+
+  select item.quantity into v_novo
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.prize_key = 'premio_9'
+    and item.product_id = '9c000000-0000-4000-8000-000000000008';
+
+  -- Uma unidade foi resgatada, então a linha antiga tem que estar em 1 e
+  -- intocada: só a linha do item que saiu agora pode ter mudado.
+  if coalesce(v_antigo, 0) <> 1 then
+    raise exception 'A spin merged the old prize into the new one: % un.', v_antigo;
+  end if;
+  if v_spin.won_prize_key <> 'premio_9'
+    or v_spin.won_product_id <> '9c000000-0000-4000-8000-000000000008'
+    or v_spin.won_unit_value_cents <> 100 then
+    raise exception 'The spin did not freeze the slot it landed on: %', v_spin;
+  end if;
+  -- Duas unidades do item novo: a que foi semeada e a que acabou de sair.
+  if coalesce(v_novo, 0) <> 2 then
+    raise exception 'The spin opened % unit(s) on the new item, expected 2', v_novo;
+  end if;
+end
+$$;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_sale record;
+  v_rate integer;
+  v_antigo record;
+begin
+  select coalesce(settings.roulette_sale_rate_bps, 5000)
+  into v_rate
+  from public.platform_settings as settings
+  where settings.id = 1;
+
+  select * into v_sale
+  from public.sell_roulette_prizes(
+    '[{"prize_key":"premio_9","product_id":"9c000000-0000-4000-8000-000000000008","unit_value_cents":100,"quantity":1}]'::jsonb
+  );
+
+  if v_sale.sold_total_credited_cents <> (100 * v_rate + 5000) / 10000 then
+    raise exception 'The sale paid % for the cheap prize', v_sale.sold_total_credited_cents;
+  end if;
+
+  select * into v_antigo
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.prize_key = 'premio_9'
+    and item.product_id = '9c000000-0000-4000-8000-000000000007';
+
+  if not found or v_antigo.unit_value_cents <> 900 or v_antigo.quantity <> 1 then
+    raise exception 'Selling one item on the slot damaged the other: %', v_antigo;
+  end if;
+  if not exists (
+    select 1
+    from public.roulette_demo_inventory as item
+    where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+      and item.prize_key = 'premio_9'
+      and item.product_id = '9c000000-0000-4000-8000-000000000008'
+      and item.quantity = 1
+  ) then
+    raise exception 'The sale did not leave the second unit of the new item';
+  end if;
+end
+$$;
+
+-- Vender um prêmio de fatia que não existe mais tem que funcionar: é do jogador.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+
+do $$
+declare
+  v_sale record;
+  v_rate integer;
+begin
+  select coalesce(settings.roulette_sale_rate_bps, 5000)
+  into v_rate
+  from public.platform_settings as settings
+  where settings.id = 1;
+
+  select * into v_sale
+  from public.sell_roulette_prizes(
+    '[{"prize_key":"premio_10","product_id":"9c000000-0000-4000-8000-000000000006","unit_value_cents":800,"quantity":1}]'::jsonb
+  );
+
+  if v_sale.sold_total_credited_cents <> (800 * v_rate + 5000) / 10000 then
+    raise exception 'A prize from a retired slot paid %', v_sale.sold_total_credited_cents;
+  end if;
+end
+$$;
+
+-- E a entrega baixa o estoque do item que foi ganho, não o do item novo.
+set local role authenticated;
+
+do $$
+declare
+  v_redemption_id uuid;
+  v_antigo bigint;
+  v_novo bigint;
+begin
+  select redemption.id
+  into v_redemption_id
+  from public.roulette_redemptions as redemption
+  join public.roulette_redemption_items as line on line.redemption_id = redemption.id
+  where line.product_id = '9c000000-0000-4000-8000-000000000007'
+    and redemption.status = 'pending'
+  limit 1;
+
+  if v_redemption_id is null then
+    raise exception 'The redemption of the old prize was not found';
+  end if;
+
+  perform * from public.admin_settle_roulette_redemption(v_redemption_id, 'delivered');
+
+  select stock_quantity into v_antigo
+  from public.products where id = '9c000000-0000-4000-8000-000000000007';
+  select stock_quantity into v_novo
+  from public.products where id = '9c000000-0000-4000-8000-000000000008';
+
+  if v_antigo <> 9 then
+    raise exception 'Delivery took % from the prize the player won, expected 1', 10 - v_antigo;
+  end if;
+  if v_novo <> 10 then
+    raise exception 'Delivery took stock from the item the slot points at today';
+  end if;
 end
 $$;
 

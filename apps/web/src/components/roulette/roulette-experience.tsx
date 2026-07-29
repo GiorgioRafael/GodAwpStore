@@ -38,7 +38,9 @@ import { RouletteConfetti } from "@/components/roulette/roulette-celebration";
 import {
   demoRouletteRotation,
   formatCoins,
+  demoRoulettePrize,
   mergeDemoRouletteInventory,
+  rouletteInventoryKey,
   rouletteWheelPrize,
   MAXIMUM_COIN_PURCHASE,
   MINIMUM_COIN_PURCHASE,
@@ -116,22 +118,35 @@ export function RouletteExperience({
   const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
   const isBusy = phase !== "idle";
   const canSpin = isAdmin || balanceCents >= SPIN_COST_CENTS;
+  // Selection and totals are read off the item itself. Pricing them through the
+  // slot they came from made the button promise whatever that slot points at
+  // today, while the server credits what the prize was frozen at.
   const selection: RouletteSelection[] = inventory.flatMap((item) => {
-    const quantity = Math.min(selected[item.prizeKey] ?? 0, item.quantity);
-    return quantity > 0 ? [{ prizeKey: item.prizeKey, quantity }] : [];
+    const quantity = Math.min(selected[rouletteInventoryKey(item)] ?? 0, item.quantity);
+    return quantity > 0
+      ? [
+          {
+            prizeKey: item.prizeKey,
+            productId: item.productId,
+            unitValueCents: item.valueCents,
+            quantity,
+          },
+        ]
+      : [];
   });
   const selectedUnits = selection.reduce((total, line) => total + line.quantity, 0);
-  const selectedSaleCents = selection.reduce(
-    (total, line) => total + rouletteWheelPrize(prizes, line.prizeKey).saleValueCents * line.quantity,
-    0,
-  );
+  const selectedSaleCents = inventory.reduce((total, item) => {
+    const quantity = Math.min(selected[rouletteInventoryKey(item)] ?? 0, item.quantity);
+    return total + item.saleValueCents * quantity;
+  }, 0);
   const hasSelection = selection.length > 0;
 
-  function toggleSelected(prizeKey: DemoRoulettePrizeKey, quantity: number) {
+  function toggleSelected(item: DemoRouletteInventoryItem, quantity: number) {
+    const key = rouletteInventoryKey(item);
     setSelected((current) => {
       const next = { ...current };
-      if (quantity <= 0) delete next[prizeKey];
-      else next[prizeKey] = quantity;
+      if (quantity <= 0) delete next[key];
+      else next[key] = quantity;
       return next;
     });
   }
@@ -139,7 +154,23 @@ export function RouletteExperience({
   function applySettledLines(lines: RouletteSettledLine[]) {
     setInventory((current) =>
       lines.reduce(
-        (inv, line) => mergeDemoRouletteInventory(inv, line.prizeKey, line.remainingQuantity),
+        (inv, line) =>
+          mergeDemoRouletteInventory(inv, {
+            ...(inv.find(
+              (item) =>
+                item.prizeKey === line.prizeKey &&
+                item.productId === line.productId &&
+                item.valueCents === line.unitValueCents,
+            ) ?? {
+              prizeKey: line.prizeKey,
+              productId: line.productId,
+              name: "Prêmio da roleta",
+              imageUrl: null,
+              valueCents: line.unitValueCents,
+              saleValueCents: 0,
+            }),
+            quantity: line.remainingQuantity,
+          }),
         current,
       ),
     );
@@ -176,8 +207,20 @@ export function RouletteExperience({
       reduceMotion ? 80 : SPIN_MS,
     );
 
+    // The slot that was just spun is the prize that was just frozen, so its name
+    // and image are right for this unit — but the identity comes from the spin,
+    // not from the slot, so a price edit mid-session cannot mislabel it.
+    const won = rouletteWheelPrize(prizes, result.prizeKey);
     setInventory((current) =>
-      mergeDemoRouletteInventory(current, result.prizeKey, result.inventoryQuantity),
+      mergeDemoRouletteInventory(current, {
+        prizeKey: result.prizeKey,
+        productId: result.productId,
+        name: won.displayName,
+        imageUrl: won.imageUrl,
+        valueCents: result.unitValueCents,
+        saleValueCents: result.unitSaleValueCents,
+        quantity: result.inventoryQuantity,
+      }),
     );
     setLastPrizeKey(result.prizeKey);
     setLanded(true);
@@ -700,13 +743,17 @@ export function RouletteExperience({
 
           {inventory.length ? (
             <ul className="mt-7 space-y-3">
-              {inventory.map((item) => {
-                const prize = rouletteWheelPrize(prizes, item.prizeKey);
+              {inventory.map((item, index) => {
+                // The palette still comes from the slice, because that is what
+                // it is: colour. Everything the player reads comes from the
+                // item, so a repointed slice cannot rename what they own.
+                const slot = demoRoulettePrize(item.prizeKey, index, inventory.length);
                 const Icon = prizeIcon(item.prizeKey);
-                const picked = Math.min(selected[item.prizeKey] ?? 0, item.quantity);
+                const identity = rouletteInventoryKey(item);
+                const picked = Math.min(selected[identity] ?? 0, item.quantity);
                 return (
                   <li
-                    key={item.prizeKey}
+                    key={identity}
                     className={`overflow-hidden rounded-2xl border p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)] transition-colors ${
                       picked > 0
                         ? "border-amber-300/50 bg-[#191207]/90"
@@ -718,37 +765,37 @@ export function RouletteExperience({
                         type="checkbox"
                         checked={picked > 0}
                         onChange={(event) =>
-                          toggleSelected(item.prizeKey, event.target.checked ? 1 : 0)
+                          toggleSelected(item, event.target.checked ? 1 : 0)
                         }
                         disabled={isBusy || !available}
-                        aria-label={`Selecionar ${prize.displayName}`}
+                        aria-label={`Selecionar ${item.name}`}
                         className="size-4 accent-amber-400"
                       />
                       <span
                         className="grid size-[52px] place-items-center overflow-hidden rounded-xl border bg-black/20"
                         style={{
-                          borderColor: `${prize.accent}55`,
-                          color: prize.accent,
-                          backgroundColor: `${prize.surface}cc`,
+                          borderColor: `${slot.accent}55`,
+                          color: slot.accent,
+                          backgroundColor: `${slot.surface}cc`,
                         }}
                       >
-                        {prize.imageUrl ? (
-                          <img src={prize.imageUrl} alt="" className="size-full object-cover" />
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt="" className="size-full object-cover" />
                         ) : (
                           <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
                         )}
                       </span>
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-[#fbf8fc]">
-                          {prize.displayName}
+                          {item.name}
                         </span>
                         <span className="mt-0.5 block text-xs text-[#9e8a76]">
-                          vale {formatCoins(prize.valueCents)} moedas
+                          vale {formatCoins(item.valueCents)} moedas
                         </span>
                       </span>
                       <span
                         className="min-w-10 border-l border-fuchsia-300/15 pl-3 text-center text-xl font-bold"
-                        style={{ color: prize.accent }}
+                        style={{ color: slot.accent }}
                         aria-label={`Quantidade: ${item.quantity}`}
                       >
                         {item.quantity}
@@ -759,8 +806,8 @@ export function RouletteExperience({
                         <span>Quantidade:</span>
                         <button
                           type="button"
-                          aria-label={`Menos um ${prize.displayName}`}
-                          onClick={() => toggleSelected(item.prizeKey, picked - 1)}
+                          aria-label={`Menos um ${item.name}`}
+                          onClick={() => toggleSelected(item, picked - 1)}
                           disabled={isBusy || picked <= 1}
                           className="grid size-7 place-items-center rounded-lg border border-amber-300/30 text-amber-200 disabled:opacity-40"
                         >
@@ -771,8 +818,8 @@ export function RouletteExperience({
                         </span>
                         <button
                           type="button"
-                          aria-label={`Mais um ${prize.displayName}`}
-                          onClick={() => toggleSelected(item.prizeKey, picked + 1)}
+                          aria-label={`Mais um ${item.name}`}
+                          onClick={() => toggleSelected(item, picked + 1)}
                           disabled={isBusy || picked >= item.quantity}
                           className="grid size-7 place-items-center rounded-lg border border-amber-300/30 text-amber-200 disabled:opacity-40"
                         >
@@ -780,7 +827,7 @@ export function RouletteExperience({
                         </button>
                         <button
                           type="button"
-                          onClick={() => toggleSelected(item.prizeKey, item.quantity)}
+                          onClick={() => toggleSelected(item, item.quantity)}
                           disabled={isBusy || picked >= item.quantity}
                           className="rounded-lg border border-amber-300/30 px-2 py-1 font-semibold text-amber-200 disabled:opacity-40"
                         >

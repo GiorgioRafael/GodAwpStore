@@ -56,22 +56,97 @@ describe("demo roulette", () => {
 
   it("normaliza apenas itens válidos e positivos", () => {
     expect(normalizeDemoRouletteInventory([
-      { prize_key: "premio_4", quantity: 2 },
-      { prize_key: "invalido", quantity: 9 },
-      { prize_key: "premio_1", quantity: 0 },
-      { prize_key: "premio_2", quantity: 1 },
-    ])).toEqual([
-      { prizeKey: "premio_2", quantity: 1 },
-      { prizeKey: "premio_4", quantity: 2 },
+      inventoryRow({ prize_key: "premio_4", quantity: 2 }),
+      inventoryRow({ prize_key: "invalido", quantity: 9 }),
+      inventoryRow({ prize_key: "premio_1", quantity: 0 }),
+      inventoryRow({ prize_key: "premio_2", quantity: 1 }),
+      // Sem produto não há o que o jogador possua: a linha não descreve nada.
+      inventoryRow({ prize_key: "premio_3", product_id: "", quantity: 4 }),
+    ]).map((item) => [item.prizeKey, item.quantity])).toEqual([
+      ["premio_2", 1],
+      ["premio_4", 2],
+    ]);
+  });
+
+  it("guarda o item congelado, não o que a fatia aponta hoje", () => {
+    const [item] = normalizeDemoRouletteInventory([
+      inventoryRow({
+        prize_key: "premio_1",
+        product_id: PRODUCT_A,
+        product_name: "  AWP Dragon Lore  ",
+        product_image_url: "https://cdn.example/awp.png",
+        unit_value_cents: 5000,
+        unit_sale_value_cents: 2500,
+        quantity: 1,
+      }),
+    ]);
+    expect(item).toEqual({
+      prizeKey: "premio_1",
+      productId: PRODUCT_A,
+      name: "AWP Dragon Lore",
+      imageUrl: "https://cdn.example/awp.png",
+      valueCents: 5000,
+      saleValueCents: 2500,
+      quantity: 1,
+    });
+  });
+
+  it("não funde dois itens diferentes ganhos na mesma fatia", () => {
+    // O admin repontou premio_1 depois que o jogador já tinha ganho o item caro.
+    // Somar as duas linhas esconderia uma atrás do nome e do preço da outra.
+    const inventory = normalizeDemoRouletteInventory([
+      inventoryRow({
+        prize_key: "premio_1",
+        product_id: PRODUCT_A,
+        product_name: "AWP",
+        unit_value_cents: 5000,
+        unit_sale_value_cents: 2500,
+        quantity: 2,
+      }),
+      inventoryRow({
+        prize_key: "premio_1",
+        product_id: PRODUCT_B,
+        product_name: "Chaveiro",
+        unit_value_cents: 150,
+        unit_sale_value_cents: 75,
+        quantity: 1,
+      }),
+    ]);
+    expect(inventory).toHaveLength(2);
+    expect(inventory.map((item) => [item.name, item.valueCents, item.quantity])).toEqual([
+      ["AWP", 5000, 2],
+      ["Chaveiro", 150, 1],
     ]);
   });
 
   it("atualiza a quantidade retornada pelo servidor sem duplicar linhas", () => {
-    expect(mergeDemoRouletteInventory(
-      [{ prizeKey: "premio_2", quantity: 1 }],
-      "premio_2",
-      2,
-    )).toEqual([{ prizeKey: "premio_2", quantity: 2 }]);
+    const line = {
+      prizeKey: "premio_2",
+      productId: PRODUCT_A,
+      name: "AWP",
+      imageUrl: null,
+      valueCents: 500,
+      saleValueCents: 250,
+      quantity: 2,
+    };
+    expect(mergeDemoRouletteInventory([{ ...line, quantity: 1 }], line)).toEqual([line]);
+  });
+
+  it("vender um item não apaga o outro da mesma fatia", () => {
+    const caro = {
+      prizeKey: "premio_1" as const,
+      productId: PRODUCT_A,
+      name: "AWP",
+      imageUrl: null,
+      valueCents: 5000,
+      saleValueCents: 2500,
+      quantity: 2,
+    };
+    const barato = { ...caro, productId: PRODUCT_B, name: "Chaveiro", valueCents: 150,
+      saleValueCents: 75, quantity: 1 };
+
+    const afterSale = mergeDemoRouletteInventory([caro, barato], { ...barato, quantity: 0 });
+    expect(afterSale).toEqual([caro]);
   });
 
   it("descarta chave malformada e slot sem produto, e ordena por número", () => {
@@ -209,3 +284,21 @@ describe("demo roulette", () => {
     expect(Number.isFinite(demoRouletteRotation(0, "premio_1", []))).toBe(true);
   });
 });
+
+const PRODUCT_A = "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c";
+const PRODUCT_B = "1e8c6a3d-3a8d-4c3e-8b2a-7a2e1e8c6a3d";
+
+function inventoryRow(
+  overrides: Partial<Parameters<typeof normalizeDemoRouletteInventory>[0][number]>,
+) {
+  return {
+    prize_key: "premio_1",
+    product_id: PRODUCT_A,
+    product_name: "Prêmio",
+    product_image_url: null,
+    unit_value_cents: 100,
+    unit_sale_value_cents: 50,
+    quantity: 1,
+    ...overrides,
+  };
+}

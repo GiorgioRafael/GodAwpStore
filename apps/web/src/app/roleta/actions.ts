@@ -8,7 +8,7 @@ import { STORE_SLUG } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/env";
 import type { RouletteCoinPurchaseStatus } from "@/lib/roulette/coin-purchase";
 import {
-  MAXIMUM_WHEEL_SLOTS,
+  MAXIMUM_SELECTION_LINES,
   isDemoRoulettePrizeKey,
   MAXIMUM_COIN_PURCHASE,
   MINIMUM_COIN_PURCHASE,
@@ -26,20 +26,33 @@ export type SpinRouletteResult =
   | {
       ok: true;
       prizeKey: DemoRoulettePrizeKey;
+      productId: string;
+      unitValueCents: number;
+      unitSaleValueCents: number;
       inventoryQuantity: number;
       balanceCents: number;
       spinId: string;
     }
   | { ok: false; message: string };
 
-/** One inventory line the player selected, with how many units to act on. */
+/**
+ * One inventory line the player selected, with how many units to act on.
+ *
+ * A line names the item, not the slot: after an administrator repoints a slot,
+ * a player can hold two different prizes under the same slot, and "sell
+ * premio_3" no longer says which one.
+ */
 export type RouletteSelection = {
   prizeKey: DemoRoulettePrizeKey;
+  productId: string;
+  unitValueCents: number;
   quantity: number;
 };
 
 export type RouletteSettledLine = {
   prizeKey: DemoRoulettePrizeKey;
+  productId: string;
+  unitValueCents: number;
   remainingQuantity: number;
 };
 
@@ -363,6 +376,9 @@ function readSpinResult(
     | {
         recorded_spin_id: string;
         won_prize_key: string;
+        won_product_id: string;
+        won_unit_value_cents: number;
+        won_unit_sale_value_cents: number;
         won_inventory_quantity: number;
         coin_balance_cents: number;
       }
@@ -382,6 +398,7 @@ function readSpinResult(
     error ||
     !result ||
     !isDemoRoulettePrizeKey(result.won_prize_key) ||
+    !UUID_PATTERN.test(result.won_product_id ?? "") ||
     !Number.isSafeInteger(result.won_inventory_quantity) ||
     result.won_inventory_quantity <= 0
   ) {
@@ -392,6 +409,12 @@ function readSpinResult(
   return {
     ok: true,
     prizeKey: result.won_prize_key,
+    // The identity the spin actually froze, so the page never infers it from
+    // the slot: a price edit between page load and spin would make the guess
+    // wrong, and the wrong guess is a prize the player cannot then select.
+    productId: result.won_product_id,
+    unitValueCents: safeCount(result.won_unit_value_cents),
+    unitSaleValueCents: safeCount(result.won_unit_sale_value_cents),
     inventoryQuantity: result.won_inventory_quantity,
     balanceCents: safeCount(result.coin_balance_cents),
     spinId: result.recorded_spin_id,
@@ -400,21 +423,35 @@ function readSpinResult(
 
 /** Validates the browser selection before it reaches the database. */
 function normalizeSelection(selection: RouletteSelection[]) {
-  // Dez, porque o jogador pode ter dez prêmios distintos e vender um a um não
-  // é uma funcionalidade. Tem que andar junto de read_roulette_item_selection.
-  if (!Array.isArray(selection) || selection.length < 1 || selection.length > MAXIMUM_WHEEL_SLOTS) {
+  // Por linha, não por fatia: dez fatias carregam mais de dez itens distintos
+  // depois que a roda é rebalanceada algumas vezes. Anda junto do limite de
+  // read_roulette_item_selection.
+  if (!Array.isArray(selection) || selection.length < 1 || selection.length > MAXIMUM_SELECTION_LINES) {
     return null;
   }
   const seen = new Set<string>();
-  const items: Array<{ prize_key: string; quantity: number }> = [];
+  const items: Array<{
+    prize_key: string;
+    product_id: string;
+    unit_value_cents: number;
+    quantity: number;
+  }> = [];
   for (const line of selection) {
     if (!isDemoRoulettePrizeKey(line?.prizeKey)) return null;
+    if (!UUID_PATTERN.test(line.productId ?? "")) return null;
+    if (!Number.isSafeInteger(line.unitValueCents) || line.unitValueCents < 0) return null;
     if (!Number.isSafeInteger(line.quantity) || line.quantity < 1 || line.quantity > 10_000) {
       return null;
     }
-    if (seen.has(line.prizeKey)) return null;
-    seen.add(line.prizeKey);
-    items.push({ prize_key: line.prizeKey, quantity: line.quantity });
+    const identity = `${line.prizeKey}:${line.productId}:${line.unitValueCents}`;
+    if (seen.has(identity)) return null;
+    seen.add(identity);
+    items.push({
+      prize_key: line.prizeKey,
+      product_id: line.productId,
+      unit_value_cents: line.unitValueCents,
+      quantity: line.quantity,
+    });
   }
   return items;
 }
@@ -422,10 +459,24 @@ function normalizeSelection(selection: RouletteSelection[]) {
 function readSettledLines(value: unknown): RouletteSettledLine[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
-    const line = entry as { prize_key?: unknown; remaining_quantity?: unknown };
+    const line = entry as {
+      prize_key?: unknown;
+      product_id?: unknown;
+      unit_value_cents?: unknown;
+      remaining_quantity?: unknown;
+    };
     return isDemoRoulettePrizeKey(line.prize_key) &&
+      typeof line.product_id === "string" &&
+      Number.isSafeInteger(line.unit_value_cents) &&
       Number.isSafeInteger(line.remaining_quantity)
-      ? [{ prizeKey: line.prize_key, remainingQuantity: Number(line.remaining_quantity) }]
+      ? [
+          {
+            prizeKey: line.prize_key,
+            productId: line.product_id,
+            unitValueCents: Number(line.unit_value_cents),
+            remainingQuantity: Number(line.remaining_quantity),
+          },
+        ]
       : [];
   });
 }

@@ -23,6 +23,7 @@ import {
 export type WheelSlot = WheelSlotDraft & {
   stockQuantity: number;
   heldUnits: number;
+  retiredUnits: number;
   archived: boolean;
 };
 
@@ -99,6 +100,7 @@ export function RouletteWheelEditor({
             1,
           ),
           heldUnits: 0,
+          retiredUnits: 0,
           archived: false,
         },
       ];
@@ -176,7 +178,6 @@ export function RouletteWheelEditor({
               <tbody>
                 {draft.map((slot, index) => {
                   const chance = (shares[index] ?? 0) / 100;
-                  const locked = slot.heldUnits > 0;
                   return (
                     <tr key={slot.prizeKey} className="border-b border-border/60 last:border-b-0">
                       <td className="py-3 pr-3">
@@ -196,7 +197,6 @@ export function RouletteWheelEditor({
                           aria-label={`Produto da fatia ${slot.prizeKey}`}
                           className="h-10 min-w-[16rem]"
                           value={slot.productId}
-                          disabled={locked}
                           onChange={(event) => setProduct(slot.prizeKey, event.target.value)}
                         >
                           {slot.archived ? (
@@ -208,17 +208,16 @@ export function RouletteWheelEditor({
                             </option>
                           ))}
                         </Select>
-                        {locked ? (
+                        {slot.heldUnits > 0 || slot.retiredUnits > 0 ? (
                           <p className="mt-1 text-xs text-muted">
-                            {slot.heldUnits} un. na mão de jogadores — troque só depois da entrega
+                            {slot.heldUnits > 0 ? `${slot.heldUnits} un. deste item` : null}
+                            {slot.heldUnits > 0 && slot.retiredUnits > 0 ? " · " : null}
+                            {slot.retiredUnits > 0
+                              ? `${slot.retiredUnits} un. de itens anteriores`
+                              : null}{" "}
+                            já ganhas — cada uma vale o que valia quando saiu
                           </p>
                         ) : null}
-                        <input
-                          type="hidden"
-                          name={`product-${slot.prizeKey}`}
-                          value={locked ? slot.productId : ""}
-                          disabled={!locked}
-                        />
                       </td>
                       <td className="py-3 pr-3 tabular-nums text-muted-strong">
                         {formatBrl(slot.valueCents)}
@@ -249,14 +248,12 @@ export function RouletteWheelEditor({
                           type="button"
                           size="sm"
                           variant="ghost"
-                          disabled={locked || draft.length <= 1}
+                          disabled={draft.length <= 1}
                           onClick={() => removeSlot(slot.prizeKey)}
                           title={
-                            locked
-                              ? "Tem prêmio dessa fatia na mão de jogadores"
-                              : draft.length <= 1
-                                ? "A roda precisa de ao menos uma fatia"
-                                : "Tirar esta fatia da roda"
+                            draft.length <= 1
+                              ? "A roda precisa de ao menos uma fatia"
+                              : "Tirar da roda. Quem já ganhou continua com o prêmio e ainda pode vender ou resgatar."
                           }
                           aria-label={`Remover a fatia ${slot.prizeKey}`}
                         >
@@ -331,6 +328,11 @@ export function RouletteWheelEditor({
             — a roleta sempre puxa de lá, então não existe preço só-da-roleta para sair do lugar.
             Mudou o preço na loja, mudou aqui, e o RTP acompanha. Prêmio que alguém já ganhou mantém
             o valor de quando foi ganho.
+          </p>
+          <p className="text-xs leading-5 text-muted">
+            Trocar o item de uma fatia, ou tirar a fatia da roda, não mexe em nada que já foi ganho:
+            cada prêmio no inventário guarda o produto e o preço de quando saiu, e continua
+            aparecendo, vendível e resgatável para o jogador exatamente como estava.
           </p>
           <p className="text-xs leading-5 text-muted">
             As {HIGHLIGHTED_PRIZE_COUNT} fatias mais caras ganham a moldura dourada na roleta e no
