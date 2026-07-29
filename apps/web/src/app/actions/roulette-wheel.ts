@@ -9,6 +9,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Tem que andar junto da constraint roulette_prize_products_quantity_sane.
+const MAXIMUM_PRIZE_QUANTITY = 10_000;
 const MAXIMUM_WEIGHT = 1_000_000;
 const PRIZE_KEY_PATTERN = /^premio_([1-9][0-9]?)$/;
 
@@ -21,7 +23,12 @@ export async function saveRouletteWheelAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
-  const slots: Array<{ prize_key: string; product_id: string; draw_weight: number }> = [];
+  const slots: Array<{
+    prize_key: string;
+    product_id: string;
+    draw_weight: number;
+    prize_quantity: number;
+  }> = [];
 
   // The wheel is whatever the form carries, so adding a slice needs no code
   // change here — a fixed key list would silently drop the sixth one.
@@ -40,6 +47,7 @@ export async function saveRouletteWheelAction(
     }
     const productId = text(formData, `product-${prizeKey}`);
     const weight = Number(text(formData, `weight-${prizeKey}`).replace(",", "."));
+    const quantity = Number(text(formData, `quantity-${prizeKey}`).replace(",", "."));
     if (!productId) continue;
 
     if (!UUID_PATTERN.test(productId)) {
@@ -51,7 +59,18 @@ export async function saveRouletteWheelAction(
         message: `O peso da fatia ${prizeKey} tem que ficar entre 1 e ${MAXIMUM_WEIGHT}.`,
       };
     }
-    slots.push({ prize_key: prizeKey, product_id: productId, draw_weight: Math.round(weight) });
+    if (!Number.isFinite(quantity) || quantity < 1 || quantity > MAXIMUM_PRIZE_QUANTITY) {
+      return {
+        ok: false,
+        message: `A quantidade da fatia ${prizeKey} tem que ficar entre 1 e ${MAXIMUM_PRIZE_QUANTITY}.`,
+      };
+    }
+    slots.push({
+      prize_key: prizeKey,
+      product_id: productId,
+      draw_weight: Math.round(weight),
+      prize_quantity: Math.round(quantity),
+    });
   }
 
   if (!slots.length) {

@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   slotChanceBps,
+  slotBundleValueCents,
   slotChanceShares,
   wheelEconomics,
   wheelVerdict,
@@ -13,11 +14,11 @@ const RATES = { markupBps: 7000, feeBps: 500 };
 
 /** A escada que está em produção. */
 const LADDER = [
-  { prizeKey: "premio_1", productId: "a", productName: "0,15", valueCents: 15, drawWeight: 48000 },
-  { prizeKey: "premio_2", productId: "b", productName: "0,50", valueCents: 50, drawWeight: 28000 },
-  { prizeKey: "premio_3", productId: "c", productName: "1,00", valueCents: 100, drawWeight: 15000 },
-  { prizeKey: "premio_4", productId: "d", productName: "2,50", valueCents: 250, drawWeight: 7000 },
-  { prizeKey: "premio_5", productId: "e", productName: "10,00", valueCents: 1000, drawWeight: 1534 },
+  { prizeKey: "premio_1", productId: "a", productName: "0,15", valueCents: 15, quantity: 1, drawWeight: 48000 },
+  { prizeKey: "premio_2", productId: "b", productName: "0,50", valueCents: 50, quantity: 1, drawWeight: 28000 },
+  { prizeKey: "premio_3", productId: "c", productName: "1,00", valueCents: 100, quantity: 1, drawWeight: 15000 },
+  { prizeKey: "premio_4", productId: "d", productName: "2,50", valueCents: 250, quantity: 1, drawWeight: 7000 },
+  { prizeKey: "premio_5", productId: "e", productName: "10,00", valueCents: 1000, quantity: 1, drawWeight: 1534 },
 ];
 
 describe("economia da roda", () => {
@@ -72,7 +73,7 @@ describe("recomendação de RTP", () => {
 
   it("acusa prejuízo quando o prêmio custa mais que a moeda", () => {
     // Todo mundo ganhando o prêmio de R$ 10,00: 1000% de retorno.
-    const ruinous = LADDER.map((slot) => ({ ...slot, valueCents: 1000, drawWeight: 1 }));
+    const ruinous = LADDER.map((slot) => ({ ...slot, valueCents: 1000, quantity: 1, drawWeight: 1 }));
 
     expect(verdict(ruinous).tone).toBe("danger");
     expect(verdict(ruinous).title).toContain("Prejuízo");
@@ -114,11 +115,58 @@ describe("recomendação de RTP", () => {
   });
 });
 
+describe("fatia com quantidade", () => {
+  const um = {
+    prizeKey: "premio_1",
+    productId: "a",
+    productName: "Semente",
+    valueCents: 100,
+    quantity: 1,
+    drawWeight: 1,
+  };
+
+  it("o pacote é o que a fatia vale", () => {
+    expect(slotBundleValueCents(um)).toBe(100);
+    expect(slotBundleValueCents({ ...um, quantity: 10 })).toBe(1000);
+    // Quantidade ausente ou zerada não pode zerar o prêmio.
+    expect(slotBundleValueCents({ ...um, quantity: 0 })).toBe(100);
+  });
+
+  it("dez unidades devolvem dez vezes mais ao jogador", () => {
+    const uma = wheelEconomics([um], { markupBps: 7000, feeBps: 500 });
+    const dez = wheelEconomics([{ ...um, quantity: 10 }], { markupBps: 7000, feeBps: 500 });
+
+    expect(uma.expectedValueCents).toBe(100);
+    expect(dez.expectedValueCents).toBe(1000);
+    expect(dez.returnBps).toBe(uma.returnBps * 10);
+    // E o que sobra por giro cai junto: o custo do prêmio é dez vezes maior.
+    expect(dez.marginCents).toBeLessThan(uma.marginCents);
+  });
+
+  it("uma fatia barata em pacote pode pagar mais que uma cara sozinha", () => {
+    // É por isso que o destaque dourado e o RTP têm que comparar o pacote: dez
+    // sementes de 1,00 valem mais que um item de 5,00.
+    const pacote = { ...um, quantity: 10 };
+    const caro = { ...um, prizeKey: "premio_2", productId: "b", valueCents: 500 };
+    expect(slotBundleValueCents(pacote)).toBeGreaterThan(slotBundleValueCents(caro));
+  });
+
+  it("o prejuízo aparece quando o pacote cruza o break-even", () => {
+    const seguro = wheelEconomics([um], { markupBps: 7000, feeBps: 500 });
+    expect(seguro.returnBps).toBeLessThan(seguro.breakEvenBps);
+
+    const perigoso = wheelEconomics([{ ...um, quantity: 3 }], { markupBps: 7000, feeBps: 500 });
+    expect(perigoso.returnBps).toBeGreaterThan(perigoso.breakEvenBps);
+    expect(wheelVerdict(perigoso, { markupBps: 7000 }).tone).toBe("danger");
+  });
+});
+
 describe("chances somando 100%", () => {
   const slots = (weights: number[]) =>
     weights.map((drawWeight, index) => ({
       prizeKey: `premio_${index + 1}`,
       productId: String(index),
+      quantity: 1,
       productName: String(index),
       valueCents: 100,
       drawWeight,

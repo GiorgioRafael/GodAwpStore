@@ -87,11 +87,17 @@ export function rouletteInventoryKey(
   return `${item.prizeKey}:${item.productId}:${item.valueCents}`;
 }
 
-/** Catalog product currently attached to a wheel slot. */
+/**
+ * The bundle currently attached to a wheel slot.
+ *
+ * `quantity` units of one product, and `valueCents` is what the whole bundle is
+ * worth — the number the wheel shows and every calculation runs on.
+ */
 export type RoulettePrizeProduct = {
   prizeKey: DemoRoulettePrizeKey;
   productId: string;
   name: string;
+  quantity: number;
   imageUrl: string | null;
   valueCents: number;
   saleValueCents: number;
@@ -101,6 +107,7 @@ export type RoulettePrizeProduct = {
 /** A wheel slot ready to render: slot styling plus the resolved catalog item. */
 export type RouletteWheelPrize = DemoRoulettePrize & {
   productId: string | null;
+  quantity: number;
   displayName: string;
   wheelLabel: string;
   imageUrl: string | null;
@@ -133,6 +140,12 @@ export function isDemoRoulettePrizeKey(value: unknown): value is DemoRoulettePri
   return typeof value === "string" && PRIZE_KEY_PATTERN.test(value);
 }
 
+/** "10x Bamboo Seed" when the slice is a bundle, the plain name when it is one. */
+export function rouletteBundleName(name: string, quantity: number) {
+  const count = Number.isSafeInteger(quantity) && quantity > 1 ? quantity : 1;
+  return count > 1 ? `${count}x ${name}` : name;
+}
+
 /** Styling for a slot inside a wheel of a given size. */
 export function demoRoulettePrize(prizeKey: string, index: number, total: number) {
   const name = rouletteSlotLabel(prizeKey);
@@ -145,6 +158,7 @@ export function normalizeRoulettePrizeProducts(
     slot_product_id: string;
     slot_product_name: string;
     slot_product_image_url: string | null;
+    slot_prize_quantity: number;
     slot_value_cents: number;
     slot_sale_value_cents: number;
     slot_draw_chance_bps: number;
@@ -159,6 +173,7 @@ export function normalizeRoulettePrizeProducts(
       prizeKey: row.slot_prize_key,
       productId: row.slot_product_id,
       name,
+      quantity: Math.max(safeCents(row.slot_prize_quantity), 1),
       imageUrl: normalizeImageUrl(row.slot_product_image_url),
       valueCents: safeCents(row.slot_value_cents),
       saleValueCents: safeCents(row.slot_sale_value_cents),
@@ -185,10 +200,13 @@ export function buildRouletteWheelPrizes(
   const total = ordered.length;
   return ordered.map((product, index) => {
     const slot = demoRoulettePrize(product.prizeKey, index, total);
-    const displayName = product.name || slot.name;
+    // The count belongs in the name: a slice offering ten of something and one
+    // offering a single unit are different prizes, and only the label says so.
+    const displayName = rouletteBundleName(product.name || slot.name, product.quantity);
     return {
       ...slot,
       productId: product.productId,
+      quantity: product.quantity,
       displayName,
       wheelLabel: truncateWheelLabel(displayName, total),
       imageUrl: product.imageUrl,
@@ -214,6 +232,7 @@ export function rouletteWheelPrize(
   return {
     ...slot,
     productId: null,
+    quantity: 1,
     displayName: slot.name,
     wheelLabel: slot.shortName,
     imageUrl: null,

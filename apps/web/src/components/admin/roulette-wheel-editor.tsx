@@ -15,6 +15,7 @@ import { MAXIMUM_WHEEL_SLOTS, rouletteSlotKeys } from "@/lib/roulette/demo";
 import { HIGHLIGHTED_PRIZE_COUNT, highlightedPrizeValues } from "@/lib/roulette/wheel";
 import {
   slotChanceShares,
+  slotBundleValueCents,
   wheelEconomics,
   wheelVerdict,
   type WheelSlotDraft,
@@ -66,8 +67,10 @@ export function RouletteWheelEditor({
     () => wheelVerdict(economics, { markupBps }),
     [economics, markupBps],
   );
+  // O destaque compara o que a fatia entrega. Uma fatia de dez unidades baratas
+  // pode valer mais que uma de uma cara, e é isso que o jogador vê.
   const highlighted = useMemo(
-    () => highlightedPrizeValues(draft.map((slot) => slot.valueCents)),
+    () => highlightedPrizeValues(draft.map(slotBundleValueCents)),
     [draft],
   );
   // Arredondar cada fatia sozinha deixa a coluna somando 99,98%, e aí não dá
@@ -89,6 +92,7 @@ export function RouletteWheelEditor({
           productId: cheapest.id,
           productName: cheapest.name,
           valueCents: cheapest.valueCents,
+          quantity: 1,
           stockQuantity: cheapest.stockQuantity,
           // Metade do peso médio: entra sem virar a roda de cabeça para baixo.
           drawWeight: Math.max(
@@ -124,6 +128,17 @@ export function RouletteWheelEditor({
               stockQuantity: product?.stockQuantity ?? 0,
               archived: false,
             }
+          : slot,
+      ),
+    );
+  }
+
+  function setQuantity(prizeKey: string, raw: string) {
+    const quantity = Number(raw.replace(",", "."));
+    setDraft((current) =>
+      current.map((slot) =>
+        slot.prizeKey === prizeKey
+          ? { ...slot, quantity: Number.isFinite(quantity) ? Math.max(Math.trunc(quantity), 0) : 0 }
           : slot,
       ),
     );
@@ -166,7 +181,8 @@ export function RouletteWheelEditor({
                 <tr className="border-b border-border text-left text-xs uppercase tracking-[0.12em] text-muted">
                   <th className="pb-2 pr-3 font-medium">Fatia</th>
                   <th className="pb-2 pr-3 font-medium">Item sorteado</th>
-                  <th className="pb-2 pr-3 font-medium">Valor na loja</th>
+                  <th className="pb-2 pr-3 font-medium">Qtd.</th>
+                  <th className="pb-2 pr-3 font-medium">Valor do prêmio</th>
                   <th className="pb-2 pr-3 font-medium">Peso</th>
                   <th className="pb-2 pr-3 font-medium">Chance</th>
                   <th className="pb-2 pr-3 font-medium">Estoque</th>
@@ -178,11 +194,16 @@ export function RouletteWheelEditor({
               <tbody>
                 {draft.map((slot, index) => {
                   const chance = (shares[index] ?? 0) / 100;
+                  const bundleCents = slotBundleValueCents(slot);
+                  // Quantas voltas o estoque cobre: uma fatia de dez unidades
+                  // esvazia o catálogo dez vezes mais rápido, e é o resgate que
+                  // descobre isso se ninguém avisar antes.
+                  const spinsCovered = Math.floor(slot.stockQuantity / Math.max(slot.quantity, 1));
                   return (
                     <tr key={slot.prizeKey} className="border-b border-border/60 last:border-b-0">
                       <td className="py-3 pr-3">
                         <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                          {highlighted.has(slot.valueCents) ? (
+                          {highlighted.has(bundleCents) ? (
                             <Sparkles
                               aria-label="Recebe o destaque dourado"
                               className="size-3.5 text-gold"
@@ -219,8 +240,23 @@ export function RouletteWheelEditor({
                           </p>
                         ) : null}
                       </td>
+                      <td className="py-3 pr-3">
+                        <Input
+                          name={`quantity-${slot.prizeKey}`}
+                          aria-label={`Quantidade da fatia ${slot.prizeKey}`}
+                          className="h-10 w-20 tabular-nums"
+                          inputMode="numeric"
+                          value={slot.quantity}
+                          onChange={(event) => setQuantity(slot.prizeKey, event.target.value)}
+                        />
+                      </td>
                       <td className="py-3 pr-3 tabular-nums text-muted-strong">
-                        {formatBrl(slot.valueCents)}
+                        {formatBrl(bundleCents)}
+                        {slot.quantity > 1 ? (
+                          <span className="mt-0.5 block text-xs text-muted">
+                            {slot.quantity} × {formatBrl(slot.valueCents)}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="py-3 pr-3">
                         <Input
@@ -238,10 +274,15 @@ export function RouletteWheelEditor({
                       <td
                         className={cn(
                           "py-3 pr-3 tabular-nums",
-                          slot.stockQuantity > 0 ? "text-muted" : "text-danger",
+                          spinsCovered > 0 ? "text-muted" : "text-danger",
                         )}
                       >
                         {slot.stockQuantity}
+                        {slot.quantity > 1 ? (
+                          <span className="mt-0.5 block text-xs">
+                            {spinsCovered} giro(s)
+                          </span>
+                        ) : null}
                       </td>
                       <td className="py-3">
                         <Button

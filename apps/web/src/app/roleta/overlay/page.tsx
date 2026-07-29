@@ -65,7 +65,7 @@ async function readOverlayPrizes() {
 
   const { data, error } = await client
     .from("roulette_prize_products")
-    .select("prize_key,draw_weight,products(id,name,image_url,minimum_price_cents,archived_at)")
+    .select("prize_key,draw_weight,prize_quantity,products(id,name,image_url,minimum_price_cents,archived_at)")
     .order("prize_key");
   if (error || !data) {
     if (error) console.error(`[roleta:overlay] ${error.message}`);
@@ -81,7 +81,11 @@ async function readOverlayPrizes() {
               slot_product_id: slot.products.id,
               slot_product_name: slot.products.name,
               slot_product_image_url: slot.products.image_url,
-              slot_value_cents: slot.products.minimum_price_cents,
+              slot_prize_quantity: Math.max(slot.prize_quantity ?? 1, 1),
+              // O que a fatia entrega, não uma unidade dela: é esse número que
+              // decide o contorno dourado e o card de prêmio raro no overlay.
+              slot_value_cents:
+                slot.products.minimum_price_cents * Math.max(slot.prize_quantity ?? 1, 1),
               slot_sale_value_cents: 0,
               slot_draw_chance_bps: 0,
             },

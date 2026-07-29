@@ -4,9 +4,16 @@ export type WheelSlotDraft = {
   prizeKey: string;
   productId: string;
   productName: string;
+  /** Catalog price of ONE unit. What the slice is worth is this times quantity. */
   valueCents: number;
+  quantity: number;
   drawWeight: number;
 };
+
+/** What a slice actually hands over: the whole bundle. */
+export function slotBundleValueCents(slot: Pick<WheelSlotDraft, "valueCents" | "quantity">) {
+  return Math.max(slot.valueCents, 0) * Math.max(slot.quantity, 1);
+}
 
 export type WheelEconomics = {
   totalWeight: number;
@@ -51,7 +58,7 @@ export function wheelEconomics(
 
   const expectedValueCents =
     slots.reduce(
-      (sum, slot) => sum + Math.max(slot.drawWeight, 0) * Math.max(slot.valueCents, 0),
+      (sum, slot) => sum + Math.max(slot.drawWeight, 0) * slotBundleValueCents(slot),
       0,
     ) / totalWeight;
   const expectedCostCents = expectedValueCents / markup;

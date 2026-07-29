@@ -20,6 +20,7 @@ function wheelOf(total: number) {
     prizeKey,
     productId: `0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f${String(index).padStart(3, "0")}`,
     name: `Item ${index + 1}`,
+    quantity: 1,
     imageUrl: null,
     valueCents: (index + 1) * 50,
     saleValueCents: (index + 1) * 25,
@@ -156,6 +157,7 @@ describe("demo roulette", () => {
         slot_product_id: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         slot_product_name: "  1x Dragonfly  ",
         slot_product_image_url: "http://inseguro.example/imagem.png",
+        slot_prize_quantity: 1,
         slot_value_cents: 200,
         slot_sale_value_cents: 100,
         slot_draw_chance_bps: 1500,
@@ -166,6 +168,7 @@ describe("demo roulette", () => {
         slot_product_id: "1d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         slot_product_name: "Fora da roleta",
         slot_product_image_url: null,
+        slot_prize_quantity: 1,
         slot_value_cents: 100,
         slot_sale_value_cents: 50,
         slot_draw_chance_bps: 1000,
@@ -176,6 +179,7 @@ describe("demo roulette", () => {
         slot_product_id: "3d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         slot_product_name: "Décimo",
         slot_product_image_url: null,
+        slot_prize_quantity: 1,
         slot_value_cents: 900,
         slot_sale_value_cents: 450,
         slot_draw_chance_bps: 100,
@@ -185,6 +189,7 @@ describe("demo roulette", () => {
         slot_product_id: "2d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         slot_product_name: "   ",
         slot_product_image_url: null,
+        slot_prize_quantity: 1,
         slot_value_cents: 100,
         slot_sale_value_cents: 50,
         slot_draw_chance_bps: 1000,
@@ -194,6 +199,7 @@ describe("demo roulette", () => {
         prizeKey: "premio_2",
         productId: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         name: "1x Dragonfly",
+        quantity: 1,
         imageUrl: null,
         valueCents: 200,
         saleValueCents: 100,
@@ -203,6 +209,7 @@ describe("demo roulette", () => {
         prizeKey: "premio_10",
         productId: "3d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         name: "Décimo",
+        quantity: 1,
         imageUrl: null,
         valueCents: 900,
         saleValueCents: 450,
@@ -218,7 +225,8 @@ describe("demo roulette", () => {
       {
         prizeKey: "premio_2",
         productId: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
-        name: "10x Super Watering Can",
+        name: "Super Watering Can",
+        quantity: 10,
         imageUrl: "https://exemplo.supabase.co/regador.png",
         valueCents: 500,
         saleValueCents: 250,
@@ -227,11 +235,30 @@ describe("demo roulette", () => {
     ]);
 
     expect(prizes).toHaveLength(1);
+    // O nome carrega a quantidade: uma fatia de dez e uma de um são prêmios
+    // diferentes, e só o rótulo diz qual é qual.
     expect(rouletteWheelPrize(prizes, "premio_2")).toMatchObject({
       displayName: "10x Super Watering Can",
       wheelLabel: "10x Super Wat…",
+      quantity: 10,
       valueCents: 500,
     });
+  });
+
+  it("uma fatia de uma unidade não ganha prefixo", () => {
+    const prizes = buildRouletteWheelPrizes([
+      {
+        prizeKey: "premio_1",
+        productId: "0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
+        name: "Star Fruit",
+        quantity: 1,
+        imageUrl: null,
+        valueCents: 200,
+        saleValueCents: 100,
+        drawChanceBps: 900,
+      },
+    ]);
+    expect(prizes[0].displayName).toBe("Star Fruit");
   });
 
   it("encurta o rótulo conforme a fatia aperta", () => {

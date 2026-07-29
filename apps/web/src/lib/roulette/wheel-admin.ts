@@ -48,6 +48,7 @@ export async function getRouletteWheelAdmin(): Promise<RouletteWheelAdmin> {
       valueCents: Number(slot.slot_value_cents) || 0,
       drawWeight: Number(slot.slot_draw_weight) || 0,
       stockQuantity: Number(slot.slot_stock_quantity) || 0,
+      quantity: Math.max(Number(slot.slot_prize_quantity) || 1, 1),
       heldUnits: Number(slot.slot_held_units) || 0,
       // Won on this slice before it was repointed. Still owed, still sellable,
       // but not this product — folding the two into one number describes an

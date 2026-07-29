@@ -1652,6 +1652,197 @@ begin
 end
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Uma fatia é um pacote: N unidades de um produto, e o que ela vale é o pacote.
+-- ---------------------------------------------------------------------------
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+insert into public.products (
+  id, substore_id, name, slug, minimum_price_cents, stock_quantity, status, created_by
+) values (
+  '9c000000-0000-4000-8000-000000000009',
+  '9c000000-0000-4000-8000-000000000002',
+  'Semente',
+  'semente-pacote',
+  100,
+  100,
+  'active',
+  '9a000000-0000-4000-8000-000000000002'
+);
+
+-- A roda fica com uma fatia só, entregando cinco unidades por giro.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_saved record;
+begin
+  select * into v_saved
+  from public.admin_save_roulette_wheel(
+    '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000009","draw_weight":1,"prize_quantity":5}]'::jsonb
+  );
+
+  -- Uma moeda custa 100 centavos e o pacote vale 5 x 100 = 500: 500% de volta.
+  if v_saved.saved_return_bps <> 50000 then
+    raise exception 'The wheel priced the bundle at % bps, expected 50000', v_saved.saved_return_bps;
+  end if;
+end
+$$;
+
+-- Onze mil unidades não existem.
+do $$
+begin
+  begin
+    perform * from public.admin_save_roulette_wheel(
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000009","draw_weight":1,"prize_quantity":10001}]'::jsonb
+    );
+    raise exception 'The wheel accepted a bundle of eleven thousand units';
+  exception
+    when sqlstate '22023' then null;
+  end;
+  begin
+    perform * from public.admin_save_roulette_wheel(
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000009","draw_weight":1,"prize_quantity":0}]'::jsonb
+    );
+    raise exception 'The wheel accepted a slot that hands over nothing';
+  exception
+    when sqlstate '22023' then null;
+  end;
+end
+$$;
+
+-- O jogador vê o pacote: nome com a contagem e o valor do conjunto.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000001","role":"authenticated"}',
+  true
+);
+
+do $$
+declare
+  v_slot record;
+  v_rate integer;
+begin
+  select coalesce(settings.roulette_sale_rate_bps, 5000)
+  into v_rate
+  from public.platform_settings as settings
+  where settings.id = 1;
+
+  select * into v_slot from public.get_roulette_prizes() where slot_prize_key = 'premio_1';
+
+  if v_slot.slot_prize_quantity <> 5 then
+    raise exception 'The wheel reported % unit(s) per win', v_slot.slot_prize_quantity;
+  end if;
+  if v_slot.slot_value_cents <> 500 then
+    raise exception 'The wheel priced the slice at % instead of the bundle', v_slot.slot_value_cents;
+  end if;
+  -- Por unidade e depois multiplicado, na mesma ordem em que a venda paga.
+  if v_slot.slot_sale_value_cents <> ((100 * v_rate + 5000) / 10000) * 5 then
+    raise exception 'The quoted resale % is not what five units pay', v_slot.slot_sale_value_cents;
+  end if;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
+-- E o giro entrega as cinco.
+do $$
+declare
+  v_spin record;
+  v_before integer;
+  v_after integer;
+begin
+  select coalesce(sum(item.quantity), 0) into v_before
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.product_id = '9c000000-0000-4000-8000-000000000009';
+
+  perform pg_sleep(2.1);
+  select * into v_spin
+  from public.spin_roulette_as_admin(
+    '9a000000-0000-4000-8000-000000000001',
+    '900000000000000001',
+    'Jogador Teste'
+  );
+
+  if v_spin.won_quantity <> 5 then
+    raise exception 'The spin handed over % unit(s)', v_spin.won_quantity;
+  end if;
+  -- O congelado no inventário é por unidade; o do giro é o pacote.
+  if v_spin.won_unit_value_cents <> 100 then
+    raise exception 'The frozen unit price was %', v_spin.won_unit_value_cents;
+  end if;
+  if (
+    select spin.prize_value_cents
+    from public.roulette_demo_spins as spin
+    where spin.id = v_spin.recorded_spin_id
+  ) <> 500 then
+    raise exception 'The spin recorded the unit price instead of the bundle';
+  end if;
+  if (
+    select spin.prize_quantity
+    from public.roulette_demo_spins as spin
+    where spin.id = v_spin.recorded_spin_id
+  ) <> 5 then
+    raise exception 'The spin did not record how many units it handed over';
+  end if;
+
+  select coalesce(sum(item.quantity), 0) into v_after
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.product_id = '9c000000-0000-4000-8000-000000000009';
+
+  if v_after - v_before <> 5 then
+    raise exception 'The inventory gained % unit(s), expected 5', v_after - v_before;
+  end if;
+
+  -- Girar de novo empilha mais cinco na mesma linha, não mais uma.
+  perform pg_sleep(2.1);
+  perform * from public.spin_roulette_as_admin(
+    '9a000000-0000-4000-8000-000000000001',
+    '900000000000000001',
+    'Jogador Teste'
+  );
+
+  select coalesce(sum(item.quantity), 0) into v_after
+  from public.roulette_demo_inventory as item
+  where item.auth_user_id = '9a000000-0000-4000-8000-000000000001'
+    and item.product_id = '9c000000-0000-4000-8000-000000000009';
+
+  if v_after - v_before <> 10 then
+    raise exception 'Two bundle spins left % unit(s), expected 10', v_after - v_before;
+  end if;
+end
+$$;
+
+-- E o overlay anuncia o pacote, com a contagem no nome e o valor do conjunto.
+do $$
+declare
+  v_event record;
+begin
+  select * into v_event
+  from public.roulette_overlay_events as event
+  where event.prize_key = 'premio_1'
+  order by event.created_at desc
+  limit 1;
+
+  if v_event.product_name <> '5x Semente' then
+    raise exception 'The overlay announced %, not the bundle', v_event.product_name;
+  end if;
+  if v_event.value_cents <> 500 then
+    raise exception 'The overlay valued the bundle at %', v_event.value_cents;
+  end if;
+end
+$$;
+
 reset role;
 select set_config('request.jwt.claims', '', true);
 

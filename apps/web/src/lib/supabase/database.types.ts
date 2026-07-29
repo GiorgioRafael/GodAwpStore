@@ -606,6 +606,7 @@ type RoulettePrizeProductRow = {
   prize_key: string;
   product_id: string;
   draw_weight: number;
+  prize_quantity: number;
   created_at: string;
   updated_at: string;
 };
@@ -1576,6 +1577,7 @@ export type Database = {
           slot_product_id: string;
           slot_product_name: string;
           slot_product_image_url: string | null;
+          slot_prize_quantity: number;
           slot_value_cents: number;
           slot_sale_value_cents: number;
           slot_draw_weight: number;
@@ -1663,6 +1665,7 @@ export type Database = {
           won_product_id: string;
           won_unit_value_cents: number;
           won_unit_sale_value_cents: number;
+          won_quantity: number;
           won_inventory_quantity: number;
           coin_balance_cents: number;
           spun_at: string;
@@ -1680,6 +1683,7 @@ export type Database = {
           won_product_id: string;
           won_unit_value_cents: number;
           won_unit_sale_value_cents: number;
+          won_quantity: number;
           won_inventory_quantity: number;
           coin_balance_cents: number;
           spun_at: string;
@@ -1780,6 +1784,7 @@ export type Database = {
           slot_product_id: string | null;
           slot_product_name: string;
           slot_value_cents: number;
+          slot_prize_quantity: number;
           slot_stock_quantity: number;
           slot_draw_weight: number;
           slot_draw_chance_bps: number;

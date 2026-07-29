@@ -77,7 +77,7 @@ async function report(db) {
     await Promise.all([
       rows(db, "roulette_coin_purchases", "auth_user_id,amount_cents,status,created_at"),
       rows(db, "roulette_coin_entries", "auth_user_id,kind,amount_cents,prize_key,created_at"),
-      rows(db, "roulette_demo_spins", "id,auth_user_id,prize_key,prize_value_cents,created_at"),
+      rows(db, "roulette_demo_spins", "id,auth_user_id,prize_key,prize_value_cents,prize_quantity,created_at"),
       rows(db, "roulette_demo_inventory", "auth_user_id,prize_key,product_id,unit_value_cents,quantity"),
       rows(db, "roulette_redemptions", "id,auth_user_id,status,discord_ticket_status,item_count"),
       rows(db, "roulette_redemption_items", "redemption_id,product_id,product_name,value_cents,quantity"),
@@ -188,14 +188,17 @@ async function report(db) {
     })
     .reduce((s, l) => s + l.quantity, 0);
   const heldUnits = held.reduce((s, i) => s + i.quantity, 0);
-  const soldUnits = playerSpins.length - redeemedUnits - heldUnits;
+  // Unidades, não giros: uma fatia pode entregar um pacote, e aí uma linha de
+  // roulette_demo_spins vale prize_quantity prêmios.
+  const wonUnits = playerSpins.reduce((s, spin) => s + Math.max(spin.prize_quantity ?? 1, 1), 0);
+  const soldUnits = wonUnits - redeemedUnits - heldUnits;
   const closes = soldUnits >= 0;
   line(
     playerSpins.length === 0 ? "waiting" : closes ? "ok" : "bad",
     "6. contas fechando",
     playerSpins.length === 0
       ? dim("sem giro de jogador, nada a conferir")
-      : `${playerSpins.length} ganhos = ${soldUnits} vendidos + ${redeemedUnits} resgatados + ${heldUnits} guardados`,
+      : `${wonUnits} ganhos = ${soldUnits} vendidos + ${redeemedUnits} resgatados + ${heldUnits} guardados`,
   );
 
   const gross = credited.reduce((s, p) => s + p.amount_cents, 0);
