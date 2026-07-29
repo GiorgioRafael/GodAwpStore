@@ -8,6 +8,7 @@ import { STORE_SLUG } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/env";
 import type { RouletteCoinPurchaseStatus } from "@/lib/roulette/coin-purchase";
 import {
+  MAXIMUM_WHEEL_SLOTS,
   isDemoRoulettePrizeKey,
   MAXIMUM_COIN_PURCHASE,
   MINIMUM_COIN_PURCHASE,
@@ -399,7 +400,11 @@ function readSpinResult(
 
 /** Validates the browser selection before it reaches the database. */
 function normalizeSelection(selection: RouletteSelection[]) {
-  if (!Array.isArray(selection) || selection.length < 1 || selection.length > 5) return null;
+  // Dez, porque o jogador pode ter dez prêmios distintos e vender um a um não
+  // é uma funcionalidade. Tem que andar junto de read_roulette_item_selection.
+  if (!Array.isArray(selection) || selection.length < 1 || selection.length > MAXIMUM_WHEEL_SLOTS) {
+    return null;
+  }
   const seen = new Set<string>();
   const items: Array<{ prize_key: string; quantity: number }> = [];
   for (const line of selection) {

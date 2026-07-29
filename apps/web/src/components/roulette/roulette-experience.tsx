@@ -44,6 +44,7 @@ import {
   MINIMUM_COIN_PURCHASE,
   SPIN_COST_CENTS,
   type DemoRouletteInventoryItem,
+  rouletteSlotIndex,
   type DemoRoulettePrizeKey,
   type RouletteWheelPrize,
 } from "@/lib/roulette/demo";
@@ -58,13 +59,17 @@ import {
   WHEEL_SIZE,
 } from "@/lib/roulette/wheel";
 
-const PRIZE_ICONS: Record<DemoRoulettePrizeKey, LucideIcon> = {
-  premio_1: Gift,
-  premio_2: Star,
-  premio_3: Zap,
-  premio_4: Gem,
-  premio_5: Crown,
-};
+/**
+ * Cycled by slot position rather than keyed by name: a fixed record over the
+ * slot keys returns undefined for a slot added in the panel, and React throws
+ * on an undefined component, taking the whole page with it.
+ */
+const PRIZE_ICONS: LucideIcon[] = [Gift, Star, Zap, Gem, Crown];
+
+function prizeIcon(prizeKey: string) {
+  const index = rouletteSlotIndex(prizeKey);
+  return PRIZE_ICONS[(Number.isFinite(index) ? index - 1 : 0) % PRIZE_ICONS.length] ?? Gift;
+}
 
 const PAYMENT_POLL_INTERVAL_MS = 4_000;
 const SPIN_MS = 4_400;
@@ -163,7 +168,7 @@ export function RouletteExperience({
 
     const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const from = rotationRef.current;
-    const to = demoRouletteRotation(from, result.prizeKey) + EXTRA_TURNS * 360;
+    const to = demoRouletteRotation(from, result.prizeKey, prizes) + EXTRA_TURNS * 360;
     rotationRef.current = await spinWheelTo(
       wheelRef.current,
       from,
@@ -177,7 +182,7 @@ export function RouletteExperience({
     setLastPrizeKey(result.prizeKey);
     setLanded(true);
     setPhase("idle");
-  }, [router]);
+  }, [router, prizes]);
 
   // The coins land through the LivePix webhook, so the browser waits here until
   // the balance is credited.
@@ -469,7 +474,7 @@ export function RouletteExperience({
                   <svg
                     viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
                     role="img"
-                    aria-label="Roleta com cinco itens do catálogo"
+                    aria-label={`Roleta com ${prizes.length} ${prizes.length === 1 ? "item" : "itens"} do catálogo`}
                     className="size-full overflow-visible rounded-full"
                   >
                     <defs>
@@ -697,7 +702,7 @@ export function RouletteExperience({
             <ul className="mt-7 space-y-3">
               {inventory.map((item) => {
                 const prize = rouletteWheelPrize(prizes, item.prizeKey);
-                const Icon = PRIZE_ICONS[item.prizeKey];
+                const Icon = prizeIcon(item.prizeKey);
                 const picked = Math.min(selected[item.prizeKey] ?? 0, item.quantity);
                 return (
                   <li
@@ -841,7 +846,7 @@ export function RouletteExperience({
               className="mt-0.5 size-4 shrink-0 text-fuchsia-300/55"
             />
             <p>
-              Os cinco itens são uma seleção provisória do catálogo para testes. Vender devolve
+              Os itens são configurados no painel. Vender devolve
               parte do valor em moedas; a entrega dos prêmios ainda será liberada em uma
               próxima etapa.
             </p>

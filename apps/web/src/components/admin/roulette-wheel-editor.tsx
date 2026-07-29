@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
-import { Sparkles } from "lucide-react";
+import { Plus, Sparkles, Trash2 } from "lucide-react";
 import { formatBrl } from "@godawp/domain";
 import { saveRouletteWheelAction } from "@/app/actions/roulette-wheel";
 import { ActionFeedback, initialAdminActionState } from "./action-feedback";
@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
 import { Input, Select } from "@/components/ui/form-field";
+import { MAXIMUM_WHEEL_SLOTS, rouletteSlotKeys } from "@/lib/roulette/demo";
 import { HIGHLIGHTED_PRIZE_COUNT, highlightedPrizeValues } from "@/lib/roulette/wheel";
 import {
-  slotChanceBps,
+  slotChanceShares,
   wheelEconomics,
   wheelVerdict,
   type WheelSlotDraft,
@@ -68,6 +69,45 @@ export function RouletteWheelEditor({
     () => highlightedPrizeValues(draft.map((slot) => slot.valueCents)),
     [draft],
   );
+  // Arredondar cada fatia sozinha deixa a coluna somando 99,98%, e aí não dá
+  // para saber se é o arredondamento ou um erro seu.
+  const shares = useMemo(() => slotChanceShares(draft), [draft]);
+
+  function addSlot() {
+    setDraft((current) => {
+      if (current.length >= MAXIMUM_WHEEL_SLOTS) return current;
+      const taken = new Set(current.map((slot) => slot.prizeKey));
+      const free = rouletteSlotKeys(MAXIMUM_WHEEL_SLOTS).find((key) => !taken.has(key));
+      if (!free) return current;
+      const cheapest = [...candidates].sort((a, b) => a.valueCents - b.valueCents)[0];
+      if (!cheapest) return current;
+      return [
+        ...current,
+        {
+          prizeKey: free,
+          productId: cheapest.id,
+          productName: cheapest.name,
+          valueCents: cheapest.valueCents,
+          stockQuantity: cheapest.stockQuantity,
+          // Metade do peso médio: entra sem virar a roda de cabeça para baixo.
+          drawWeight: Math.max(
+            Math.round(
+              current.reduce((sum, slot) => sum + slot.drawWeight, 0) /
+                Math.max(current.length, 1) /
+                2,
+            ),
+            1,
+          ),
+          heldUnits: 0,
+          archived: false,
+        },
+      ];
+    });
+  }
+
+  function removeSlot(prizeKey: string) {
+    setDraft((current) => current.filter((slot) => slot.prizeKey !== prizeKey));
+  }
 
   function setProduct(prizeKey: string, productId: string) {
     const product = byId.get(productId);
@@ -127,12 +167,15 @@ export function RouletteWheelEditor({
                   <th className="pb-2 pr-3 font-medium">Valor na loja</th>
                   <th className="pb-2 pr-3 font-medium">Peso</th>
                   <th className="pb-2 pr-3 font-medium">Chance</th>
-                  <th className="pb-2 font-medium">Estoque</th>
+                  <th className="pb-2 pr-3 font-medium">Estoque</th>
+                  <th className="pb-2 font-medium">
+                    <span className="sr-only">Remover</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {draft.map((slot) => {
-                  const chance = slotChanceBps(slot, economics.totalWeight) / 100;
+                {draft.map((slot, index) => {
+                  const chance = (shares[index] ?? 0) / 100;
                   const locked = slot.heldUnits > 0;
                   return (
                     <tr key={slot.prizeKey} className="border-b border-border/60 last:border-b-0">
@@ -195,17 +238,57 @@ export function RouletteWheelEditor({
                       </td>
                       <td
                         className={cn(
-                          "py-3 tabular-nums",
+                          "py-3 pr-3 tabular-nums",
                           slot.stockQuantity > 0 ? "text-muted" : "text-danger",
                         )}
                       >
                         {slot.stockQuantity}
+                      </td>
+                      <td className="py-3">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={locked || draft.length <= 1}
+                          onClick={() => removeSlot(slot.prizeKey)}
+                          title={
+                            locked
+                              ? "Tem prêmio dessa fatia na mão de jogadores"
+                              : draft.length <= 1
+                                ? "A roda precisa de ao menos uma fatia"
+                                : "Tirar esta fatia da roda"
+                          }
+                          aria-label={`Remover a fatia ${slot.prizeKey}`}
+                        >
+                          <Trash2 aria-hidden="true" className="size-4" />
+                        </Button>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={addSlot}
+              disabled={draft.length >= MAXIMUM_WHEEL_SLOTS || candidates.length === 0}
+              title={
+                draft.length >= MAXIMUM_WHEEL_SLOTS
+                  ? `A roda vai até ${MAXIMUM_WHEEL_SLOTS} fatias`
+                  : "Adicionar uma fatia"
+              }
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              Adicionar fatia
+            </Button>
+            <p className="text-xs text-muted">
+              {draft.length} de {MAXIMUM_WHEEL_SLOTS} fatias · as chances sempre somam 100%
+            </p>
           </div>
 
           <div

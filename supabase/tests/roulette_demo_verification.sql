@@ -1135,4 +1135,124 @@ begin
 end
 $$;
 
+-- Uma décima fatia tem que atravessar toda constraint. Enumerá-las por chave
+-- fazia o giro nela morrer com 23514, e trancava o prêmio de quem já tinha
+-- ganho numa fatia depois removida.
+select set_config('request.jwt.claims', '', true);
+
+insert into public.products (
+  id, substore_id, name, slug, minimum_price_cents, stock_quantity, status, created_by
+) values (
+  '9c000000-0000-4000-8000-000000000006',
+  '9c000000-0000-4000-8000-000000000002',
+  'Roulette Verification Tenth',
+  'roulette-verification-tenth',
+  800,
+  10,
+  'active',
+  '9a000000-0000-4000-8000-000000000002'
+);
+
+insert into public.roulette_prize_products (prize_key, product_id, draw_weight)
+values ('premio_10', '9c000000-0000-4000-8000-000000000006', 3);
+
+insert into public.roulette_demo_spins (auth_user_id, discord_user_id, prize_key, prize_value_cents)
+values ('9a000000-0000-4000-8000-000000000002', '900000000000000002', 'premio_10', 800);
+
+insert into public.roulette_demo_inventory (
+  auth_user_id, discord_user_id, prize_key, product_id, unit_value_cents, quantity
+) values (
+  '9a000000-0000-4000-8000-000000000002',
+  '900000000000000002',
+  'premio_10',
+  '9c000000-0000-4000-8000-000000000006',
+  800,
+  1
+);
+
+insert into public.roulette_overlay_events (
+  prize_key, product_name, value_cents, masked_display_name, is_top_prize
+) values ('premio_10', 'Décimo', 800, 'Tes...', false);
+
+-- E o editor tem que carregar. Um tipo declarado errado na saída derruba a
+-- função inteira, e a página some com o editor sem dizer o motivo.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"9a000000-0000-4000-8000-000000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+
+do $$
+declare
+  v_slot record;
+  v_count integer := 0;
+  v_chance_total integer := 0;
+  v_previous integer := 0;
+begin
+  for v_slot in select * from public.admin_roulette_wheel() loop
+    v_count := v_count + 1;
+    v_chance_total := v_chance_total + v_slot.slot_draw_chance_bps;
+
+    if v_slot.slot_prize_key is null or v_slot.slot_draw_weight < 1 then
+      raise exception 'The wheel returned a slot with no key or no weight';
+    end if;
+
+    -- premio_10 vem depois de premio_1 em ordem de texto, e a rotação mira
+    -- pela posição: fora de ordem, a roda para na fatia errada.
+    if (substring(v_slot.slot_prize_key from '\d+'))::integer <= v_previous then
+      raise exception 'The wheel came back out of order at %', v_slot.slot_prize_key;
+    end if;
+    v_previous := (substring(v_slot.slot_prize_key from '\d+'))::integer;
+  end loop;
+
+  if v_count <> 2 then
+    raise exception 'The wheel returned % slot(s), expected the pinned one plus the tenth', v_count;
+  end if;
+  if v_chance_total > 10000 then
+    raise exception 'The slot chances add up to more than the whole wheel: %', v_chance_total;
+  end if;
+
+  if (select count(*) from public.admin_roulette_prize_candidates()) < 1 then
+    raise exception 'No product can be put on the wheel';
+  end if;
+end
+$$;
+
+do $$
+begin
+  -- Tirar da roda uma fatia que alguém ainda tem na mão precisa ser recusado.
+  begin
+    perform * from public.admin_save_roulette_wheel(
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","draw_weight":1}]'::jsonb
+    );
+    raise exception 'A slot with prizes in player hands was removed from the wheel';
+  exception
+    when sqlstate 'P0022' then null;
+  end;
+
+  -- E onze fatias não existem.
+  begin
+    perform * from public.admin_save_roulette_wheel(
+      (
+        select jsonb_agg(
+          jsonb_build_object(
+            'prize_key', 'premio_' || step,
+            'product_id', '9c000000-0000-4000-8000-000000000003',
+            'draw_weight', 1
+          )
+        )
+        from generate_series(1, 11) as step
+      )
+    );
+    raise exception 'The wheel accepted eleven slots';
+  exception
+    when sqlstate '22023' then null;
+  end;
+end
+$$;
+
+reset role;
+select set_config('request.jwt.claims', '', true);
+
 rollback;

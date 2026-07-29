@@ -73,6 +73,37 @@ export function slotChanceBps(slot: WheelSlotDraft, totalWeight: number) {
   return Math.round((Math.max(slot.drawWeight, 0) / totalWeight) * 10000);
 }
 
+/**
+ * The chances as shown, adding to exactly 100%.
+ *
+ * Rounding each slot on its own leaves a column that reads 99,98% or 100,02%,
+ * and an operator balancing a wheel cannot tell a rounding artefact from a
+ * mistake they made. Largest remainder hands the leftover basis points to the
+ * slots that lost the most to rounding, so the parts sum to the whole and each
+ * one is still the closest it can be to its true share.
+ */
+export function slotChanceShares(slots: readonly WheelSlotDraft[]): number[] {
+  const weights = slots.map((slot) => Math.max(slot.drawWeight, 0));
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  if (totalWeight <= 0) return slots.map(() => 0);
+
+  const exact = weights.map((weight) => (weight / totalWeight) * 10000);
+  const floors = exact.map((value) => Math.floor(value));
+  let leftover = 10000 - floors.reduce((sum, value) => sum + value, 0);
+
+  const order = exact
+    .map((value, index) => ({ index, remainder: value - floors[index] }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+
+  const shares = [...floors];
+  for (const { index } of order) {
+    if (leftover <= 0) break;
+    shares[index] += 1;
+    leftover -= 1;
+  }
+  return shares;
+}
+
 export type WheelVerdict = {
   tone: "danger" | "warning" | "success";
   title: string;

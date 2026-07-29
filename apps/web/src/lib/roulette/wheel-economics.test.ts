@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { slotChanceBps, wheelEconomics, wheelVerdict } from "./wheel-economics";
+import {
+  slotChanceBps,
+  slotChanceShares,
+  wheelEconomics,
+  wheelVerdict,
+} from "./wheel-economics";
 
 const RATES = { markupBps: 7000, feeBps: 500 };
 
@@ -106,5 +111,47 @@ describe("recomendação de RTP", () => {
 
     expect(verdict(dead).tone).toBe("danger");
     expect(verdict(dead).title).toContain("peso");
+  });
+});
+
+describe("chances somando 100%", () => {
+  const slots = (weights: number[]) =>
+    weights.map((drawWeight, index) => ({
+      prizeKey: `premio_${index + 1}`,
+      productId: String(index),
+      productName: String(index),
+      valueCents: 100,
+      drawWeight,
+    }));
+
+  it("fecha em 100% mesmo com pesos que não dividem redondo", () => {
+    // Três pesos iguais dão 33,333% cada; arredondar sozinho daria 99,99%.
+    for (const weights of [
+      [1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1],
+      [7, 11, 13],
+      [48000, 28000, 15000, 7000, 1534],
+      Array.from({ length: 10 }, (_, index) => index + 1),
+    ]) {
+      const shares = slotChanceShares(slots(weights));
+      expect(shares.reduce((sum, value) => sum + value, 0)).toBe(10000);
+      expect(shares).toHaveLength(weights.length);
+    }
+  });
+
+  it("dá o resto a quem mais perdeu no arredondamento", () => {
+    // 1/3 cada: dois recebem o ponto-base extra, e nenhum fica com 3332.
+    expect(slotChanceShares(slots([1, 1, 1]))).toEqual([3334, 3333, 3333]);
+  });
+
+  it("fica em zero quando não há peso nenhum", () => {
+    expect(slotChanceShares(slots([0, 0]))).toEqual([0, 0]);
+    expect(slotChanceShares([])).toEqual([]);
+  });
+
+  it("não dá chance a uma fatia com peso zero ao lado de outras", () => {
+    const shares = slotChanceShares(slots([0, 1]));
+    expect(shares[0]).toBe(0);
+    expect(shares[1]).toBe(10000);
   });
 });

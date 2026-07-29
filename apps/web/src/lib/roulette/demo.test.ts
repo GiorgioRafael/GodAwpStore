@@ -1,25 +1,57 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DEMO_ROULETTE_PRIZES,
+  MAXIMUM_WHEEL_SLOTS,
   buildRouletteWheelPrizes,
+  compareRouletteSlots,
   demoRouletteRotation,
   formatCoins,
   mergeDemoRouletteInventory,
   normalizeDemoRouletteInventory,
   normalizeRoulettePrizeProducts,
+  rouletteSlotKeys,
+  rouletteSlotPalette,
   rouletteWheelPrize,
 } from "./demo";
 
+/** A wheel of `total` slices, priced so the ladder climbs. */
+function wheelOf(total: number) {
+  return rouletteSlotKeys(total).map((prizeKey, index) => ({
+    prizeKey,
+    productId: `0d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f${String(index).padStart(3, "0")}`,
+    name: `Item ${index + 1}`,
+    imageUrl: null,
+    valueCents: (index + 1) * 50,
+    saleValueCents: (index + 1) * 25,
+    drawChanceBps: 1000,
+  }));
+}
+
 describe("demo roulette", () => {
-  it("mantém exatamente cinco prêmios provisórios", () => {
-    expect(DEMO_ROULETTE_PRIZES.map((prize) => prize.key)).toEqual([
-      "premio_1",
-      "premio_2",
-      "premio_3",
-      "premio_4",
-      "premio_5",
-    ]);
+  it("aceita de uma a dez fatias, e nada além disso", () => {
+    expect(rouletteSlotKeys(1)).toEqual(["premio_1"]);
+    expect(rouletteSlotKeys(10)).toHaveLength(MAXIMUM_WHEEL_SLOTS);
+    expect(rouletteSlotKeys(10).at(-1)).toBe("premio_10");
+    // Pedir mais que o teto não cria fatia que o banco vai recusar.
+    expect(rouletteSlotKeys(25)).toHaveLength(MAXIMUM_WHEEL_SLOTS);
+    expect(rouletteSlotKeys(0)).toEqual([]);
+  });
+
+  it("ordena as fatias por número, não por texto", () => {
+    // premio_10 vem antes de premio_2 em ordem alfabética.
+    const keys = ["premio_10", "premio_2", "premio_1"].sort(compareRouletteSlots);
+    expect(keys).toEqual(["premio_1", "premio_2", "premio_10"]);
+  });
+
+  it("dá cor diferente a fatias vizinhas mesmo com dez", () => {
+    const palette = Array.from({ length: 10 }, (_, index) => rouletteSlotPalette(index, 10));
+    // Nenhuma fatia fica sem cor, e nenhuma repete a do vizinho.
+    for (const [index, slot] of palette.entries()) {
+      expect(slot.accent).toMatch(/^hsl\(/);
+      expect(slot.surface).toMatch(/^hsl\(/);
+      if (index > 0) expect(slot.accent).not.toBe(palette[index - 1].accent);
+    }
+    expect(new Set(palette.map((slot) => slot.accent)).size).toBe(10);
   });
 
   it("normaliza apenas itens válidos e positivos", () => {
@@ -42,7 +74,7 @@ describe("demo roulette", () => {
     )).toEqual([{ prizeKey: "premio_2", quantity: 2 }]);
   });
 
-  it("descarta slots sem produto válido do catálogo", () => {
+  it("descarta chave malformada e slot sem produto, e ordena por número", () => {
     expect(normalizeRoulettePrizeProducts([
       {
         slot_prize_key: "premio_2",
@@ -54,13 +86,24 @@ describe("demo roulette", () => {
         slot_draw_chance_bps: 1500,
       },
       {
-        slot_prize_key: "premio_9",
+        // Chave malformada: nem parece slot, então não entra na roda.
+        slot_prize_key: "premio_zero",
         slot_product_id: "1d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
         slot_product_name: "Fora da roleta",
         slot_product_image_url: null,
         slot_value_cents: 100,
         slot_sale_value_cents: 50,
         slot_draw_chance_bps: 1000,
+      },
+      {
+        // Décima fatia é válida agora, e sai depois da segunda, não antes.
+        slot_prize_key: "premio_10",
+        slot_product_id: "3d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
+        slot_product_name: "Décimo",
+        slot_product_image_url: null,
+        slot_value_cents: 900,
+        slot_sale_value_cents: 450,
+        slot_draw_chance_bps: 100,
       },
       {
         slot_prize_key: "premio_3",
@@ -81,10 +124,21 @@ describe("demo roulette", () => {
         saleValueCents: 100,
         drawChanceBps: 1500,
       },
+      {
+        prizeKey: "premio_10",
+        productId: "3d9b5f2c-2f9c-4f2b-9a1f-6f1f0d9b5f2c",
+        name: "Décimo",
+        imageUrl: null,
+        valueCents: 900,
+        saleValueCents: 450,
+        drawChanceBps: 100,
+      },
     ]);
   });
 
-  it("mantém as cinco fatias mesmo quando o catálogo cobre parte dos slots", () => {
+  it("desenha exatamente as fatias que o servidor mandou", () => {
+    // A roda não tem mais tamanho fixo: uma fatia configurada é uma fatia
+    // desenhada, e nada é inventado para preencher.
     const prizes = buildRouletteWheelPrizes([
       {
         prizeKey: "premio_2",
@@ -97,20 +151,34 @@ describe("demo roulette", () => {
       },
     ]);
 
-    expect(prizes).toHaveLength(5);
+    expect(prizes).toHaveLength(1);
     expect(rouletteWheelPrize(prizes, "premio_2")).toMatchObject({
       displayName: "10x Super Watering Can",
       wheelLabel: "10x Super Wat…",
-      imageUrl: "https://exemplo.supabase.co/regador.png",
       valueCents: 500,
-      saleValueCents: 250,
     });
-    expect(rouletteWheelPrize(prizes, "premio_5")).toMatchObject({
-      displayName: "Prêmio 5",
+  });
+
+  it("encurta o rótulo conforme a fatia aperta", () => {
+    const wide = buildRouletteWheelPrizes(
+      wheelOf(5).map((slot) => ({ ...slot, name: "Nome bem comprido demais" })),
+    );
+    const tight = buildRouletteWheelPrizes(
+      wheelOf(10).map((slot) => ({ ...slot, name: "Nome bem comprido demais" })),
+    );
+
+    expect(wide[0].wheelLabel.length).toBeGreaterThan(tight[0].wheelLabel.length);
+    expect(tight[0].wheelLabel.endsWith("…")).toBe(true);
+  });
+
+  it("não quebra num prêmio que a roda ainda não conhece", () => {
+    // Acontece na janela entre o admin adicionar uma fatia e a página recarregar.
+    const prizes = buildRouletteWheelPrizes(wheelOf(3));
+
+    expect(rouletteWheelPrize(prizes, "premio_9")).toMatchObject({
+      displayName: "Prêmio 9",
       productId: null,
-      imageUrl: null,
       valueCents: 0,
-      saleValueCents: 0,
     });
   });
 
@@ -121,13 +189,23 @@ describe("demo roulette", () => {
     expect(formatCoins(1_234)).toBe("12,34");
   });
 
-  it("faz ao menos cinco voltas e alinha o centro do prêmio ao ponteiro", () => {
-    for (const prize of DEMO_ROULETTE_PRIZES) {
-      const nextRotation = demoRouletteRotation(0, prize.key);
-      const index = DEMO_ROULETTE_PRIZES.findIndex((candidate) => candidate.key === prize.key);
-      const segmentCenter = index * 72 + 36;
-      expect(nextRotation).toBeGreaterThanOrEqual(1_800);
-      expect((nextRotation + segmentCenter) % 360).toBeCloseTo(0);
+  it("alinha o ponteiro pela roda desenhada, em qualquer quantidade de fatias", () => {
+    // Alinhar em passos de 72° enquanto o SVG desenha dez fatias de 36° faz a
+    // roda parar num prêmio e o card anunciar outro.
+    for (const total of [1, 2, 3, 5, 7, 10]) {
+      const prizes = buildRouletteWheelPrizes(wheelOf(total));
+      const segmentAngle = 360 / total;
+
+      for (const [index, prize] of prizes.entries()) {
+        const nextRotation = demoRouletteRotation(0, prize.key, prizes);
+        const segmentCenter = index * segmentAngle + segmentAngle / 2;
+        expect(nextRotation).toBeGreaterThanOrEqual(1_800);
+        expect((nextRotation + segmentCenter) % 360).toBeCloseTo(0);
+      }
     }
+  });
+
+  it("não gira para o infinito quando a roda está vazia", () => {
+    expect(Number.isFinite(demoRouletteRotation(0, "premio_1", []))).toBe(true);
   });
 });

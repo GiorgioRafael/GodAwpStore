@@ -4,12 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import type { AdminActionState } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
+import { MAXIMUM_WHEEL_SLOTS } from "@/lib/roulette/demo";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PRIZE_KEYS = ["premio_1", "premio_2", "premio_3", "premio_4", "premio_5"];
 const MAXIMUM_WEIGHT = 1_000_000;
+const PRIZE_KEY_PATTERN = /^premio_([1-9][0-9]?)$/;
 
 /**
  * Saves the whole wheel at once. The odds are relative — moving one weight
@@ -22,7 +23,21 @@ export async function saveRouletteWheelAction(
 ): Promise<AdminActionState> {
   const slots: Array<{ prize_key: string; product_id: string; draw_weight: number }> = [];
 
-  for (const prizeKey of PRIZE_KEYS) {
+  // The wheel is whatever the form carries, so adding a slice needs no code
+  // change here — a fixed key list would silently drop the sixth one.
+  const prizeKeys = [...formData.keys()]
+    .filter((name) => name.startsWith("product-"))
+    .map((name) => name.slice("product-".length))
+    .filter((key, index, all) => all.indexOf(key) === index);
+
+  for (const prizeKey of prizeKeys) {
+    if (!PRIZE_KEY_PATTERN.test(prizeKey)) {
+      return { ok: false, message: `A fatia ${prizeKey} não existe na roda.` };
+    }
+    const slotNumber = Number(PRIZE_KEY_PATTERN.exec(prizeKey)![1]);
+    if (slotNumber > MAXIMUM_WHEEL_SLOTS) {
+      return { ok: false, message: `A roda vai até ${MAXIMUM_WHEEL_SLOTS} fatias.` };
+    }
     const productId = text(formData, `product-${prizeKey}`);
     const weight = Number(text(formData, `weight-${prizeKey}`).replace(",", "."));
     if (!productId) continue;
@@ -42,6 +57,9 @@ export async function saveRouletteWheelAction(
   if (!slots.length) {
     return { ok: false, message: "A roda precisa de ao menos um prêmio." };
   }
+  if (slots.length > MAXIMUM_WHEEL_SLOTS) {
+    return { ok: false, message: `A roda vai até ${MAXIMUM_WHEEL_SLOTS} fatias.` };
+  }
 
   try {
     await requireAdmin();
@@ -58,6 +76,13 @@ export async function saveRouletteWheelAction(
     }
     if (error?.code === "23503") {
       return { ok: false, message: "Um dos produtos escolhidos não está mais à venda." };
+    }
+    if (error?.code === "P0022") {
+      return {
+        ok: false,
+        message:
+          "Uma fatia que você tirou ainda tem prêmio na mão de jogadores. Espere a entrega ou o resgate antes de removê-la.",
+      };
     }
     if (error) throw new Error(error.message);
 

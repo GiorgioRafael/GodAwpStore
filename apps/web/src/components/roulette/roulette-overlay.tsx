@@ -105,7 +105,7 @@ export function RouletteOverlay({
       setLanded(false);
       stopIdle();
       const from = rotationRef.current;
-      const to = demoRouletteRotation(from, next.prizeKey) + EXTRA_TURNS * 360;
+      const to = demoRouletteRotation(from, next.prizeKey, prizes) + EXTRA_TURNS * 360;
       rotationRef.current = await spinWheelTo(wheelRef.current, from, to, spinMs);
       if (!active) return;
 
@@ -169,7 +169,7 @@ export function RouletteOverlay({
       window.clearInterval(timer);
       stopIdle();
     };
-  }, [queueLimit, spinMs, resultMs, pollMs, token]);
+  }, [queueLimit, spinMs, resultMs, pollMs, token, prizes]);
 
   const prize = current ? rouletteWheelPrize(prizes, current.prizeKey) : null;
   const jackpot = Boolean(current?.isTopPrize);
