@@ -68,10 +68,13 @@ function saleCredit(valueCents, saleRateBps) {
 async function report(db) {
   const { data: settings } = await db
     .from("platform_settings")
-    .select("roulette_sale_rate_bps")
+    .select("roulette_sale_rate_bps,updated_at")
     .eq("id", 1)
     .maybeSingle();
   const saleRateBps = settings?.roulette_sale_rate_bps ?? 5000;
+  // A taxa não é versionada: uma venda antiga foi paga pela taxa que valia
+  // naquele dia, e conferi-la contra a de hoje acusa erro onde não houve.
+  const ratesChangedAt = settings?.updated_at ?? null;
 
   const [purchases, entries, spins, inventory, redemptions, items, slots, staff, wallets] =
     await Promise.all([
@@ -124,16 +127,23 @@ async function report(db) {
   // produto muda no catálogo, e a venda paga pelo que o prêmio valia quando foi
   // ganho — comparar com o catálogo atual acusaria erro onde o congelamento
   // está justamente funcionando.
+  // Por UNIDADE: prize_value_cents é o pacote inteiro desde que uma fatia passou
+  // a entregar várias unidades, e a venda credita unidade a unidade.
   const frozenByPrize = new Map();
   for (const spin of playerSpins) {
-    if (spin.prize_value_cents > 0) {
-      frozenByPrize.set(
-        spin.prize_key,
-        (frozenByPrize.get(spin.prize_key) ?? new Set()).add(spin.prize_value_cents),
-      );
-    }
+    if (spin.prize_value_cents <= 0) continue;
+    const quantity = Math.max(spin.prize_quantity ?? 1, 1);
+    const unit = spin.prize_value_cents / quantity;
+    if (!Number.isInteger(unit)) continue;
+    frozenByPrize.set(
+      spin.prize_key,
+      (frozenByPrize.get(spin.prize_key) ?? new Set()).add(unit),
+    );
   }
-  const wrongRounding = sales.filter((sale) => {
+  const checkableSales = ratesChangedAt
+    ? sales.filter((sale) => sale.created_at > ratesChangedAt)
+    : sales;
+  const wrongRounding = checkableSales.filter((sale) => {
     const frozen = [...(frozenByPrize.get(sale.prize_key) ?? [])];
     if (!frozen.length) return false;
     // O crédito é o valor por unidade vezes a quantidade, então tem que ser
@@ -157,7 +167,12 @@ async function report(db) {
       ? dim("nenhuma venda de jogador ainda")
       : wrongRounding.length
         ? red(`${wrongRounding.length} venda(s) com crédito fora do esperado`)
-        : `${sales.length} venda(s) · ${brl(sales.reduce((s, e) => s + e.amount_cents, 0))}`,
+        : `${sales.length} venda(s) · ${brl(sales.reduce((s, e) => s + e.amount_cents, 0))}` +
+          (checkableSales.length < sales.length
+            ? dim(
+                ` · ${sales.length - checkableSales.length} anterior(es) à taxa atual, não conferidas`,
+              )
+            : ""),
   );
 
   const withTicket = playerRedemptions.filter((r) => r.discord_ticket_status === "open");
