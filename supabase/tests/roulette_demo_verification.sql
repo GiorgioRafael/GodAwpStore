@@ -1500,6 +1500,8 @@ declare
   v_antigo integer;
   v_novo integer;
 begin
+  -- O mesmo intervalo de dois segundos que separa dois giros de verdade.
+  perform pg_sleep(2.1);
   select * into v_spin
   from public.spin_roulette_as_admin(
     '9a000000-0000-4000-8000-000000000001',
