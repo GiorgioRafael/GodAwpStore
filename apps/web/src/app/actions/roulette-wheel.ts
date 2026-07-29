@@ -113,57 +113,6 @@ export async function toggleRouletteAction(
   }
 }
 
-/**
- * Reprices a prize from the wheel editor. The catalog price is shared with the
- * store, so the form says that next to the field rather than after the fact.
- */
-export async function saveRoulettePrizePriceAction(
-  _previousState: AdminActionState,
-  formData: FormData,
-): Promise<AdminActionState> {
-  const productId = text(formData, "productId");
-  const priceCents = Math.round(
-    Number(text(formData, "price").replace(",", ".")) * 100,
-  );
-
-  if (!UUID_PATTERN.test(productId)) {
-    return { ok: false, message: "Produto inválido." };
-  }
-  if (!Number.isFinite(priceCents) || priceCents < 1 || priceCents > 10_000_000) {
-    return { ok: false, message: "O preço tem que ficar entre R$ 0,01 e R$ 100.000,00." };
-  }
-
-  try {
-    await requireAdmin();
-    const client = await createServerSupabaseClient();
-    if (!client) throw new Error("Supabase não configurado.");
-
-    const { data, error } = await client.rpc("admin_update_roulette_prize_price", {
-      p_product_id: productId,
-      p_price_cents: priceCents,
-    });
-    if (error?.code === "P0021") {
-      return { ok: false, message: "Esse produto não está na roda." };
-    }
-    if (error) throw new Error(error.message);
-
-    const saved = data?.[0];
-    revalidatePath("/metricas-roleta");
-    revalidatePath("/roleta");
-    revalidatePath("/catalogo/produtos");
-    return {
-      ok: true,
-      message: saved
-        ? `${saved.updated_product_name} agora vale R$ ${(saved.updated_price_cents / 100).toFixed(2).replace(".", ",")} — na roleta e na loja.`
-        : "Preço atualizado.",
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "erro desconhecido";
-    console.error(`[admin:roleta:preco] ${message}`);
-    return { ok: false, message: "Não foi possível salvar o preço agora." };
-  }
-}
-
 function text(formData: FormData, name: string) {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";

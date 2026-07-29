@@ -1793,14 +1793,6 @@ export type Database = {
           saved_return_bps: number;
         }[];
       };
-      admin_update_roulette_prize_price: {
-        Args: { p_product_id: string; p_price_cents: number };
-        Returns: {
-          updated_product_id: string;
-          updated_product_name: string;
-          updated_price_cents: number;
-        }[];
-      };
       admin_roulette_metrics: {
         Args: Record<string, never>;
         Returns: {
