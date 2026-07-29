@@ -119,15 +119,36 @@ async function report(db) {
   );
 
   // O arredondamento novo: 15c tem que creditar 8c, não 7c.
-  const priceOf = new Map(
-    slots.map((slot) => [slot.prize_key, slot.products?.minimum_price_cents ?? 0]),
-  );
+  //
+  // A conferência usa o valor CONGELADO no giro, não o preço de hoje. O preço do
+  // produto muda no catálogo, e a venda paga pelo que o prêmio valia quando foi
+  // ganho — comparar com o catálogo atual acusaria erro onde o congelamento
+  // está justamente funcionando.
+  const frozenByPrize = new Map();
+  for (const spin of playerSpins) {
+    if (spin.prize_value_cents > 0) {
+      frozenByPrize.set(
+        spin.prize_key,
+        (frozenByPrize.get(spin.prize_key) ?? new Set()).add(spin.prize_value_cents),
+      );
+    }
+  }
   const wrongRounding = sales.filter((sale) => {
-    const value = priceOf.get(sale.prize_key);
-    const perUnit = value ? saleCredit(value, saleRateBps) : 0;
-    // O crédito é o valor por unidade vezes a quantidade, então tem que ser um
-    // múltiplo exato dele. O arredondamento antigo dava 7 onde agora dá 8.
-    return perUnit > 0 && sale.amount_cents % perUnit !== 0;
+    const frozen = [...(frozenByPrize.get(sale.prize_key) ?? [])];
+    if (!frozen.length) return false;
+    // O crédito é o valor por unidade vezes a quantidade, então tem que ser
+    // múltiplo exato de algum dos valores com que esse prêmio foi ganho.
+    return !frozen.some((value) => {
+      const perUnit = saleCredit(value, saleRateBps);
+      return perUnit > 0 && sale.amount_cents % perUnit === 0;
+    });
+  });
+
+  // Preço que andou depois de alguém ganhar: não é erro, mas explica números.
+  const drifted = slots.filter((slot) => {
+    const frozen = frozenByPrize.get(slot.prize_key);
+    const now = slot.products?.minimum_price_cents;
+    return frozen && now != null && ![...frozen].includes(now);
   });
   line(
     sales.length === 0 ? "waiting" : wrongRounding.length ? "bad" : "ok",
@@ -185,6 +206,12 @@ async function report(db) {
   );
 
   // Estoque das fatias, que é o que decide se um resgate consegue abrir.
+  if (drifted.length) {
+    console.log(
+      `  ${dim("preço mudou depois de ganho em")} ${drifted.map((s) => s.prize_key).join(", ")} ${dim("— a venda paga pelo valor congelado")}`,
+    );
+  }
+
   const stock = slots
     .filter((slot) => slot.products)
     .map((slot) => `${brl(slot.products.minimum_price_cents)}: ${slot.products.stock_quantity}un`)
