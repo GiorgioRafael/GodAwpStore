@@ -27,11 +27,11 @@ const INPUT = {
 };
 
 function stub(channels: unknown[], messages: unknown[] = []) {
-  const calls: Array<{ url: string; method: string }> = [];
+  const calls: Array<{ url: string; method: string; body?: unknown }> = [];
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    calls.push({ url, method });
+    calls.push({ url, method, body: init?.body });
     if (url.endsWith("/users/@me")) return Response.json({ id: BOT_ID, bot: true });
     if (url.endsWith(`/guilds/${GUILD_ID}`)) return Response.json({ id: GUILD_ID });
     if (url.includes(`/guilds/${GUILD_ID}/channels`)) {
@@ -63,6 +63,36 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("ticket do resgate", () => {
+  it("marca a equipe de verdade ao abrir o ticket", async () => {
+    // O Discord renderiza uma menção que não está em allowed_mentions e não
+    // notifica ninguém: o ticket parecia chamar a equipe e não chamava.
+    loadBotRuntimeSettings.mockResolvedValue({
+      customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticketCloseAdminDiscordUserIds: [],
+      ticketNotificationDiscordUserIds: ["900000000000000042", "900000000000000043"],
+    });
+    const { fetcher, calls } = stub([]);
+
+    const result = await ensureRouletteRedemptionTicket(INPUT, { fetcher });
+    expect(result.synchronized).toBe(true);
+
+    const post = calls.find(
+      (call) => call.method === "POST" && call.url.includes("/messages"),
+    );
+    expect(post).toBeDefined();
+    const body = JSON.parse(post!.body as string);
+
+    expect(body.content).toContain("<@900000000000000042>");
+    expect(body.content).toContain("<@900000000000000043>");
+    // O texto sozinho não notifica: os ids precisam estar aqui.
+    expect(body.allowed_mentions.users).toEqual([
+      INPUT.playerDiscordId,
+      "900000000000000042",
+      "900000000000000043",
+    ]);
+    expect(body.allowed_mentions.parse).toEqual([]);
+  });
+
   it("nunca abre um canal novo quando só era para atualizar os botões", async () => {
     // O botão de entrega é amarrado ao canal guardado (P0017). Um canal novo
     // daria ao jogador e à equipe um botão que nunca funciona.

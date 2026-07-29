@@ -177,20 +177,28 @@ export async function ensureRouletteRedemptionTicket(
   );
 
   if (created) {
-    const staffMentions = [
-      ...new Set(settings.ticketNotificationDiscordUserIds),
-    ]
-      .map((id) => `<@${id}>`)
-      .join(" ");
+    // The staff ids have to be in allowed_mentions as well as in the text.
+    // Discord renders a mention that is not listed there but notifies nobody:
+    // the ticket looked like it called the team and never did.
+    const staffIds = [...new Set(settings.ticketNotificationDiscordUserIds)].filter(
+      (id) => id !== input.playerDiscordId,
+    );
+    const staffLine = staffIds.length
+      ? `🔔 Equipe notificada: ${staffIds.map((id) => `<@${id}>`).join(" ")}`
+      : "";
     await discordBotJson(
       `/channels/${channel.id}/messages`,
       {
         method: "POST",
         body: JSON.stringify({
-          content: `<@${input.playerDiscordId}>${staffMentions ? ` ${staffMentions}` : ""}`,
+          content: [`<@${input.playerDiscordId}>`, staffLine].filter(Boolean).join("\n"),
           embeds: [buildWelcomeEmbed(input)],
           components,
-          allowed_mentions: { parse: [], users: [input.playerDiscordId] },
+          allowed_mentions: {
+            parse: [],
+            users: [input.playerDiscordId, ...staffIds],
+            replied_user: false,
+          },
         }),
       },
       fetcher,
