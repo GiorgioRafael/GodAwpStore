@@ -438,7 +438,7 @@ begin
   end;
 
   select * into v_sale
-  from public.sell_roulette_prizes('[{"prize_key":"premio_1","quantity":1}]'::jsonb);
+  from public.sell_roulette_prizes('[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":1}]'::jsonb);
   if v_sale.sold_total_credited_cents <> 200 then
     raise exception 'Selling must return half the value, credited %',
       v_sale.sold_total_credited_cents;
@@ -451,7 +451,7 @@ begin
   end if;
 
   begin
-    perform * from public.sell_roulette_prizes('[{"prize_key":"premio_1","quantity":1}]'::jsonb);
+    perform * from public.sell_roulette_prizes('[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":1}]'::jsonb);
     raise exception 'A prize was sold twice';
   exception
     when sqlstate 'P0008' then null;
@@ -460,7 +460,7 @@ begin
   -- A selection cannot repeat the same prize twice.
   begin
     perform * from public.sell_roulette_prizes(
-      '[{"prize_key":"premio_1","quantity":1},{"prize_key":"premio_1","quantity":1}]'::jsonb
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":1},{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":1}]'::jsonb
     );
     raise exception 'A repeated prize was accepted in one selection';
   exception
@@ -490,7 +490,7 @@ begin
   -- More units than the player owns is refused before anything moves.
   begin
     perform * from public.redeem_roulette_prizes(
-      '[{"prize_key":"premio_1","quantity":3}]'::jsonb
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":3}]'::jsonb
     );
     raise exception 'A redemption took more units than the player owned';
   exception
@@ -498,7 +498,7 @@ begin
   end;
 
   select * into v_redemption
-  from public.redeem_roulette_prizes('[{"prize_key":"premio_1","quantity":2}]'::jsonb);
+  from public.redeem_roulette_prizes('[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":2}]'::jsonb);
   if v_redemption.redeemed_item_count <> 2 then
     raise exception 'The redemption bundled % units', v_redemption.redeemed_item_count;
   end if;
@@ -509,7 +509,7 @@ begin
   -- The prizes left the inventory, so they cannot be redeemed again.
   begin
     perform * from public.redeem_roulette_prizes(
-      '[{"prize_key":"premio_1","quantity":1}]'::jsonb
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":1}]'::jsonb
     );
     raise exception 'A prize was redeemed twice';
   exception
@@ -976,7 +976,7 @@ do $$
 begin
   begin
     perform * from public.redeem_roulette_prizes(
-      '[{"prize_key":"premio_1","quantity":1}]'::jsonb
+      '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":1}]'::jsonb
     );
     raise exception 'The roulette promised an item with no stock';
   exception
@@ -1015,7 +1015,7 @@ set local role authenticated;
 do $$
 begin
   perform * from public.redeem_roulette_prizes(
-    '[{"prize_key":"premio_1","quantity":2}]'::jsonb
+    '[{"prize_key":"premio_1","product_id":"9c000000-0000-4000-8000-000000000003","unit_value_cents":400,"quantity":2}]'::jsonb
   );
 end
 $$;
