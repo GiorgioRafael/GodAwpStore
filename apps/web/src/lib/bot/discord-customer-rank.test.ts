@@ -15,6 +15,7 @@ const buyerDiscordId = "223456789012345678";
 const botId = "323456789012345678";
 const bronzeRoleId = "423456789012345678";
 const silverRoleId = "523456789012345678";
+const followerRoleId = "623456789012345678";
 
 const levels: CustomerRankLevel[] = [
   {
@@ -128,6 +129,54 @@ describe("Discord customer rank roles", () => {
     ]);
     expect(result.get("prata_i")).toBe(silverRoleId);
     expect(saved).toHaveLength(2);
+  });
+
+  it("mantém os rankings imediatamente acima do cargo Seguidor", async () => {
+    const repository = roleRepository();
+    let hierarchyBody: unknown;
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/users/@me")) {
+        return Response.json({ id: botId, bot: true });
+      }
+      if (url.endsWith(`/guilds/${discordGuildId}/roles`) && !init?.method) {
+        return Response.json([
+          discordRole(bronzeRoleId, levels[0]!),
+          discordRole(silverRoleId, levels[1]!),
+          {
+            id: followerRoleId,
+            name: "✔️┊Seguidor",
+            color: 0,
+            hoist: true,
+            managed: false,
+            mentionable: false,
+            permissions: "0",
+            position: 3,
+          },
+        ]);
+      }
+      if (
+        url.endsWith(`/guilds/${discordGuildId}/roles`) &&
+        init?.method === "PATCH"
+      ) {
+        hierarchyBody = JSON.parse(String(init.body));
+        return Response.json([]);
+      }
+      return new Response(null, { status: 404 });
+    });
+
+    await ensureDiscordCustomerRankRoles(
+      discordGuildId,
+      guildId,
+      repository,
+      fetcher,
+    );
+
+    expect(hierarchyBody).toEqual([
+      { id: followerRoleId, position: 1 },
+      { id: bronzeRoleId, position: 2 },
+      { id: silverRoleId, position: 3 },
+    ]);
   });
 
   it("adiciona somente o nível atual e remove o cargo antigo", async () => {

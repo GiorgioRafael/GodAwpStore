@@ -235,18 +235,39 @@ async function provisionDiscordCustomerRankRoles(
 
   const hierarchy = [...levels]
     .sort((left, right) => left.sortOrder - right.sortOrder)
-    .map((level, index) => ({
-      id: roleIdsByRank.get(level.code)!,
-      position: index + 1,
-    }));
+    .map((level) => roleIdsByRank.get(level.code)!);
+  const rankRoleIds = new Set(hierarchy);
+  const followerRole = roles.find(
+    (role) =>
+      !role.managed &&
+      !rankRoleIds.has(role.id) &&
+      role.name.toLocaleLowerCase("pt-BR").includes("seguidor"),
+  );
+  const rankRolesBelowFollower = followerRole
+    ? hierarchy.filter(
+        (roleId) => (roleById.get(roleId)?.position ?? 0) < followerRole.position,
+      ).length
+    : 0;
+  const followerPosition = followerRole
+    ? Math.max(1, followerRole.position - rankRolesBelowFollower)
+    : 0;
+  const desiredPositions = [
+    ...(followerRole
+      ? [{ id: followerRole.id, position: followerPosition }]
+      : []),
+    ...hierarchy.map((roleId, index) => ({
+      id: roleId,
+      position: followerPosition + index + 1,
+    })),
+  ];
   if (
-    hierarchy.some(
+    desiredPositions.some(
       (entry) => roleById.get(entry.id)?.position !== entry.position,
     )
   ) {
     await discordBotJson<DiscordRole[]>(
       `/guilds/${discordGuildId}/roles`,
-      { method: "PATCH", body: JSON.stringify(hierarchy) },
+      { method: "PATCH", body: JSON.stringify(desiredPositions) },
       fetcher,
     );
   }
