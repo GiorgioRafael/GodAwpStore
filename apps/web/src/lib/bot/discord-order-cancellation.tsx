@@ -21,6 +21,7 @@ import {
 } from "./order-cancellation-repository";
 import { prepareDiscordCartQuantities } from "./discord-quantity-preparation";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
+import { scopeCatalogToDiscordChannel } from "./discord-storefront-scope";
 
 const DISCORD_MESSAGE_COMPONENT = 3;
 const DISCORD_DEFERRED_UPDATE_MESSAGE = 6;
@@ -142,7 +143,9 @@ export async function createNativeDiscordOrderRebuildResponse(
 ) {
   try {
     const context = readDiscordInteraction(raw, "");
-    if (!context.guildId || !context.userId) return rebuildUnavailableResponse();
+    if (!context.guildId || !context.channelId || !context.userId) {
+      return rebuildUnavailableResponse();
+    }
 
     const cancellationRepository =
       dependencies.cancellationRepository ??
@@ -170,7 +173,12 @@ export async function createNativeDiscordOrderRebuildResponse(
         ? Promise.resolve(dependencies.customization)
         : loadBotMessageCustomization(),
     ]);
-    const [payload] = createDiscordStorefrontPayloads(catalog, customization);
+    const visibleCatalog = await scopeCatalogToDiscordChannel(
+      catalog,
+      context.guildId,
+      context.channelId,
+    );
+    const [payload] = createDiscordStorefrontPayloads(visibleCatalog, customization);
     return payload
       ? { type: DISCORD_UPDATE_MESSAGE, data: payload }
       : rebuildUnavailableResponse();

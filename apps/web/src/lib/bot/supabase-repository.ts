@@ -25,10 +25,17 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
   constructor(private readonly client: AdminClient = requireClient()) {}
 
   async listCatalog(): Promise<BotCatalogGame[]> {
-    const [gamesResult, substoresResult, productsResult, stockResult] = await Promise.all([
+    const [gamesResult, storesResult, substoresResult, productsResult, stockResult] = await Promise.all([
       this.client
         .from("games")
         .select("id,name,sort_order")
+        .eq("status", "active")
+        .is("archived_at", null)
+        .order("sort_order")
+        .order("name"),
+      this.client
+        .from("catalog_stores")
+        .select("id,game_id,name,is_default,sort_order")
         .eq("status", "active")
         .is("archived_at", null)
         .order("sort_order")
@@ -42,7 +49,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         .order("name"),
       this.client
         .from("products")
-        .select("id,substore_id,name,description,image_url,discord_application_emoji_id,discord_application_emoji_source_sha256,minimum_price_cents,sort_order")
+        .select("id,substore_id,catalog_store_id,name,description,image_url,discord_application_emoji_id,discord_application_emoji_source_sha256,minimum_price_cents,sort_order")
         .eq("status", "active")
         .is("archived_at", null)
         .order("sort_order")
@@ -51,6 +58,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     ]);
 
     assertQuery(gamesResult.error, "jogos");
+    assertQuery(storesResult.error, "lojas");
     assertQuery(substoresResult.error, "sublojas");
     assertQuery(productsResult.error, "produtos");
     assertQuery(stockResult.error, "estoque");
@@ -58,10 +66,11 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
     const stockByProduct = new Map(
       (stockResult.data ?? []).map((row) => [row.product_id, safeInteger(row.available_count)]),
     );
-    const productsBySubstore = new Map<string, BotCatalogGame["substores"][number]["products"]>();
+    const productsByStoreAndSubstore = new Map<string, BotCatalogGame["substores"][number]["products"]>();
 
     for (const product of productsResult.data ?? []) {
-      const products = productsBySubstore.get(product.substore_id) ?? [];
+      const key = `${product.catalog_store_id}:${product.substore_id}`;
+      const products = productsByStoreAndSubstore.get(key) ?? [];
       products.push({
         id: product.id,
         name: product.name,
@@ -81,30 +90,36 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         availableStock: stockByProduct.get(product.id) ?? 0,
         sortOrder: safeInteger(product.sort_order),
       });
-      productsBySubstore.set(product.substore_id, products);
+      productsByStoreAndSubstore.set(key, products);
     }
 
-    const substoresByGame = new Map<string, BotCatalogGame["substores"]>();
-    for (const substore of substoresResult.data ?? []) {
-      const products = productsBySubstore.get(substore.id) ?? [];
-      if (products.length === 0) continue;
-
-      const substores = substoresByGame.get(substore.game_id) ?? [];
-      substores.push({
-        id: substore.id,
-        name: substore.name,
-        title: substore.title,
-        description: substore.description,
-        colorHex: substore.color_hex,
-        imageUrl: substore.image_url,
-        products,
+    const games = new Map((gamesResult.data ?? []).map((game) => [game.id, game]));
+    return (storesResult.data ?? []).flatMap((store) => {
+      const game = games.get(store.game_id);
+      if (!game) return [];
+      const substores = (substoresResult.data ?? []).flatMap((substore) => {
+        if (substore.game_id !== store.game_id) return [];
+        const products = productsByStoreAndSubstore.get(`${store.id}:${substore.id}`) ?? [];
+        if (products.length === 0) return [];
+        return [{
+          id: substore.id,
+          name: substore.name,
+          title: substore.title,
+          description: substore.description,
+          colorHex: substore.color_hex,
+          imageUrl: substore.image_url,
+          products,
+        }];
       });
-      substoresByGame.set(substore.game_id, substores);
-    }
-
-    return (gamesResult.data ?? [])
-      .map((game) => ({ id: game.id, name: game.name, substores: substoresByGame.get(game.id) ?? [] }))
-      .filter((game) => game.substores.length > 0);
+      return [{
+        id: game.id,
+        name: game.name,
+        catalogStoreId: store.id,
+        catalogStoreName: store.name,
+        isDefaultStore: store.is_default,
+        substores,
+      }];
+    });
   }
 
   async findOrderByInteraction(interactionId: string): Promise<ExistingOrder | null> {

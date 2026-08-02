@@ -218,7 +218,13 @@ function createBot() {
         loadBotMessageCustomization(),
       ]);
       customization = loadedCustomization;
-      const selected = findCatalogProduct(catalog, event.value);
+      const context = readDiscordInteraction(event.raw, event.user.userId);
+      const visibleCatalog = await scopeCatalogToDiscordChannel(
+        catalog,
+        context.guildId,
+        context.channelId,
+      );
+      const selected = findCatalogProduct(visibleCatalog, event.value);
       const card = selected
         ? selectedProductCard(selected, customization)
         : errorCard(customization.error.productUnavailable, customization);
@@ -399,13 +405,24 @@ export async function completeDiscordQuantityPurchase(
     const context = readDiscordInteraction(raw, "");
     const productId = readQuantityModalProductId(raw);
     const quantity = readQuantityModalValue(raw);
-    if (!context.interactionId || !context.guildId || !context.userId || !productId) {
+    if (!context.interactionId || !context.guildId || !context.channelId || !context.userId || !productId) {
       card = errorCard(
         customization.error.outsideServer,
         customization,
       );
     } else {
-      const service = new BotCommerceService(new SupabaseBotCommerceRepository());
+      const repository = new SupabaseBotCommerceRepository();
+      const scopedCatalog = await scopeCatalogToDiscordChannel(
+        await repository.listCatalog(),
+        context.guildId,
+        context.channelId,
+      );
+      if (!findCatalogProduct(scopedCatalog, productId)) {
+        card = errorCard(customization.error.productUnavailable, customization);
+        await updateDiscordEphemeralResponse(raw, card);
+        return false;
+      }
+      const service = new BotCommerceService(repository);
       const guild = await fetchDiscordGuildIdentity(context.guildId);
       let upsell: Awaited<ReturnType<typeof service.prepareUpsell>> = {
         kind: "not_offered",
@@ -462,6 +479,9 @@ export function catalogCards(
   catalog: BotCatalogGame[],
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
 ): ChatElement[] {
+  if (catalog.length > 1) {
+    return catalog.flatMap((store) => catalogCards([store], customization));
+  }
   const products = flattenCatalog(catalog);
   const message = customization.storefront;
 
@@ -469,7 +489,11 @@ export function catalogCards(
     return [
       <Card
         key="empty-catalog"
-        title={interpolateBotMessageLimited(message.emptyTitle, {}, 256)}
+        title={interpolateBotMessageLimited(
+          catalog[0]?.catalogStoreName ?? message.emptyTitle,
+          {},
+          256,
+        )}
         imageUrl={discordStorefrontBannerUrl(customization) ?? undefined}
       >
         {message.emptyText ? <CardText>{message.emptyText}</CardText> : null}
@@ -490,7 +514,11 @@ export function catalogCards(
   return [
     <Card
       key="catalog"
-      title={interpolateBotMessageLimited(message.title, {}, 256)}
+      title={interpolateBotMessageLimited(
+        catalog.length === 1 ? catalog[0]?.catalogStoreName ?? message.title : message.title,
+        {},
+        256,
+      )}
       subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
       imageUrl={storefrontImageUrl ?? undefined}
     >

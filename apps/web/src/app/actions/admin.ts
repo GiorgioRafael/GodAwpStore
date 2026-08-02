@@ -19,10 +19,12 @@ import { requireAdmin } from "@/lib/auth";
 import { BotCommerceService } from "@/lib/bot/commerce-service";
 import { withBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
+  createDiscordTextChannel,
   listDiscordTextChannels,
   publishDiscordStorefront,
   readStorefrontConfigurations,
   withStorefrontConfiguration,
+  withStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import { synchronizeDiscordProductEmojis } from "@/lib/bot/discord-product-emojis";
@@ -58,7 +60,7 @@ const productOrderSchema = z
   });
 const discordStorefrontSchema = z.object({
   guildId: uuidSchema,
-  gameId: uuidSchema,
+  storeId: uuidSchema,
   channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
   boosterDiscountEnabled: z.boolean(),
   boosterDiscountBps: z.number().int().min(1, "Informe um desconto maior que zero.").max(9_000, "O desconto máximo é 90%."),
@@ -74,6 +76,19 @@ const discordStorefrontSchema = z.object({
       message: "A compra mínima precisa manter o Pix final em pelo menos R$ 1,00.",
     });
   }
+});
+const catalogStoreSchema = z.object({
+  id: uuidSchema.optional(),
+  guildId: uuidSchema.optional(),
+  gameId: uuidSchema,
+  name: z.string().trim().min(1, "Informe o nome da loja.").max(120),
+});
+const catalogStoreMoveSchema = z.object({
+  targetStoreId: uuidSchema,
+  productIds: z.array(uuidSchema).min(1).max(100).refine(
+    (ids) => new Set(ids).size === ids.length,
+    "A lista de produtos contém itens repetidos.",
+  ),
 });
 
 function text(formData: FormData, name: string): string {
@@ -325,50 +340,70 @@ export async function saveProductAction(
     (existingProducts ?? []).map((product) => product.slug),
   );
 
-  if (parsed.data.status === "active") {
-    const { data: targetSubstore, error: targetSubstoreError } = await supabase
-      .from("substores")
-      .select("game_id")
-      .eq("id", parsed.data.substoreId)
+  const { data: selectedSubstore, error: selectedSubstoreError } = await supabase
+    .from("substores")
+    .select("game_id")
+    .eq("id", parsed.data.substoreId)
+    .is("archived_at", null)
+    .maybeSingle();
+  if (selectedSubstoreError) return databaseFailure(selectedSubstoreError.code);
+  if (!selectedSubstore) {
+    return {
+      ok: false,
+      message: "A categoria selecionada não está mais disponível.",
+      fieldErrors: { substoreId: ["Selecione outra categoria."] },
+    };
+  }
+
+  let catalogStoreId: string | null = null;
+  if (id) {
+    const { data: existingProduct, error: existingProductError } = await supabase
+      .from("products")
+      .select("catalog_store_id,catalog_stores(game_id)")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingProductError) return databaseFailure(existingProductError.code);
+    if (existingProduct?.catalog_stores?.game_id === selectedSubstore.game_id) {
+      catalogStoreId = existingProduct.catalog_store_id;
+    }
+  }
+  if (!catalogStoreId) {
+    const { data: defaultStore, error: defaultStoreError } = await supabase
+      .from("catalog_stores")
+      .select("id")
+      .eq("game_id", selectedSubstore.game_id)
+      .eq("is_default", true)
+      .eq("status", "active")
       .is("archived_at", null)
       .maybeSingle();
-    if (targetSubstoreError) return databaseFailure(targetSubstoreError.code);
-    if (!targetSubstore) {
-      return {
-        ok: false,
-        message: "A categoria selecionada não está mais disponível.",
-        fieldErrors: { substoreId: ["Selecione outra categoria."] },
-      };
-    }
-    const { data: gameSubstores, error: gameSubstoresError } = await supabase
-      .from("substores")
-      .select("id")
-      .eq("game_id", targetSubstore.game_id)
-      .neq("status", "archived")
-      .is("archived_at", null);
-    if (gameSubstoresError) return databaseFailure(gameSubstoresError.code);
-    const gameSubstoreIds = (gameSubstores ?? []).map((substore) => substore.id);
+    if (defaultStoreError) return databaseFailure(defaultStoreError.code);
+    if (!defaultStore) return { ok: false, message: "A loja principal deste jogo não existe." };
+    catalogStoreId = defaultStore.id;
+  }
+
+  if (parsed.data.status === "active") {
     let activeProductsQuery = supabase
       .from("products")
       .select("id", { count: "exact", head: true })
       .eq("status", "active")
       .is("archived_at", null)
-      .in("substore_id", gameSubstoreIds);
+      .eq("catalog_store_id", catalogStoreId);
     if (id) activeProductsQuery = activeProductsQuery.neq("id", id);
     const { count, error: countError } = await activeProductsQuery;
     if (countError) return databaseFailure(countError.code);
     if ((count ?? 0) >= DISCORD_STOREFRONT_PRODUCT_LIMIT) {
       return {
         ok: false,
-        message: `Cada jogo aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos na sua vitrine.`,
+        message: `Cada loja aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos na sua vitrine.`,
         fieldErrors: {
-          status: ["Desative ou arquive outro produto deste jogo antes de ativar este."],
+          status: ["Desative, arquive ou mova outro produto desta loja antes de ativar este."],
         },
       };
     }
   }
   const record = {
     substore_id: parsed.data.substoreId,
+    catalog_store_id: catalogStoreId,
     name: parsed.data.name,
     slug,
     description: parsed.data.description,
@@ -398,9 +433,9 @@ export async function saveProductAction(
     if (error.code === "23514" && error.message.includes("products_active_limit")) {
       return {
         ok: false,
-        message: `Cada jogo aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos na sua vitrine.`,
+        message: `Cada loja aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos na sua vitrine.`,
         fieldErrors: {
-          status: ["Desative ou arquive outro produto deste jogo antes de ativar este."],
+          status: ["Desative, arquive ou mova outro produto desta loja antes de ativar este."],
         },
       };
     }
@@ -723,6 +758,157 @@ export async function saveBotMessageCustomizationAction(
   return { ok: true, message: "Personalização do bot salva." };
 }
 
+export async function saveCatalogStoreAction(
+  _previousState: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  const parsed = catalogStoreSchema.safeParse({
+    id: text(formData, "id") || undefined,
+    guildId: text(formData, "guildId") || undefined,
+    gameId: text(formData, "gameId"),
+    name: text(formData, "name"),
+  });
+  if (!parsed.success) {
+    return { ok: false, message: "Revise os dados da loja.", fieldErrors: errorsFromZod(parsed.error) };
+  }
+
+  const { identity, supabase } = await actionContext();
+  let slugQuery = supabase
+    .from("catalog_stores")
+    .select("slug")
+    .eq("game_id", parsed.data.gameId)
+    .is("archived_at", null);
+  if (parsed.data.id) slugQuery = slugQuery.neq("id", parsed.data.id);
+  const { data: existingStores, error: slugError } = await slugQuery;
+  if (slugError) return databaseFailure(slugError.code);
+  const slug = uniqueSlug(
+    slugFromName(parsed.data.name),
+    (existingStores ?? []).map((store) => store.slug),
+  );
+
+  if (parsed.data.id) {
+    const { data, error } = await supabase
+      .from("catalog_stores")
+      .update({ name: parsed.data.name, slug })
+      .eq("id", parsed.data.id)
+      .eq("game_id", parsed.data.gameId)
+      .is("archived_at", null)
+      .select("id")
+      .maybeSingle();
+    if (error) return databaseFailure(error.code);
+    if (!data) return { ok: false, message: "Loja não encontrada." };
+    revalidatePath("/configuracoes");
+    revalidatePath("/estoque");
+    return synchronizeCatalogStorefront("Nome da loja atualizado.");
+  }
+
+  const { data: createdStore, error: createError } = await supabase
+    .from("catalog_stores")
+    .insert({
+      game_id: parsed.data.gameId,
+      name: parsed.data.name,
+      slug,
+      created_by: identity.authUserId,
+    })
+    .select("id,name")
+    .single();
+  if (createError) return databaseFailure(createError.code);
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/estoque");
+  if (!parsed.data.guildId) {
+    return { ok: true, message: "Loja criada. Escolha um canal para publicar a vitrine." };
+  }
+
+  try {
+    const admin = createAdminSupabaseClient();
+    if (!admin) throw new Error("Supabase server-only não configurado.");
+    const { data: guild, error: guildError } = await admin
+      .from("guilds")
+      .select("id,discord_guild_id,configuration")
+      .eq("id", parsed.data.guildId)
+      .eq("status", "active")
+      .is("archived_at", null)
+      .maybeSingle();
+    if (guildError || !guild) throw new Error("Servidor Discord ativo não encontrado.");
+
+    const channel = await createDiscordTextChannel(guild.discord_guild_id, createdStore.name);
+    const [catalog, customization] = await Promise.all([
+      new BotCommerceService(new SupabaseBotCommerceRepository(admin)).listCatalog(),
+      loadBotMessageCustomization(admin),
+    ]);
+    const store = catalog.find((item) => item.catalogStoreId === createdStore.id);
+    if (!store) throw new Error("A nova loja não apareceu no catálogo.");
+    const published = await publishDiscordStorefront({
+      channel,
+      catalog: [store],
+      customization,
+      previous: null,
+      game: store,
+      store: { id: createdStore.id, name: createdStore.name },
+    });
+    const { error: configurationError } = await admin
+      .from("guilds")
+      .update({
+        configuration: withStorefrontConfiguration(
+          guild.configuration,
+          published.configuration,
+        ),
+      })
+      .eq("id", guild.id);
+    if (configurationError) throw new Error("Não foi possível salvar o canal da nova loja.");
+    return {
+      ok: true,
+      message: `Loja ${createdStore.name} criada e publicada em #${channel.name}. Agora mova os produtos pela aba Estoque.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "erro desconhecido";
+    console.error(`[admin:catalog-store-create] ${message}`);
+    return {
+      ok: true,
+      message: `Loja ${createdStore.name} criada, mas o canal automático não pôde ser criado. Configure um canal existente abaixo.`,
+    };
+  }
+}
+
+export async function moveCatalogProductsAction(
+  formData: FormData,
+): Promise<AdminActionState> {
+  let productIds: unknown;
+  try {
+    productIds = JSON.parse(text(formData, "productIds"));
+  } catch {
+    return { ok: false, message: "A lista de produtos é inválida." };
+  }
+  const parsed = catalogStoreMoveSchema.safeParse({
+    targetStoreId: text(formData, "targetStoreId"),
+    productIds,
+  });
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Revise os produtos." };
+  }
+  const { supabase } = await actionContext();
+  const { data, error } = await supabase.rpc("admin_move_products_to_catalog_store", {
+    p_product_ids: parsed.data.productIds,
+    p_target_store_id: parsed.data.targetStoreId,
+  });
+  if (error) {
+    if (error.message.includes("products_active_limit")) {
+      return { ok: false, message: "A loja de destino ultrapassaria o limite de 25 produtos ativos." };
+    }
+    if (error.message.includes("scope_mismatch")) {
+      return { ok: false, message: "Produtos só podem ser movidos entre lojas do mesmo jogo." };
+    }
+    return databaseFailure(error.code);
+  }
+  revalidatePath("/estoque");
+  revalidatePath("/catalogo/produtos");
+  revalidatePath("/configuracoes");
+  return synchronizeCatalogStorefront(
+    `${Number(data ?? 0)} produto(s) e todo o estoque foram movidos.`,
+  );
+}
+
 export async function publishDiscordStorefrontAction(
   _previousState: AdminActionState,
   formData: FormData,
@@ -735,7 +921,7 @@ export async function publishDiscordStorefrontAction(
   }
   const parsed = discordStorefrontSchema.safeParse({
     guildId: text(formData, "guildId"),
-    gameId: text(formData, "gameId"),
+    storeId: text(formData, "storeId"),
     channelId: text(formData, "channelId"),
     boosterDiscountEnabled: formData.get("boosterDiscountEnabled") === "on",
     boosterDiscountBps: percentageToBps(text(formData, "boosterDiscountPercent")),
@@ -744,7 +930,7 @@ export async function publishDiscordStorefrontAction(
   if (!parsed.success) {
     return {
       ok: false,
-      message: "Revise o jogo, o canal e as regras de desconto para boosters.",
+      message: "Revise a loja, o canal e as regras de desconto para boosters.",
       fieldErrors: {
         ...errorsFromZod(parsed.error),
         ...(!Number.isFinite(boosterMinimumSubtotalCents)
@@ -783,12 +969,12 @@ export async function publishDiscordStorefrontAction(
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
       loadBotMessageCustomization(supabase),
     ]);
-    const game = catalog.find((item) => item.id === parsed.data.gameId);
+    const game = catalog.find((item) => item.catalogStoreId === parsed.data.storeId);
     if (!game) {
       return {
         ok: false,
-        message: "Este jogo não tem produtos ativos para publicar.",
-        fieldErrors: { gameId: ["Escolha outro jogo ou ative um produto primeiro."] },
+        message: "Esta loja não está disponível para publicar.",
+        fieldErrors: { storeId: ["Escolha outra loja."] },
       };
     }
     const productCount = game.substores.reduce(
@@ -798,30 +984,38 @@ export async function publishDiscordStorefrontAction(
     if (productCount > DISCORD_STOREFRONT_PRODUCT_LIMIT) {
       return {
         ok: false,
-        message: `Este jogo tem ${productCount} produtos ativos. O Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} por vitrine.`,
+        message: `Esta loja tem ${productCount} produtos ativos. O Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} por vitrine.`,
         fieldErrors: {
-          gameId: ["Desative alguns produtos deste jogo antes de publicar."],
+          storeId: ["Desative ou mova alguns produtos desta loja antes de publicar."],
         },
       };
     }
     const currentStorefronts = readStorefrontConfigurations(guild.configuration);
     const channelConflict = currentStorefronts.find(
       (storefront) =>
-        storefront.game_id !== null &&
-        storefront.game_id !== game.id &&
+        storefront.catalog_store_id !== null &&
+        storefront.catalog_store_id !== game.catalogStoreId &&
         storefront.channel_id === channel.id,
     );
     if (channelConflict) {
       return {
         ok: false,
-        message: `O canal #${channel.name} já pertence à vitrine de ${channelConflict.game_name}.`,
+        message: `O canal #${channel.name} já pertence à vitrine ${channelConflict.catalog_store_name ?? channelConflict.game_name}.`,
         fieldErrors: {
-          channelId: ["Escolha um canal diferente para cada jogo."],
+          channelId: ["Escolha um canal diferente para cada loja."],
         },
       };
     }
     const previous =
-      currentStorefronts.find((storefront) => storefront.game_id === game.id) ??
+      currentStorefronts.find(
+        (storefront) => storefront.catalog_store_id === game.catalogStoreId,
+      ) ??
+      currentStorefronts.find(
+        (storefront) =>
+          storefront.catalog_store_id === null &&
+          storefront.game_id === game.id &&
+          game.isDefaultStore,
+      ) ??
       (currentStorefronts.length === 1 && currentStorefronts[0]?.game_id === null
         ? currentStorefronts[0]
         : null);
@@ -831,15 +1025,22 @@ export async function publishDiscordStorefrontAction(
       customization,
       previous,
       game,
+      store: {
+        id: game.catalogStoreId ?? parsed.data.storeId,
+        name: game.catalogStoreName ?? game.name,
+      },
     });
 
     const { data: updatedGuild, error: updateError } = await supabase
       .from("guilds")
       .update({
         configuration: withBoosterDiscountConfiguration(
-          withStorefrontConfiguration(
+          withStorefrontConfigurations(
             guild.configuration,
-            published.configuration,
+            [
+              ...currentStorefronts.filter((storefront) => storefront !== previous),
+              published.configuration,
+            ],
           ),
           {
             enabled: parsed.data.boosterDiscountEnabled,
@@ -857,7 +1058,7 @@ export async function publishDiscordStorefrontAction(
     revalidatePath("/configuracoes");
     return {
       ok: true,
-      message: `Vitrine de ${game.name} publicada em #${published.configuration.channel_name}. Somente os ${productCount} produtos desse jogo aparecem nela.${
+      message: `Vitrine ${game.catalogStoreName ?? game.name} publicada em #${published.configuration.channel_name}. Somente os ${productCount} produtos dessa loja aparecem nela.${
         emojiSync.failed > 0
           ? ` ${emojiSync.failed} ícone(s) de produto não puderam ser sincronizados.`
           : ""

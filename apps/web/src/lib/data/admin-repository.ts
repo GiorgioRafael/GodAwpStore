@@ -71,6 +71,20 @@ export type GameRow = Pick<
   | "updated_at"
 >;
 
+export type CatalogStoreRow = Pick<
+  Tables<"catalog_stores">,
+  | "id"
+  | "game_id"
+  | "name"
+  | "slug"
+  | "status"
+  | "is_default"
+  | "sort_order"
+  | "archived_at"
+  | "created_at"
+  | "updated_at"
+> & { games: Pick<Tables<"games">, "name"> | null };
+
 export type SubstoreRow = Pick<
   Tables<"substores">,
   | "id"
@@ -97,6 +111,7 @@ export type ProductRow = Pick<
   Tables<"products">,
   | "id"
   | "substore_id"
+  | "catalog_store_id"
   | "name"
   | "slug"
   | "description"
@@ -110,6 +125,7 @@ export type ProductRow = Pick<
   | "created_at"
   | "updated_at"
 > & {
+  catalog_stores: Pick<Tables<"catalog_stores">, "name" | "game_id"> | null;
   substores: (Pick<Tables<"substores">, "name"> & {
     games: Pick<Tables<"games">, "name"> | null;
   }) | null;
@@ -359,11 +375,22 @@ export async function listSubstores(): Promise<SubstoreRow[]> {
   return data ?? [];
 }
 
+export async function listCatalogStores(): Promise<CatalogStoreRow[]> {
+  const supabase = await client();
+  const { data, error } = await supabase
+    .from("catalog_stores")
+    .select("*, games(name)")
+    .order("sort_order")
+    .order("name");
+  assertQuerySucceeded(error, "carregar as lojas");
+  return data ?? [];
+}
+
 export async function listProducts(): Promise<ProductRow[]> {
   const supabase = await client();
   const { data, error } = await supabase
     .from("products")
-    .select("*, substores(name, games(name))")
+    .select("*, catalog_stores(name,game_id), substores(name, games(name))")
     .order("sort_order")
     .order("name");
   assertQuerySucceeded(error, "carregar os produtos");

@@ -15,8 +15,10 @@ export function filterCatalogForDiscordChannel(
     (item) => item.channel_id === channelId,
   );
   if (!storefront?.game_id) return catalog;
-  const game = catalog.find((item) => item.id === storefront.game_id);
-  return game ? [game] : [];
+  const store = storefront.catalog_store_id
+    ? catalog.find((item) => item.catalogStoreId === storefront.catalog_store_id)
+    : catalog.find((item) => item.id === storefront.game_id && item.isDefaultStore);
+  return store ? [store] : [];
 }
 
 export async function scopeCatalogToDiscordChannel(

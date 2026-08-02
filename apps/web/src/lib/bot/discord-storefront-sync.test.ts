@@ -45,12 +45,20 @@ const storefront = {
   published_at: "2026-07-17T09:00:00.000Z",
 };
 const customization = { version: 1, storefront: { title: "Loja personalizada" } };
+const defaultStoreId = "c5b82d6f-a324-47fa-a861-a046559e3a11";
 
 describe("sincronização automática da vitrine Discord", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.listCatalog.mockResolvedValue([
-      { id: storefront.game_id, name: storefront.game_name, substores: [] },
+      {
+        id: storefront.game_id,
+        name: storefront.game_name,
+        catalogStoreId: defaultStoreId,
+        catalogStoreName: storefront.game_name,
+        isDefaultStore: true,
+        substores: [],
+      },
     ]);
     mocks.readStorefrontConfigurations.mockReturnValue([storefront]);
     mocks.withStorefrontConfigurations.mockReturnValue({ storefronts: [storefront] });
@@ -71,7 +79,14 @@ describe("sincronização automática da vitrine Discord", () => {
     expect(mocks.publishDiscordStorefront).toHaveBeenCalledWith({
       channel: { id: storefront.channel_id, name: storefront.channel_name },
       catalog: [
-        { id: storefront.game_id, name: storefront.game_name, substores: [] },
+        {
+          id: storefront.game_id,
+          name: storefront.game_name,
+          catalogStoreId: defaultStoreId,
+          catalogStoreName: storefront.game_name,
+          isDefaultStore: true,
+          substores: [],
+        },
       ],
       customization,
       previous: storefront,
@@ -79,6 +94,7 @@ describe("sincronização automática da vitrine Discord", () => {
         id: storefront.game_id,
         name: storefront.game_name,
       }),
+      store: { id: defaultStoreId, name: storefront.game_name },
     });
     expect(client.update).toHaveBeenCalledWith({
       configuration: { storefronts: [storefront] },
@@ -98,8 +114,22 @@ describe("sincronização automática da vitrine Discord", () => {
     mocks.createAdminSupabaseClient.mockReturnValue(client);
     mocks.readStorefrontConfigurations.mockReturnValue([storefront, second]);
     mocks.listCatalog.mockResolvedValue([
-      { id: storefront.game_id, name: storefront.game_name, substores: [] },
-      { id: second.game_id, name: second.game_name, substores: [] },
+      {
+        id: storefront.game_id,
+        name: storefront.game_name,
+        catalogStoreId: defaultStoreId,
+        catalogStoreName: storefront.game_name,
+        isDefaultStore: true,
+        substores: [],
+      },
+      {
+        id: second.game_id,
+        name: second.game_name,
+        catalogStoreId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+        catalogStoreName: second.game_name,
+        isDefaultStore: true,
+        substores: [],
+      },
     ]);
     mocks.publishDiscordStorefront
       .mockResolvedValueOnce({ configuration: storefront })

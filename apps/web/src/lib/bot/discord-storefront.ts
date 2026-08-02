@@ -45,6 +45,8 @@ export type DiscordGuildChannels = {
 export type DiscordStorefrontConfiguration = {
   game_id: string | null;
   game_name: string;
+  catalog_store_id?: string | null;
+  catalog_store_name?: string;
   channel_id: string;
   channel_name: string;
   message_ids: string[];
@@ -73,6 +75,27 @@ export async function listDiscordTextChannels(
   fetcher: typeof fetch = fetch,
 ): Promise<DiscordStorefrontChannel[]> {
   return (await listDiscordGuildChannels(guildId, fetcher)).textChannels;
+}
+
+export async function createDiscordTextChannel(
+  guildId: string,
+  name: string,
+  fetcher: typeof fetch = fetch,
+): Promise<DiscordStorefrontChannel> {
+  assertSnowflake(guildId, "servidor");
+  const response = await fetcher(`${discordApiUrl()}/guilds/${guildId}/channels`, {
+    method: "POST",
+    headers: discordJsonHeaders(),
+    body: JSON.stringify({ name: discordChannelSlug(name), type: 0 }),
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error(`Discord recusou a criação do canal (${response.status}).`);
+  }
+  const body: unknown = await response.json();
+  const channel = normalizeTextChannel(body, new Map());
+  if (!channel) throw new Error("Resposta de canal inválida do Discord.");
+  return channel;
 }
 
 export async function listDiscordGuildChannels(
@@ -140,12 +163,14 @@ export function readStorefrontConfigurations(
 ): DiscordStorefrontConfiguration[] {
   if (!isObject(configuration)) return [];
   if (Array.isArray(configuration.storefronts)) {
-    const seenGameIds = new Set<string>();
+    const seenScopes = new Set<string>();
     return configuration.storefronts
       .map((storefront) => normalizeStorefrontConfiguration(storefront))
       .filter((storefront): storefront is DiscordStorefrontConfiguration => {
-        if (!storefront?.game_id || seenGameIds.has(storefront.game_id)) return false;
-        seenGameIds.add(storefront.game_id);
+        if (!storefront?.game_id) return false;
+        const scope = storefront.catalog_store_id ?? `legacy:${storefront.game_id}`;
+        if (seenScopes.has(scope)) return false;
+        seenScopes.add(scope);
         return true;
       });
   }
@@ -172,6 +197,15 @@ function normalizeStorefrontConfiguration(
     typeof storefront.game_name === "string" && storefront.game_name.trim()
       ? storefront.game_name.trim().slice(0, 120)
       : fallbackGame?.gameName;
+  const catalogStoreId =
+    typeof storefront.catalog_store_id === "string" &&
+    UUID_PATTERN.test(storefront.catalog_store_id)
+      ? storefront.catalog_store_id
+      : null;
+  const catalogStoreName =
+    typeof storefront.catalog_store_name === "string" && storefront.catalog_store_name.trim()
+      ? storefront.catalog_store_name.trim().slice(0, 120)
+      : gameName ?? "Loja principal";
   const publishedAt = typeof storefront.published_at === "string"
     ? storefront.published_at.trim()
     : "";
@@ -192,6 +226,8 @@ function normalizeStorefrontConfiguration(
   return {
     game_id: gameId,
     game_name: gameName,
+    catalog_store_id: catalogStoreId,
+    catalog_store_name: catalogStoreName,
     channel_id: channelId,
     channel_name: channelName,
     message_ids: messageIds,
@@ -205,7 +241,9 @@ export function withStorefrontConfiguration(
 ): JsonObject {
   const current = readStorefrontConfigurations(configuration);
   const existingIndex = current.findIndex(
-    (item) => item.game_id === storefront.game_id,
+    (item) => storefront.catalog_store_id
+      ? item.catalog_store_id === storefront.catalog_store_id
+      : item.catalog_store_id === null && item.game_id === storefront.game_id,
   );
   const isLegacyMigration =
     storefront.game_id !== null &&
@@ -239,6 +277,7 @@ export async function publishDiscordStorefront({
   customization,
   previous,
   game,
+  store,
   fetcher = fetch,
 }: {
   channel: Pick<DiscordStorefrontChannel, "id" | "name">;
@@ -246,6 +285,7 @@ export async function publishDiscordStorefront({
   customization?: BotMessageCustomization;
   previous: DiscordStorefrontConfiguration | null;
   game?: Pick<BotCatalogGame, "id" | "name"> | null;
+  store?: { id: string; name: string } | null;
   fetcher?: typeof fetch;
 }): Promise<PublishDiscordStorefrontResult> {
   assertSnowflake(channel.id, "canal");
@@ -278,6 +318,8 @@ export async function publishDiscordStorefront({
     configuration: {
       game_id: game?.id ?? previous?.game_id ?? null,
       game_name: game?.name ?? previous?.game_name ?? "Catálogo completo",
+      catalog_store_id: store?.id ?? previous?.catalog_store_id ?? null,
+      catalog_store_name: store?.name ?? previous?.catalog_store_name ?? "Loja principal",
       channel_id: channel.id,
       channel_name: channelName,
       message_ids: messageIds,
@@ -416,6 +458,17 @@ function asChannelName(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 && value.trim().length <= 100
     ? value.trim()
     : null;
+}
+
+function discordChannelSlug(value: string) {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 90);
+  return normalized || "nova-loja";
 }
 
 function isObject(value: unknown): value is Record<string, Json> {

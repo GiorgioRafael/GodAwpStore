@@ -11,12 +11,26 @@ beforeAll(async () => {
 });
 
 const catalog: BotCatalogGame[] = [
-  { id: "a5b82d6f-a324-47fa-a861-a046559e3a11", name: "Jogo A", substores: [] },
-  { id: "b5b82d6f-a324-47fa-a861-a046559e3a11", name: "Jogo B", substores: [] },
+  {
+    id: "a5b82d6f-a324-47fa-a861-a046559e3a11",
+    name: "Jogo A",
+    catalogStoreId: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+    catalogStoreName: "Mundo 1",
+    isDefaultStore: true,
+    substores: [],
+  },
+  {
+    id: "a5b82d6f-a324-47fa-a861-a046559e3a11",
+    name: "Jogo A",
+    catalogStoreId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+    catalogStoreName: "Mundo 2",
+    isDefaultStore: false,
+    substores: [],
+  },
 ];
 
 describe("escopo da vitrine pelo canal", () => {
-  it("mostra somente o jogo configurado para o canal da vitrine", () => {
+  it("mostra somente a loja configurada para o canal da vitrine", () => {
     const result = filterCatalogForDiscordChannel(
       catalog,
       {
@@ -24,6 +38,8 @@ describe("escopo da vitrine pelo canal", () => {
           {
             game_id: catalog[1].id,
             game_name: catalog[1].name,
+            catalog_store_id: catalog[1].catalogStoreId,
+            catalog_store_name: catalog[1].catalogStoreName,
             channel_id: "223456789012345678",
             channel_name: "jogo-b",
             message_ids: ["323456789012345678"],

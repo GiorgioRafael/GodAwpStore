@@ -59,14 +59,24 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
       const publicationResults = await Promise.all(
         storefronts.map(async (storefront) => {
           try {
-            const game = storefront.game_id
-              ? catalog.find((item) => item.id === storefront.game_id) ?? null
-              : null;
+            const game = storefront.catalog_store_id
+              ? catalog.find((item) => item.catalogStoreId === storefront.catalog_store_id) ?? null
+              : storefront.game_id
+                ? catalog.find((item) => item.id === storefront.game_id && item.isDefaultStore) ?? null
+                : null;
             const publication = await publishDiscordStorefront({
               channel: { id: storefront.channel_id, name: storefront.channel_name },
               catalog: storefront.game_id ? (game ? [game] : []) : catalog,
               customization,
               previous: storefront,
+              store: game
+                ? {
+                    id: game.catalogStoreId ?? storefront.catalog_store_id ?? game.id,
+                    name: game.catalogStoreName ?? storefront.catalog_store_name ?? game.name,
+                  }
+                : storefront.catalog_store_id
+                  ? { id: storefront.catalog_store_id, name: storefront.catalog_store_name ?? "Loja principal" }
+                  : null,
               game:
                 game ??
                 (storefront.game_id
@@ -78,7 +88,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
             const message =
               syncError instanceof Error ? syncError.message : "erro desconhecido";
             console.error(
-              `[discord-storefront:sync:${guild.id}:${storefront.game_id ?? "legacy"}] ${message}`,
+              `[discord-storefront:sync:${guild.id}:${storefront.catalog_store_id ?? storefront.game_id ?? "legacy"}] ${message}`,
             );
             return { ok: false as const, configuration: storefront };
           }

@@ -275,6 +275,7 @@ function interaction(customId: string) {
     application_id: "323456789012345678",
     token: "interaction-token-for-test-123456",
     guild_id: guildId,
+    channel_id: "523456789012345678",
     member: { user: { id: buyerId } },
     data: { custom_id: customId },
   };

@@ -31,6 +31,9 @@ export type BotCatalogSubstore = {
 export type BotCatalogGame = {
   id: string;
   name: string;
+  catalogStoreId?: string;
+  catalogStoreName?: string;
+  isDefaultStore?: boolean;
   substores: BotCatalogSubstore[];
 };
 

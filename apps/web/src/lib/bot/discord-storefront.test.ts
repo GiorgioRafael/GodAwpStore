@@ -6,6 +6,7 @@ import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 vi.mock("server-only", () => ({}));
 
 let listDiscordTextChannels: typeof import("./discord-storefront").listDiscordTextChannels;
+let createDiscordTextChannel: typeof import("./discord-storefront").createDiscordTextChannel;
 let publishDiscordStorefront: typeof import("./discord-storefront").publishDiscordStorefront;
 let readStorefrontConfiguration: typeof import("./discord-storefront").readStorefrontConfiguration;
 let readStorefrontConfigurations: typeof import("./discord-storefront").readStorefrontConfigurations;
@@ -18,6 +19,7 @@ const messageId = "323456789012345678";
 beforeAll(async () => {
   ({
     listDiscordTextChannels,
+    createDiscordTextChannel,
     publishDiscordStorefront,
     readStorefrontConfiguration,
     readStorefrontConfigurations,
@@ -31,6 +33,24 @@ afterEach(() => {
 });
 
 describe("Discord storefront", () => {
+  it("cria um canal de texto com nome seguro para a nova loja", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({ id: channelId, name: "mundo-2", type: 0, position: 0 }),
+    );
+
+    await expect(createDiscordTextChannel(guildId, "Mundo 2 ✨", fetcher)).resolves.toEqual(
+      expect.objectContaining({ id: channelId, name: "mundo-2", type: 0 }),
+    );
+    expect(fetcher).toHaveBeenCalledWith(
+      `https://discord.com/api/v10/guilds/${guildId}/channels`,
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "mundo-2", type: 0 }),
+      }),
+    );
+  });
+
   it("lista somente canais de texto e identifica a categoria", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
@@ -246,7 +266,11 @@ describe("Discord storefront", () => {
       tickets: { category_id: channelId },
       storefronts: [storefront],
     });
-    expect(readStorefrontConfiguration(merged)).toEqual(storefront);
+    expect(readStorefrontConfiguration(merged)).toEqual({
+      ...storefront,
+      catalog_store_id: null,
+      catalog_store_name: storefront.game_name,
+    });
   });
 
   it("migra a vitrine antiga e mantém uma configuração separada por jogo", () => {
@@ -261,6 +285,8 @@ describe("Discord storefront", () => {
         ...legacy,
         game_id: null,
         game_name: "Catálogo completo",
+        catalog_store_id: null,
+        catalog_store_name: "Catálogo completo",
       },
     ]);
 
@@ -276,8 +302,16 @@ describe("Discord storefront", () => {
     const withTwoGames = withStorefrontConfiguration(migrated, secondGame);
 
     expect(readStorefrontConfigurations(withTwoGames)).toEqual([
-      firstGame,
-      secondGame,
+      {
+        ...firstGame,
+        catalog_store_id: null,
+        catalog_store_name: firstGame.game_name,
+      },
+      {
+        ...secondGame,
+        catalog_store_id: null,
+        catalog_store_name: secondGame.game_name,
+      },
     ]);
     expect(withTwoGames).not.toHaveProperty("storefront");
   });

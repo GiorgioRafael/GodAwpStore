@@ -21,6 +21,7 @@ import {
   type BotMessageCustomization,
 } from "./message-customization";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
+import { scopeCatalogToDiscordChannel } from "./discord-storefront-scope";
 import {
   MAXIMUM_CART_ITEMS,
   type CartQuantityPreparationResult,
@@ -306,7 +307,7 @@ export async function completeDiscordCartPurchase(
   try {
     const context = readDiscordInteraction(raw, "");
     const items = readNativeDiscordCartModalItems(raw);
-    if (!context.interactionId || !context.guildId || !context.userId || !items) {
+    if (!context.interactionId || !context.guildId || !context.channelId || !context.userId || !items) {
       await updateDiscordEphemeralResponse(
         raw,
         cartPurchaseResultCard({ kind: "invalid_request" }, null, customization),
@@ -314,9 +315,25 @@ export async function completeDiscordCartPurchase(
       return false;
     }
 
-    const service = new BotCommerceService(
-      new SupabaseBotCommerceRepository(),
+    const repository = new SupabaseBotCommerceRepository();
+    const scopedCatalog = await scopeCatalogToDiscordChannel(
+      await repository.listCatalog(),
+      context.guildId,
+      context.channelId,
     );
+    const allowedProductIds = new Set(
+      scopedCatalog.flatMap((store) =>
+        store.substores.flatMap((substore) => substore.products.map((product) => product.id)),
+      ),
+    );
+    if (items.some((item) => !allowedProductIds.has(item.productId))) {
+      await updateDiscordEphemeralResponse(
+        raw,
+        cartPurchaseResultCard({ kind: "product_unavailable" }, null, customization),
+      );
+      return false;
+    }
+    const service = new BotCommerceService(repository);
     const guild = await fetchDiscordGuildIdentity(context.guildId);
     let upsell: Awaited<ReturnType<typeof service.prepareUpsell>> = {
       kind: "not_offered",

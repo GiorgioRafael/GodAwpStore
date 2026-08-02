@@ -113,6 +113,20 @@ type GameRow = {
   updated_at: string;
 };
 
+type CatalogStoreRow = {
+  id: string;
+  game_id: string;
+  name: string;
+  slug: string;
+  status: Database["public"]["Enums"]["catalog_status"];
+  is_default: boolean;
+  sort_order: number;
+  archived_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type SubstoreRow = {
   id: string;
   game_id: string;
@@ -138,6 +152,7 @@ type SubstoreRow = {
 type ProductRow = {
   id: string;
   substore_id: string;
+  catalog_store_id: string;
   name: string;
   slug: string;
   description: string | null;
@@ -764,6 +779,25 @@ export type Database = {
           >,
         ];
       };
+      catalog_stores: {
+        Row: CatalogStoreRow;
+        Insert: InsertRow<CatalogStoreRow, "game_id" | "name" | "slug">;
+        Update: UpdateRow<CatalogStoreRow>;
+        Relationships: [
+          Relationship<
+            "catalog_stores_game_id_fkey",
+            ["game_id"],
+            "games",
+            ["id"]
+          >,
+          Relationship<
+            "catalog_stores_created_by_fkey",
+            ["created_by"],
+            "admin_profiles",
+            ["auth_user_id"]
+          >,
+        ];
+      };
       substores: {
         Row: SubstoreRow;
         Insert: InsertRow<SubstoreRow, "game_id" | "name" | "slug" | "title">;
@@ -791,6 +825,12 @@ export type Database = {
         >;
         Update: UpdateRow<ProductRow>;
         Relationships: [
+          Relationship<
+            "products_catalog_store_id_fkey",
+            ["catalog_store_id"],
+            "catalog_stores",
+            ["id"]
+          >,
           Relationship<
             "products_substore_id_fkey",
             ["substore_id"],
@@ -1847,6 +1887,10 @@ export type Database = {
       };
       admin_reorder_products: {
         Args: { p_product_ids: string[] };
+        Returns: number;
+      };
+      admin_move_products_to_catalog_store: {
+        Args: { p_product_ids: string[]; p_target_store_id: string };
         Returns: number;
       };
       admin_create_giveaway: {
