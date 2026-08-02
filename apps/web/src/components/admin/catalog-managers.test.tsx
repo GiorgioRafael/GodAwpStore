@@ -78,6 +78,7 @@ const activeSubstore: SubstoreRow = {
 const activeProduct: ProductRow = {
   id: "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae",
   substore_id: activeSubstore.id,
+  catalog_store_id: "5e8d6368-eb5a-4a52-b4f6-5e3d79b364ae",
   name: "AWP Asiimov",
   slug: "awp-asiimov",
   description: "Skin pronta para entrega",
@@ -90,6 +91,10 @@ const activeProduct: ProductRow = {
   archived_at: null,
   created_at: now,
   updated_at: now,
+  catalog_stores: {
+    name: "Loja principal",
+    game_id: activeGame.id,
+  },
   substores: { name: activeSubstore.name, games: { name: activeGame.name } },
 };
 

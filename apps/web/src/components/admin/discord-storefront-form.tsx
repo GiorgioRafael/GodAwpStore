@@ -35,6 +35,8 @@ import type {
 export type DiscordStorefrontGameOption = {
   id: string;
   name: string;
+  gameId?: string;
+  gameName?: string;
   categoryCount: number;
   productCount: number;
 };
@@ -78,7 +80,9 @@ export function DiscordStorefrontForm({
   );
   const selectedGame = games.find((game) => game.id === selectedGameId) ?? null;
   const selectedStorefront =
-    selectedGuild?.current.find((storefront) => storefront.game_id === selectedGameId) ?? null;
+    selectedGuild?.current.find(
+      (storefront) => storefront.catalog_store_id === selectedGameId,
+    ) ?? null;
   const legacyStorefront =
     selectedGuild?.current.length === 1 && selectedGuild.current[0]?.game_id === null
       ? selectedGuild.current[0]
@@ -102,7 +106,9 @@ export function DiscordStorefrontForm({
   }
 
   function editStorefront(storefront: DiscordStorefrontConfiguration) {
-    const gameId = storefront.game_id ?? games[0]?.id ?? "";
+    const gameId = storefront.catalog_store_id ?? games.find(
+      (store) => store.gameId === storefront.game_id,
+    )?.id ?? games[0]?.id ?? "";
     setSelectedGameId(gameId);
     setSelectedChannelId(storefront.channel_id);
   }
@@ -121,11 +127,11 @@ export function DiscordStorefrontForm({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold tracking-tight">Vitrines do Discord</h2>
-              <Badge tone="gold">Por jogo</Badge>
+              <Badge tone="gold">Por loja</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              Crie uma vitrine para cada jogo. Cada uma fica no seu próprio canal e mostra
-              somente os produtos daquele jogo.
+              Crie uma vitrine para cada loja ou mundo. Cada uma fica no seu próprio canal e
+              mostra somente o estoque separado daquela loja.
             </p>
           </div>
           <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-gold/20 bg-gold/[0.06] text-gold">
@@ -144,8 +150,7 @@ export function DiscordStorefrontForm({
       ) : games.length === 0 ? (
         <CardContent>
           <Notice>
-            Cadastre um jogo, uma categoria e pelo menos um produto ativo antes de publicar a
-            primeira vitrine.
+            Cadastre um jogo e crie uma loja antes de publicar a primeira vitrine.
           </Notice>
         </CardContent>
       ) : (
@@ -153,14 +158,14 @@ export function DiscordStorefrontForm({
           <CardContent className="space-y-6 pt-5">
             <ActionFeedback state={state} />
             <input type="hidden" name="guildId" value={selectedGuildId} />
-            <input type="hidden" name="gameId" value={selectedGameId} />
+            <input type="hidden" name="storeId" value={selectedGameId} />
 
             <div className="rounded-xl border border-success/20 bg-success/[0.045] p-4">
               <p className="text-sm font-semibold text-foreground">Como funciona</p>
               <ol className="mt-3 grid gap-3 text-sm text-muted-strong md:grid-cols-3">
-                <Step number="1" text="Escolha o jogo." />
-                <Step number="2" text="Escolha o canal desse jogo." />
-                <Step number="3" text="Publique. O bot separa os produtos sozinho." />
+                <Step number="1" text="Escolha a loja/mundo." />
+                <Step number="2" text="Escolha o canal dessa loja." />
+                <Step number="3" text="Publique o estoque independente." />
               </ol>
             </div>
 
@@ -177,7 +182,7 @@ export function DiscordStorefrontForm({
                 <div className="grid gap-3 lg:grid-cols-2">
                   {selectedGuild.current.map((storefront) => (
                     <div
-                      key={storefront.game_id ?? "legacy"}
+                      key={storefront.catalog_store_id ?? storefront.game_id ?? "legacy"}
                       className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted p-4"
                     >
                       <div className="flex min-w-0 items-start gap-3">
@@ -186,7 +191,11 @@ export function DiscordStorefrontForm({
                         </span>
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-foreground">
-                            {storefront.game_id ? storefront.game_name : "Vitrine antiga"}
+                            {storefront.catalog_store_id
+                              ? storefront.catalog_store_name
+                              : storefront.game_id
+                                ? `${storefront.game_name} · Loja principal`
+                                : "Vitrine antiga"}
                           </p>
                           <p className="mt-1 truncate text-xs text-muted">
                             #{storefront.channel_name} · atualizada em{" "}
@@ -221,8 +230,8 @@ export function DiscordStorefrontForm({
                     : "Adicionar nova vitrine"}
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-muted">
-                  Um mesmo jogo possui uma única vitrine. Publicar novamente atualiza a mensagem,
-                  sem criar cópias.
+                  Cada loja usa um canal e estoque próprios. Publicar novamente atualiza a mesma
+                  mensagem, sem criar cópias.
                 </p>
               </div>
 
@@ -246,9 +255,9 @@ export function DiscordStorefrontForm({
                 </Field>
 
                 <Field
-                  label="1. Jogo desta vitrine"
+                  label="1. Loja/mundo desta vitrine"
                   htmlFor={`${formId}-game`}
-                  error={fieldError(state, "gameId")}
+                  error={fieldError(state, "storeId")}
                 >
                   <Select
                     id={`${formId}-game`}
@@ -257,7 +266,7 @@ export function DiscordStorefrontForm({
                   >
                     {games.map((game) => (
                       <option key={game.id} value={game.id}>
-                        {game.name} · {game.productCount} produto
+                        {game.name}{game.gameName ? ` · ${game.gameName}` : ""} · {game.productCount} produto
                         {game.productCount === 1 ? "" : "s"}
                       </option>
                     ))}
@@ -283,14 +292,14 @@ export function DiscordStorefrontForm({
                     {selectedGuild?.channels.map((channel) => {
                       const usedBy = selectedGuild.current.find(
                         (storefront) =>
-                          storefront.game_id !== null &&
-                          storefront.game_id !== selectedGameId &&
+                          Boolean(storefront.catalog_store_id) &&
+                          storefront.catalog_store_id !== selectedGameId &&
                           storefront.channel_id === channel.id,
                       );
                       return (
                         <option key={channel.id} value={channel.id} disabled={Boolean(usedBy)}>
                           {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
-                          {usedBy ? ` · usado por ${usedBy.game_name}` : ""}
+                          {usedBy ? ` · usado por ${usedBy.catalog_store_name}` : ""}
                         </option>
                       );
                     })}
@@ -311,7 +320,7 @@ export function DiscordStorefrontForm({
                       {selectedGame.productCount} produto
                       {selectedGame.productCount === 1 ? "" : "s"} de{" "}
                       {selectedGame.categoryCount} categoria
-                      {selectedGame.categoryCount === 1 ? "" : "s"}. Produtos de outros jogos
+                      {selectedGame.categoryCount === 1 ? "" : "s"}. Produtos de outras lojas
                       não aparecerão neste canal.
                     </p>
                   </div>
@@ -337,7 +346,7 @@ export function DiscordStorefrontForm({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <p className="max-w-2xl text-xs leading-5 text-muted">
                     O bot confirma o boost no servidor antes de calcular o Pix. Esta regra é única
-                    para todos os jogos.
+                    para todas as lojas.
                   </p>
                   <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-muted-strong">
                     <input
@@ -450,12 +459,12 @@ function preferredGameId(
   if (!games.length) return "";
   const configuredGameIds = new Set(
     guild?.current
-      .map((storefront) => storefront.game_id)
+      .map((storefront) => storefront.catalog_store_id)
       .filter((gameId): gameId is string => Boolean(gameId)) ?? [],
   );
   return (
     games.find((game) => !configuredGameIds.has(game.id))?.id ??
-    guild?.current.find((storefront) => storefront.game_id)?.game_id ??
+    guild?.current.find((storefront) => storefront.catalog_store_id)?.catalog_store_id ??
     games[0]?.id ??
     ""
   );
@@ -467,7 +476,7 @@ function preferredChannelId(
 ) {
   if (!guild) return "";
   const current =
-    guild.current.find((storefront) => storefront.game_id === gameId) ??
+    guild.current.find((storefront) => storefront.catalog_store_id === gameId) ??
     (guild.current.length === 1 && guild.current[0]?.game_id === null
       ? guild.current[0]
       : null);
@@ -477,8 +486,8 @@ function preferredChannelId(
         (channel) =>
           !guild.current.some(
             (storefront) =>
-              storefront.game_id !== null &&
-              storefront.game_id !== gameId &&
+              Boolean(storefront.catalog_store_id) &&
+              storefront.catalog_store_id !== gameId &&
               storefront.channel_id === channel.id,
           ),
       )?.id ?? "";

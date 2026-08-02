@@ -276,7 +276,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
       <ResourceManagerShell
         eyebrow="Catálogo"
         title="Produtos"
-        description="Cada produto aparece somente na vitrine do jogo ao qual sua categoria pertence."
+        description="Cadastre os produtos e organize a loja/mundo de cada um pela aba Estoque por loja."
         actionLabel="Novo produto"
         onCreate={() => setEditor({ mode: "create" })}
         additionalActions={

@@ -3,6 +3,7 @@ import { DatabaseZap, KeyRound, LockKeyhole, ShieldCheck } from "lucide-react";
 
 import { Notice } from "@/components/admin/notice";
 import { PageHeader } from "@/components/admin/page-header";
+import { CatalogStoresManager } from "@/components/admin/catalog-stores-manager";
 import {
   DiscordStorefrontForm,
   type DiscordStorefrontGuildOption,
@@ -17,6 +18,7 @@ import {
 import { readBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
   getPlatformSettings,
+  listCatalogStores,
   listGames,
   listOperationalRows,
   listProducts,
@@ -44,36 +46,47 @@ const securityRequirements = [
 ];
 
 export default async function SettingsPage() {
-  const [settings, guildRows, gameRows, substoreRows, productRows] = await Promise.all([
+  const [settings, guildRows, gameRows, catalogStoreRows, substoreRows, productRows] = await Promise.all([
     getPlatformSettings(),
     listOperationalRows("guilds", 500),
     listGames(),
+    listCatalogStores(),
     listSubstores(),
     listProducts(),
   ]);
-  const storefrontGames = gameRows
-    .filter((game) => game.status === "active" && !game.archived_at)
-    .map((game) => {
+  const activeGameIds = new Set(
+    gameRows
+      .filter((game) => game.status === "active" && !game.archived_at)
+      .map((game) => game.id),
+  );
+  const storefrontGames = catalogStoreRows
+    .filter(
+      (store) =>
+        store.status === "active" && !store.archived_at && activeGameIds.has(store.game_id),
+    )
+    .map((store) => {
       const activeSubstores = substoreRows.filter(
         (substore) =>
-          substore.game_id === game.id &&
+          substore.game_id === store.game_id &&
           substore.status === "active" &&
           !substore.archived_at,
       );
       const substoreIds = new Set(activeSubstores.map((substore) => substore.id));
       return {
-        id: game.id,
-        name: game.name,
+        id: store.id,
+        name: store.name,
+        gameId: store.game_id,
+        gameName: store.games?.name ?? "Jogo",
         categoryCount: activeSubstores.length,
         productCount: productRows.filter(
           (product) =>
+            product.catalog_store_id === store.id &&
             substoreIds.has(product.substore_id) &&
             product.status === "active" &&
             !product.archived_at,
         ).length,
       };
-    })
-    .filter((game) => game.productCount > 0);
+    });
   const guilds = await Promise.all(
     guildRows
       .filter((guild) => guild.status === "active" && !guild.archived_at)
@@ -135,12 +148,36 @@ export default async function SettingsPage() {
       <PageHeader
         eyebrow="Sistema"
         title="Configurações da loja"
-        description="Publique as vitrines por jogo e ajuste as regras gerais do bot."
+        description="Crie lojas ou mundos independentes, publique seus canais e ajuste as regras gerais do bot."
       />
 
       <Notice>
         Valores sensíveis devem ser preenchidos apenas no arquivo local de ambiente ou no provedor de hospedagem. Nunca cole chaves neste painel.
       </Notice>
+
+      <CatalogStoresManager
+        stores={catalogStoreRows
+          .filter(
+            (store) =>
+              store.status === "active" &&
+              !store.archived_at &&
+              activeGameIds.has(store.game_id),
+          )
+          .map((store) => ({
+            id: store.id,
+            gameId: store.game_id,
+            gameName: store.games?.name ?? "Jogo",
+            name: store.name,
+            isDefault: store.is_default,
+            productCount: productRows.filter((product) => product.catalog_store_id === store.id).length,
+          }))}
+        games={gameRows
+          .filter((game) => game.status === "active" && !game.archived_at)
+          .map((game) => ({ id: game.id, name: game.name }))}
+        guilds={guildRows
+          .filter((guild) => guild.status === "active" && !guild.archived_at)
+          .map((guild) => ({ id: guild.id, name: guild.name }))}
+      />
 
       <DiscordStorefrontForm guilds={guilds} games={storefrontGames} />
 

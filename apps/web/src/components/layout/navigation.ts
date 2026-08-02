@@ -1,5 +1,6 @@
 import {
   Bot,
+  Boxes,
   ChartNoAxesCombined,
   ClipboardList,
   Coins,
@@ -49,6 +50,7 @@ export const navigationGroups: NavigationGroup[] = [
       { label: "Jogos", href: "/catalogo/jogos", icon: Gamepad2 },
       { label: "Categorias", href: "/catalogo/sublojas", icon: Store },
       { label: "Produtos", href: "/catalogo/produtos", icon: Tags },
+      { label: "Estoque por loja", href: "/estoque", icon: Boxes },
     ],
   },
   {

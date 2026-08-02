@@ -15,13 +15,17 @@ vi.mock("@/app/actions/admin", () => actionMocks);
 
 const firstGame = {
   id: "a5b82d6f-a324-47fa-a861-a046559e3a11",
-  name: "Grow a Garden 2",
+  name: "Mundo 1",
+  gameId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+  gameName: "Grow a Garden 2",
   categoryCount: 4,
   productCount: 20,
 };
 const secondGame = {
   id: "b5b82d6f-a324-47fa-a861-a046559e3a11",
-  name: "Script GAG2",
+  name: "Mundo 2",
+  gameId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+  gameName: "Grow a Garden 2",
   categoryCount: 1,
   productCount: 3,
 };
@@ -60,8 +64,10 @@ describe("configuração de vitrines do Discord", () => {
             channels,
             current: [
               {
-                game_id: firstGame.id,
-                game_name: firstGame.name,
+                game_id: firstGame.gameId,
+                game_name: firstGame.gameName,
+                catalog_store_id: firstGame.id,
+                catalog_store_name: firstGame.name,
                 channel_id: channels[0].id,
                 channel_name: channels[0].name,
                 message_ids: ["423456789012345678"],
@@ -83,12 +89,12 @@ describe("configuração de vitrines do Discord", () => {
       screen.getByText(/Cada uma fica no seu próprio canal/i),
     ).toBeInTheDocument();
     expect(screen.getByText(firstGame.name)).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "1. Jogo desta vitrine" })).toHaveValue(
+    expect(screen.getByRole("combobox", { name: "1. Loja/mundo desta vitrine" })).toHaveValue(
       secondGame.id,
     );
     expect(screen.getByText(/3 produtos de 1 categoria/i)).toBeInTheDocument();
     expect(
-      screen.getByText(/Produtos de outros jogos não aparecerão neste canal/i),
+      screen.getByText(/Produtos de outras lojas não aparecerão neste canal/i),
     ).toBeInTheDocument();
 
     await user.selectOptions(
