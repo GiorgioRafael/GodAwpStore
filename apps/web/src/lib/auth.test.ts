@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { extractDiscordIdentity, parseAdminDiscordIds } from "@/lib/auth-identity";
+import {
+  extractDiscordIdentity,
+  extractGoogleIdentity,
+  parseAdminDiscordIds,
+  parseMasterAdminGoogleEmails,
+} from "@/lib/auth-identity";
 
 describe("parseAdminDiscordIds", () => {
   it("aceita apenas snowflakes válidos e remove duplicados", () => {
@@ -75,5 +80,78 @@ describe("extractDiscordIdentity", () => {
     });
 
     expect(identity).toBeNull();
+  });
+});
+
+describe("identidade Google do painel mestre", () => {
+  it("mantém somente e-mails válidos e normalizados na allowlist", () => {
+    expect([
+      ...parseMasterAdminGoogleEmails(
+        " JUKERSRX@gmail.com, inválido,segunda@empresa.com,jukersrx@gmail.com ",
+      ),
+    ]).toEqual(["jukersrx@gmail.com", "segunda@empresa.com"]);
+  });
+
+  it("usa apenas uma identidade Google com e-mail confirmado", () => {
+    const identity = extractGoogleIdentity({
+      id: "google-auth-user",
+      app_metadata: { provider: "google" },
+      aud: "authenticated",
+      created_at: new Date(0).toISOString(),
+      user_metadata: {},
+      identities: [
+        {
+          id: "google-identity",
+          user_id: "google-auth-user",
+          identity_id: "google-identity",
+          provider: "google",
+          created_at: new Date(0).toISOString(),
+          updated_at: new Date(0).toISOString(),
+          last_sign_in_at: new Date(0).toISOString(),
+          identity_data: {
+            email: "JUKERSRX@gmail.com",
+            email_verified: true,
+            full_name: "Jukers RX",
+            picture: "https://lh3.googleusercontent.com/avatar",
+          },
+        },
+      ],
+    });
+
+    expect(identity).toEqual({
+      authUserId: "google-auth-user",
+      email: "jukersrx@gmail.com",
+      displayName: "Jukers RX",
+      avatarUrl: "https://lh3.googleusercontent.com/avatar",
+    });
+  });
+
+  it("rejeita e-mail não confirmado e metadata sem identidade Google", () => {
+    const baseUser = {
+      id: "auth-user",
+      app_metadata: { provider: "google" },
+      aud: "authenticated",
+      created_at: new Date(0).toISOString(),
+      user_metadata: { email: "jukersrx@gmail.com", email_verified: true },
+    };
+
+    expect(extractGoogleIdentity({ ...baseUser, identities: [] })).toBeNull();
+    expect(
+      extractGoogleIdentity({
+        ...baseUser,
+        identities: [
+          {
+            id: "google-identity",
+            user_id: "auth-user",
+            identity_id: "google-identity",
+            provider: "google",
+            created_at: new Date(0).toISOString(),
+            updated_at: new Date(0).toISOString(),
+            last_sign_in_at: new Date(0).toISOString(),
+            identity_data: { email: "jukersrx@gmail.com", email_verified: false },
+          },
+        ],
+      }),
+    ).toBeNull();
   });
 });

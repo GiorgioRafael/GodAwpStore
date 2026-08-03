@@ -17,13 +17,13 @@ export default function MasterAdminAccessDeniedPage() {
         </p>
         <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-white">Acesso não autorizado</h1>
         <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-400">
-          O Discord foi autenticado, mas este ID não está na lista privada de administradores da 101Devs.
+          A conta Google foi autenticada, mas este e-mail não está autorizado no painel da 101Devs.
         </p>
 
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-slate-800 bg-white/[0.02] p-3.5 text-left">
           <ShieldAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-amber-300" />
           <p className="text-xs leading-5 text-slate-400">
-            Entre com a conta Discord cadastrada para administrar as empresas e os bots.
+            Entre com `jukersrx@gmail.com` para administrar as empresas e os bots.
           </p>
         </div>
 

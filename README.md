@@ -95,6 +95,10 @@ chat ou commitados.
 O `ADMIN_DISCORD_IDS` recebe uma lista separada por vírgulas. Ative o modo
 desenvolvedor do Discord e use **Copiar ID do usuário** para obter o seu snowflake.
 
+O painel mestre em `/admin/discordbots` usa Google OAuth separadamente. A variável
+`MASTER_ADMIN_GOOGLE_EMAILS` recebe a lista de e-mails Google confirmados que podem
+acessar essa área; por padrão, somente `jukersrx@gmail.com` está autorizado.
+
 As variáveis `INVENTORY_ENCRYPTION_KEY` e `INVENTORY_FINGERPRINT_KEY` existem
 somente para compatibilidade com lotes secretos antigos. O fluxo atual de
 produtos com entrega manual não precisa cadastrar ou criptografar uma linha por
@@ -262,6 +266,8 @@ do banco a cada push para `main` e em pull requests.
 - Todas as mutações verificam autenticação e autorização no servidor.
 - A lista `ADMIN_DISCORD_IDS` renova uma autorização curta no banco a cada
   requisição; remover um ID impede novas renovações e faz sessões antigas expirarem.
+- O painel mestre valida uma identidade Google confirmada e a allowlist
+  `MASTER_ADMIN_GOOGLE_EMAILS`; autenticar com outro provedor ou e-mail falha fechado.
 - A chave `service_role` nunca entra no bundle do navegador.
 - RLS bloqueia acesso anônimo e restringe dados administrativos.
 - Exclusões operacionais arquivam ou revogam registros em vez de apagar histórico.

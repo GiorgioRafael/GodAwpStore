@@ -36,7 +36,8 @@ type Relationship<
 
 type AdminProfileRow = {
   auth_user_id: string;
-  discord_user_id: string;
+  discord_user_id: string | null;
+  google_email: string | null;
   display_name: string;
   avatar_url: string | null;
   is_active: boolean;
@@ -725,7 +726,7 @@ export type Database = {
     Tables: {
       admin_profiles: {
         Row: AdminProfileRow;
-        Insert: InsertRow<AdminProfileRow, "auth_user_id" | "discord_user_id" | "display_name">;
+        Insert: InsertRow<AdminProfileRow, "auth_user_id" | "display_name">;
         Update: UpdateRow<AdminProfileRow>;
         Relationships: [];
       };

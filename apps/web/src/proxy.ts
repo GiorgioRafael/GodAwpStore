@@ -2,7 +2,12 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isPublicAdminPanelPath } from "@/lib/admin-routes";
-import { extractDiscordIdentity, parseAdminDiscordIds } from "@/lib/auth-identity";
+import {
+  extractDiscordIdentity,
+  extractGoogleIdentity,
+  parseAdminDiscordIds,
+  parseMasterAdminGoogleEmails,
+} from "@/lib/auth-identity";
 import {
   MASTER_ADMIN_ACCESS_DENIED,
   isMasterAdminPath,
@@ -41,20 +46,25 @@ export async function proxy(request: NextRequest) {
   // values that never pass through RLS — still travels with the 307.
   if (!isPublicAdminPanelPath(request.nextUrl.pathname)) {
     const isMasterAdmin = isMasterAdminPath(request.nextUrl.pathname);
-    const identity = data.user ? extractDiscordIdentity(data.user) : null;
-    if (!identity) {
-      const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-      if (isMasterAdmin) {
+    const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+
+    if (isMasterAdmin) {
+      const identity = data.user ? extractGoogleIdentity(data.user) : null;
+      if (!identity) {
         return redirectPreservingSession(request, response, masterAdminLoginHref(next));
       }
+      if (!parseMasterAdminGoogleEmails().has(identity.email)) {
+        return redirectPreservingSession(request, response, MASTER_ADMIN_ACCESS_DENIED);
+      }
+      return response;
+    }
+
+    const identity = data.user ? extractDiscordIdentity(data.user) : null;
+    if (!identity) {
       return redirectPreservingSession(request, response, "/login", { next });
     }
     if (!parseAdminDiscordIds().has(identity.discordId)) {
-      return redirectPreservingSession(
-        request,
-        response,
-        isMasterAdmin ? MASTER_ADMIN_ACCESS_DENIED : "/acesso-negado",
-      );
+      return redirectPreservingSession(request, response, "/acesso-negado");
     }
   }
 

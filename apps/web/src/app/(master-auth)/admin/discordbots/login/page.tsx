@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowRight, LockKeyhole, MessageCircleMore, ShieldCheck } from "lucide-react";
+import { AlertTriangle, ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,7 +11,7 @@ export default async function MasterAdminLoginPage({
 }) {
   const query = await searchParams;
   const next = query.next ?? MASTER_ADMIN_ROOT;
-  const authHref = `/auth/login?next=${encodeURIComponent(next)}`;
+  const authHref = `/auth/google/login?next=${encodeURIComponent(next)}`;
   const feedback = query.setup
     ? "O login administrativo ainda não está configurado neste ambiente."
     : query.erro
@@ -32,7 +32,7 @@ export default async function MasterAdminLoginPage({
           Entre no painel mestre
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-400">
-          Use seu Discord autorizado. Esta área centraliza empresas, bots, faturamento e comissões.
+          Use a conta Google autorizada. Esta área centraliza empresas, bots, faturamento e comissões.
         </p>
 
         {feedback ? (
@@ -44,8 +44,13 @@ export default async function MasterAdminLoginPage({
 
         <LinkButton href={authHref} size="lg" className="mt-7 w-full justify-between bg-violet-500 px-4 text-white hover:bg-violet-400">
           <span className="flex items-center gap-2.5">
-            <MessageCircleMore aria-hidden="true" className="size-[18px]" />
-            Continuar com Discord
+            <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px]" fill="none">
+              <path fill="#fff" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z" />
+              <path fill="#fff" fillOpacity=".9" d="M12 22c2.7 0 4.98-.9 6.63-2.36l-3.24-2.54c-.9.6-2.05.96-3.39.96-2.61 0-4.82-1.76-5.61-4.13H3.04v2.62A10 10 0 0 0 12 22Z" />
+              <path fill="#fff" fillOpacity=".8" d="M6.39 13.93A6 6 0 0 1 6.08 12c0-.67.11-1.32.31-1.93V7.45H3.04A10 10 0 0 0 2 12c0 1.61.38 3.14 1.04 4.55l3.35-2.62Z" />
+              <path fill="#fff" fillOpacity=".7" d="M12 5.94c1.47 0 2.79.5 3.83 1.5l2.87-2.88A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.45l3.35 2.62C7.18 7.7 9.39 5.94 12 5.94Z" />
+            </svg>
+            Continuar com Google
           </span>
           <ArrowRight aria-hidden="true" className="size-4" />
         </LinkButton>
@@ -53,7 +58,7 @@ export default async function MasterAdminLoginPage({
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-slate-800 bg-white/[0.02] p-3.5">
           <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-400" />
           <p className="text-xs leading-5 text-slate-400">
-            A conta é autenticada pelo Discord e validada contra a lista privada de administradores.
+            Somente o e-mail Google autorizado pode entrar. A validação é refeita no servidor em cada acesso.
           </p>
         </div>
       </div>

@@ -47,7 +47,7 @@ export function MasterAdminShell({
   identity,
 }: {
   children: ReactNode;
-  identity: { displayName: string; discordId: string };
+  identity: { displayName: string; email: string };
 }) {
   return (
     <div className="min-h-screen bg-[#070b12] text-slate-50 [color-scheme:dark]">
@@ -94,7 +94,8 @@ export function MasterAdminShell({
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white">{identity.displayName}</p>
-              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500">
+              <p className="mt-0.5 truncate text-[11px] text-slate-500">{identity.email}</p>
+              <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
                 <ShieldCheck aria-hidden="true" className="size-3 text-emerald-400" />
                 Acesso privado
               </p>

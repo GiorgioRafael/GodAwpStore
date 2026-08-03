@@ -4,7 +4,7 @@ import { commissionBpsSchema, uuidSchema } from "@godawp/domain";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { requireAdmin } from "@/lib/auth";
+import { requireMasterAdmin } from "@/lib/master-auth-session";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type DiscordBotsActionState = {
@@ -36,7 +36,7 @@ function parseCommissionBps(value: FormDataEntryValue | null): number | null {
 }
 
 async function actionClient() {
-  const identity = await requireAdmin();
+  const identity = await requireMasterAdmin();
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("Supabase não configurado.");
   return { identity, supabase };

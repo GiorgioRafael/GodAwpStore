@@ -1,6 +1,6 @@
 import "server-only";
 
-import { requireAdmin } from "@/lib/auth";
+import { requireMasterAdmin } from "@/lib/master-auth-session";
 import {
   calculateRevenueChange,
   formatDashboardMonth,
@@ -61,7 +61,7 @@ function queryFailure(operation: string, error: { message: string } | null) {
 }
 
 export async function getDiscordBotsDashboard(): Promise<DiscordBotsDashboard> {
-  await requireAdmin();
+  await requireMasterAdmin();
   const supabase = await createServerSupabaseClient();
   if (!supabase) throw new Error("Supabase não configurado.");
 

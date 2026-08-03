@@ -18,10 +18,11 @@ describe("acesso ao painel mestre 101Devs", () => {
     expect(screen.getByRole("link", { name: "101Devs — painel mestre dos bots" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Entre no painel mestre" })).toBeInTheDocument();
     expect(screen.queryByText(/GWStore/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Continuar com Discord/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Continuar com Google/i })).toHaveAttribute(
       "href",
-      "/auth/login?next=%2Fadmin%2Fdiscordbots",
+      "/auth/google/login?next=%2Fadmin%2Fdiscordbots",
     );
+    expect(screen.queryByText(/Continuar com Discord/i)).not.toBeInTheDocument();
   });
 
   it("mantém o bloqueio dentro da identidade da 101Devs", () => {
@@ -37,5 +38,6 @@ describe("acesso ao painel mestre 101Devs", () => {
       "/admin/discordbots/login?next=%2Fadmin%2Fdiscordbots",
     );
     expect(screen.queryByText(/roleta/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/jukersrx@gmail\.com/i)).toBeInTheDocument();
   });
 });
