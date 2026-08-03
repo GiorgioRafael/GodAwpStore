@@ -15,6 +15,13 @@ import type {
 
 const actionMocks = vi.hoisted(() => ({
   archiveRecordAction: vi.fn(async () => ({ ok: true, message: "Registro arquivado." })),
+  deleteProductAction: vi.fn(async (_productId: string) => {
+    void _productId;
+    return {
+      ok: true,
+      message: "Produto excluído definitivamente.",
+    };
+  }),
   saveGameAction: vi.fn(async () => ({ ok: true, message: "Jogo salvo." })),
   saveProductOrderAction: vi.fn(async (_formData: FormData) => {
     void _formData;
@@ -214,6 +221,37 @@ describe("gestores do catálogo", () => {
       "max",
       "1000000000",
     );
+  });
+
+  it("confirma a exclusão definitiva de produto sem estoque", async () => {
+    const user = userEvent.setup();
+    const unusedProduct = { ...activeProduct, stock_quantity: 0 };
+    render(<ProductsManager products={[unusedProduct]} substores={[activeSubstore]} />);
+
+    await user.click(
+      screen.getByRole("button", { name: `Excluir definitivamente ${unusedProduct.name}` }),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Excluir produto definitivamente" }),
+    ).toBeInTheDocument();
+    expect(actionMocks.deleteProductAction).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
+    await waitFor(() => {
+      expect(actionMocks.deleteProductAction).toHaveBeenCalledWith(unusedProduct.id);
+    });
+    expect(await screen.findByText("Produto excluído definitivamente.")).toBeInTheDocument();
+  });
+
+  it("exige estoque zerado antes da exclusão definitiva", async () => {
+    const user = userEvent.setup();
+    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} />);
+
+    await user.click(
+      screen.getByRole("button", { name: `Excluir definitivamente ${activeProduct.name}` }),
+    );
+    expect(screen.getByText(/Zere o estoque atual de 100 unidade/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
   });
 
   it("reordena produtos pelo controle e só publica depois de salvar", async () => {

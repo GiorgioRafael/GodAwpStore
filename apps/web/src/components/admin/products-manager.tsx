@@ -2,9 +2,13 @@
 
 import type { DragEvent, KeyboardEvent } from "react";
 import { useActionState, useId, useMemo, useRef, useState, useTransition } from "react";
-import { Archive, LoaderCircle, Menu, PackageOpen, Pencil, Save } from "lucide-react";
+import { Archive, LoaderCircle, Menu, PackageOpen, Pencil, Save, Trash2, TriangleAlert } from "lucide-react";
 
-import { saveProductAction, saveProductOrderAction } from "@/app/actions/admin";
+import {
+  deleteProductAction,
+  saveProductAction,
+  saveProductOrderAction,
+} from "@/app/actions/admin";
 import { ActionFeedback, fieldError, initialAdminActionState } from "@/components/admin/action-feedback";
 import { AdminDialog } from "@/components/admin/admin-dialog";
 import { formatCentsForInput, formatMoney } from "@/components/admin/admin-format";
@@ -194,6 +198,11 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
     { mode: "create" } | { mode: "edit"; product: ProductRow } | null
   >(null);
   const [archiveRecord, setArchiveRecord] = useState<{ id: string; label: string } | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<{
+    id: string;
+    label: string;
+    stockQuantity: number;
+  } | null>(null);
 
   const filteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -388,6 +397,20 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
                   <Button
                     variant="ghost"
                     size="icon"
+                    className="size-9 text-danger"
+                    aria-label={`Excluir definitivamente ${product.name}`}
+                    title="Excluir produto definitivamente"
+                    onClick={() => setDeleteRecord({
+                      id: product.id,
+                      label: product.name,
+                      stockQuantity: product.stock_quantity,
+                    })}
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="size-9 cursor-grab text-muted active:cursor-grabbing"
                     aria-label={`Mover ${product.name}`}
                     aria-describedby="product-order-instructions"
@@ -423,6 +446,77 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         noun="produto"
         onClose={() => setArchiveRecord(null)}
       />
+      <DeleteProductDialog
+        key={deleteRecord?.id ?? "delete-product"}
+        record={deleteRecord}
+        onClose={() => setDeleteRecord(null)}
+      />
     </>
+  );
+}
+
+function DeleteProductDialog({
+  record,
+  onClose,
+}: {
+  record: { id: string; label: string; stockQuantity: number } | null;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState(initialAdminActionState);
+  const [pending, startTransition] = useTransition();
+  const hasStock = (record?.stockQuantity ?? 0) > 0;
+
+  function remove() {
+    if (!record || hasStock) return;
+    startTransition(async () => {
+      setState(await deleteProductAction(record.id));
+    });
+  }
+
+  return (
+    <AdminDialog
+      open={Boolean(record)}
+      onClose={onClose}
+      title="Excluir produto definitivamente"
+      description="Use esta opção somente para cadastros sem uso. Produtos com histórico continuam disponíveis para arquivamento."
+      footer={
+        state.ok ? (
+          <Button onClick={onClose}>Concluir</Button>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={onClose} disabled={pending}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={remove} disabled={pending || hasStock}>
+              {pending ? (
+                <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+              ) : (
+                <Trash2 aria-hidden="true" className="size-4" />
+              )}
+              {pending ? "Excluindo..." : "Excluir definitivamente"}
+            </Button>
+          </>
+        )
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm leading-6 text-muted-strong">
+          Esta ação removerá <strong className="font-semibold text-foreground">{record?.label}</strong> permanentemente e não poderá ser desfeita.
+        </p>
+        {hasStock ? (
+          <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">
+            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <p className="text-sm leading-5">
+              Zere o estoque atual de {record?.stockQuantity.toLocaleString("pt-BR")} unidade(s) antes de excluir.
+            </p>
+          </div>
+        ) : (
+          <p className="rounded-xl border border-border bg-surface-muted p-3 text-xs leading-5 text-muted">
+            A exclusão será recusada se existirem pedidos, estoque importado, sorteios, ofertas ou registros da roleta vinculados.
+          </p>
+        )}
+        <ActionFeedback state={state} />
+      </div>
+    </AdminDialog>
   );
 }
