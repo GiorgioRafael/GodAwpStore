@@ -97,10 +97,11 @@ describe("configuração de vitrines do Discord", () => {
       screen.getByText(/Produtos de outras lojas não aparecerão neste canal/i),
     ).toBeInTheDocument();
 
-    await user.selectOptions(
-      screen.getByRole("combobox", { name: "2. Canal no Discord" }),
-      channels[1].id,
-    );
+    const channelInput = screen.getByRole("combobox", { name: "2. UID do canal no Discord" });
+    expect(channelInput).toHaveValue(channels[1].id);
+    await user.clear(channelInput);
+    await user.type(channelInput, "523456789012345678");
+    expect(screen.getByText(/O bot validará se esse ID pertence ao servidor/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publicar nova vitrine" })).toBeEnabled();
   });
 

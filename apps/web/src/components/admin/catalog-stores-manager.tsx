@@ -1,9 +1,13 @@
 "use client";
 
 import { useActionState, useId, useState, useTransition } from "react";
-import { FolderPlus, LoaderCircle, Save, Store, Trash2, TriangleAlert } from "lucide-react";
+import { FolderPlus, Gamepad2, LoaderCircle, Save, Store, Trash2, TriangleAlert } from "lucide-react";
 
-import { deleteCatalogStoreAction, saveCatalogStoreAction } from "@/app/actions/admin";
+import {
+  deleteCatalogStoreAction,
+  renameCatalogGameAction,
+  saveCatalogStoreAction,
+} from "@/app/actions/admin";
 import {
   ActionFeedback,
   fieldError,
@@ -24,13 +28,18 @@ export type CatalogStoreManagerStore = {
   productCount: number;
 };
 
+export type CatalogStoreManagerGame = {
+  id: string;
+  name: string;
+};
+
 export function CatalogStoresManager({
   stores,
   games,
   guilds,
 }: {
   stores: CatalogStoreManagerStore[];
-  games: Array<{ id: string; name: string }>;
+  games: CatalogStoreManagerGame[];
   guilds: Array<{ id: string; name: string }>;
 }) {
   const [state, formAction, pending] = useActionState(
@@ -61,9 +70,24 @@ export function CatalogStoresManager({
       <CardContent className="space-y-5 pt-5">
         <div className="grid gap-3 lg:grid-cols-2">
           {stores.map((store) => (
-            <CatalogStoreCard key={store.id} store={store} />
+            <CatalogStoreCard key={store.id} store={store} games={games} />
           ))}
         </div>
+
+        <details className="rounded-xl border border-border bg-surface-muted">
+          <summary className="flex cursor-pointer list-none items-center gap-3 p-4 text-sm font-semibold text-foreground">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.07] text-gold">
+              <Gamepad2 aria-hidden="true" className="size-4" />
+            </span>
+            Renomear jogos
+            <span className="ml-auto text-xs font-normal text-muted">
+              Atualiza todas as lojas vinculadas
+            </span>
+          </summary>
+          <div className="grid gap-3 border-t border-border p-4 lg:grid-cols-2">
+            {games.map((game) => <CatalogGameNameForm key={game.id} game={game} />)}
+          </div>
+        </details>
 
         <form action={formAction} className="space-y-4 rounded-xl border border-border bg-surface-muted p-4">
           <div className="flex items-center gap-3">
@@ -110,7 +134,13 @@ export function CatalogStoresManager({
   );
 }
 
-function CatalogStoreCard({ store }: { store: CatalogStoreManagerStore }) {
+function CatalogStoreCard({
+  store,
+  games,
+}: {
+  store: CatalogStoreManagerStore;
+  games: CatalogStoreManagerGame[];
+}) {
   const [state, formAction, pending] = useActionState(
     saveCatalogStoreAction,
     initialAdminActionState,
@@ -126,38 +156,59 @@ function CatalogStoreCard({ store }: { store: CatalogStoreManagerStore }) {
         </div>
         {store.isDefault ? <Badge tone="neutral">Principal</Badge> : null}
       </div>
-      <form action={formAction}>
+      <form action={formAction} className="space-y-3">
         <input type="hidden" name="id" value={store.id} />
-        <input type="hidden" name="gameId" value={store.gameId} />
+        {store.isDefault || store.productCount > 0 ? (
+          <input type="hidden" name="gameId" value={store.gameId} />
+        ) : null}
         <ActionFeedback state={state} />
-        <div className="mt-3 flex gap-2">
-          <Input
-            id={`${formId}-name`}
-            name="name"
-            defaultValue={store.name}
-            maxLength={120}
-            aria-label={`Nome da loja ${store.name}`}
-            required
-          />
-          <Button type="submit" size="icon" variant="secondary" disabled={pending} aria-label="Salvar nome da loja">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Nome da loja" htmlFor={`${formId}-name`} error={fieldError(state, "name")}>
+            <Input
+              id={`${formId}-name`}
+              name="name"
+              defaultValue={store.name}
+              maxLength={120}
+              required
+            />
+          </Field>
+          <Field
+            label="Jogo da loja"
+            htmlFor={`${formId}-game`}
+            hint={store.isDefault ? "Definido pela loja principal" : store.productCount > 0 ? "Esvazie a loja para alterar" : "Pode ser alterado"}
+            error={fieldError(state, "gameId")}
+          >
+            <Select
+              id={`${formId}-game`}
+              name={store.isDefault || store.productCount > 0 ? undefined : "gameId"}
+              defaultValue={store.gameId}
+              disabled={store.isDefault || store.productCount > 0}
+            >
+              {games.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}
+            </Select>
+          </Field>
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button type="submit" variant="secondary" disabled={pending}>
             {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <Save aria-hidden="true" className="size-4" />}
+            {pending ? "Salvando..." : "Salvar loja"}
           </Button>
           {!store.isDefault ? (
             <Button
               type="button"
-              size="icon"
               variant="danger"
               aria-label={`Excluir loja ${store.name}`}
               onClick={() => setDeleteOpen(true)}
             >
               <Trash2 aria-hidden="true" className="size-4" />
+              Excluir loja
             </Button>
           ) : null}
         </div>
       </form>
       {store.isDefault ? (
         <p className="mt-2 text-xs leading-5 text-muted">
-          A loja principal acompanha o jogo e nÃ£o pode ser excluÃ­da separadamente.
+          A loja principal acompanha o jogo e não pode ser excluída ou movida separadamente.
         </p>
       ) : null}
       <DeleteCatalogStoreDialog
@@ -166,6 +217,40 @@ function CatalogStoreCard({ store }: { store: CatalogStoreManagerStore }) {
         onClose={() => setDeleteOpen(false)}
       />
     </div>
+  );
+}
+
+function CatalogGameNameForm({ game }: { game: CatalogStoreManagerGame }) {
+  const [state, formAction, pending] = useActionState(
+    renameCatalogGameAction,
+    initialAdminActionState,
+  );
+  const formId = useId();
+
+  return (
+    <form action={formAction} className="rounded-xl border border-border bg-surface p-3">
+      <input type="hidden" name="id" value={game.id} />
+      <ActionFeedback state={state} />
+      <div className="mt-2 flex gap-2">
+        <Input
+          id={`${formId}-name`}
+          name="name"
+          defaultValue={game.name}
+          maxLength={120}
+          aria-label={`Nome do jogo ${game.name}`}
+          required
+        />
+        <Button
+          type="submit"
+          size="icon"
+          variant="secondary"
+          disabled={pending}
+          aria-label={`Salvar nome do jogo ${game.name}`}
+        >
+          {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <Save aria-hidden="true" className="size-4" />}
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -199,7 +284,7 @@ function DeleteCatalogStoreDialog({
       open={open}
       onClose={close}
       title="Excluir loja"
-      description="A exclusÃ£o preserva o histÃ³rico e nÃ£o apaga o canal do Discord."
+      description="A exclusão preserva o histórico e não apaga o canal do Discord."
       footer={
         state.ok ? (
           <Button onClick={close}>Concluir</Button>
@@ -214,7 +299,7 @@ function DeleteCatalogStoreDialog({
               ) : (
                 <Trash2 aria-hidden="true" className="size-4" />
               )}
-              {pending ? "Excluindo..." : "Confirmar exclusÃ£o"}
+              {pending ? "Excluindo..." : "Confirmar exclusão"}
             </Button>
           </>
         )
@@ -222,8 +307,8 @@ function DeleteCatalogStoreDialog({
     >
       <div className="space-y-4">
         <p className="text-sm leading-6 text-muted-strong">
-          VocÃª estÃ¡ prestes a excluir <strong className="font-semibold text-foreground">{store.name}</strong>.
-          A mensagem da vitrine serÃ¡ removida, mas o canal permanecerÃ¡ no servidor.
+          Você está prestes a excluir <strong className="font-semibold text-foreground">{store.name}</strong>.
+          A mensagem da vitrine será removida, mas o canal permanecerá no servidor.
         </p>
         {hasProducts ? (
           <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">

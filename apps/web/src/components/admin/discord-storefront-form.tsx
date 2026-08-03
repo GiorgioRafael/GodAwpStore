@@ -87,6 +87,9 @@ export function DiscordStorefrontForm({
     selectedGuild?.current.length === 1 && selectedGuild.current[0]?.game_id === null
       ? selectedGuild.current[0]
       : null;
+  const selectedChannel = selectedGuild?.channels.find(
+    (channel) => channel.id === selectedChannelId,
+  ) ?? null;
 
   function changeGuild(guildId: string) {
     const guild = guilds.find((item) => item.id === guildId) ?? null;
@@ -164,7 +167,7 @@ export function DiscordStorefrontForm({
               <p className="text-sm font-semibold text-foreground">Como funciona</p>
               <ol className="mt-3 grid gap-3 text-sm text-muted-strong md:grid-cols-3">
                 <Step number="1" text="Escolha a loja/mundo." />
-                <Step number="2" text="Escolha o canal dessa loja." />
+                <Step number="2" text="Cole o UID do canal dessa loja." />
                 <Step number="3" text="Publique o estoque independente." />
               </ol>
             </div>
@@ -200,6 +203,9 @@ export function DiscordStorefrontForm({
                           <p className="mt-1 truncate text-xs text-muted">
                             #{storefront.channel_name} · atualizada em{" "}
                             {formatDateTime(storefront.published_at)}
+                          </p>
+                          <p className="mt-1 truncate font-mono text-[11px] text-muted">
+                            Canal ID: {storefront.channel_id}
                           </p>
                           {!storefront.game_id ? (
                             <p className="mt-1 text-xs font-medium text-warning">
@@ -274,21 +280,25 @@ export function DiscordStorefrontForm({
                 </Field>
 
                 <Field
-                  label="2. Canal no Discord"
+                  label="2. UID do canal no Discord"
                   htmlFor={`${formId}-channel`}
+                  hint="Cole o ID ou escolha uma sugestão"
                   error={fieldError(state, "channelId")}
                 >
-                  <Select
+                  <Input
                     id={`${formId}-channel`}
                     name="channelId"
+                    list={`${formId}-channel-options`}
                     value={selectedChannelId}
                     onChange={(event) => setSelectedChannelId(event.target.value)}
-                    disabled={!selectedGuild || selectedGuild.channels.length === 0}
+                    placeholder="123456789012345678"
+                    inputMode="numeric"
+                    pattern="[0-9]{15,22}"
+                    maxLength={22}
+                    disabled={!selectedGuild}
                     required
-                  >
-                    {selectedGuild?.channels.length ? null : (
-                      <option value="">Nenhum canal disponível</option>
-                    )}
+                  />
+                  <datalist id={`${formId}-channel-options`}>
                     {selectedGuild?.channels.map((channel) => {
                       const usedBy = selectedGuild.current.find(
                         (storefront) =>
@@ -297,13 +307,21 @@ export function DiscordStorefrontForm({
                           storefront.channel_id === channel.id,
                       );
                       return (
-                        <option key={channel.id} value={channel.id} disabled={Boolean(usedBy)}>
-                          {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
-                          {usedBy ? ` · usado por ${usedBy.catalog_store_name}` : ""}
+                        <option key={channel.id} value={channel.id}>
+                          {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}{usedBy ? ` · usado por ${usedBy.catalog_store_name}` : ""}
                         </option>
                       );
                     })}
-                  </Select>
+                  </datalist>
+                  {selectedChannel ? (
+                    <p className="mt-2 text-xs text-muted">
+                      Canal reconhecido: <strong className="text-muted-strong">#{selectedChannel.name}</strong>
+                    </p>
+                  ) : selectedChannelId ? (
+                    <p className="mt-2 text-xs text-warning">
+                      O bot validará se esse ID pertence ao servidor antes de publicar.
+                    </p>
+                  ) : null}
                 </Field>
               </div>
 
