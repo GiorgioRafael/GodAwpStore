@@ -43,6 +43,8 @@ const PUBLIC_PATHS = [
   "/api/cron/discord-ticket-close-reconciliation",
   "/discordbots-assets/_next/static/chunks/app.css",
   "/vc-ap-dfea66/_next/static/chunks/app.js",
+  "/admin/discordbots/login",
+  "/admin/discordbots/acesso-negado",
 ];
 
 describe("portaria do painel", () => {
@@ -78,6 +80,7 @@ describe("portaria do painel", () => {
     expect(isPublicAdminPanelPath("/roletagem-secreta")).toBe(false);
     expect(isPublicAdminPanelPath("/loginhistorico")).toBe(false);
     expect(isPublicAdminPanelPath("/apisecreta")).toBe(false);
+    expect(isPublicAdminPanelPath("/admin/discordbots/login-historico")).toBe(false);
   });
 
   it("uma página de painel que ninguém lembrou de listar nasce protegida", () => {

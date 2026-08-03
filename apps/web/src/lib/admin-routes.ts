@@ -22,7 +22,14 @@ const PUBLIC_PREFIXES = [
 ];
 
 /** Exact paths that are public even though their prefix is not. */
-const PUBLIC_EXACT = new Set(["/favicon.ico", "/icon.png", "/robots.txt", "/sitemap.xml"]);
+const PUBLIC_EXACT = new Set([
+  "/favicon.ico",
+  "/icon.png",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/admin/discordbots/login",
+  "/admin/discordbots/acesso-negado",
+]);
 
 /**
  * `/sorteios` is the admin list; `/sorteios/<slug>` is the page a player opens

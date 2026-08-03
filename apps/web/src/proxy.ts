@@ -3,6 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isPublicAdminPanelPath } from "@/lib/admin-routes";
 import { extractDiscordIdentity, parseAdminDiscordIds } from "@/lib/auth-identity";
+import {
+  MASTER_ADMIN_ACCESS_DENIED,
+  isMasterAdminPath,
+  masterAdminLoginHref,
+} from "@/lib/master-admin-auth";
 
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -35,13 +40,21 @@ export async function proxy(request: NextRequest) {
   // rendering, so its output — anything the page put in the payload, including
   // values that never pass through RLS — still travels with the 307.
   if (!isPublicAdminPanelPath(request.nextUrl.pathname)) {
+    const isMasterAdmin = isMasterAdminPath(request.nextUrl.pathname);
     const identity = data.user ? extractDiscordIdentity(data.user) : null;
     if (!identity) {
       const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+      if (isMasterAdmin) {
+        return redirectPreservingSession(request, response, masterAdminLoginHref(next));
+      }
       return redirectPreservingSession(request, response, "/login", { next });
     }
     if (!parseAdminDiscordIds().has(identity.discordId)) {
-      return redirectPreservingSession(request, response, "/acesso-negado");
+      return redirectPreservingSession(
+        request,
+        response,
+        isMasterAdmin ? MASTER_ADMIN_ACCESS_DENIED : "/acesso-negado",
+      );
     }
   }
 
@@ -55,9 +68,7 @@ function redirectPreservingSession(
   pathname: string,
   searchParams?: Record<string, string>,
 ) {
-  const target = request.nextUrl.clone();
-  target.pathname = pathname;
-  target.search = "";
+  const target = new URL(pathname, request.nextUrl.origin);
   for (const [key, value] of Object.entries(searchParams ?? {})) {
     target.searchParams.set(key, value);
   }

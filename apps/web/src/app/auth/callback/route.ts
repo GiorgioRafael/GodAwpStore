@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getSiteUrl } from "@/lib/env";
 import { AUTH_NEXT_COOKIE } from "@/lib/auth-next";
+import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -37,9 +38,11 @@ export async function GET(request: NextRequest) {
  * authorised IDs only — which reads as a refusal, not as "try again".
  */
 function failed(siteOrigin: string, next: string) {
-  const target = next.startsWith("/roleta")
-    ? new URL("/roleta?erro=login", siteOrigin)
-    : new URL("/login?erro=callback", siteOrigin);
+  const target = isMasterAdminPath(next)
+    ? new URL(masterAdminLoginHref(next, { error: "callback" }), siteOrigin)
+    : next.startsWith("/roleta")
+      ? new URL("/roleta?erro=login", siteOrigin)
+      : new URL("/login?erro=callback", siteOrigin);
   const response = NextResponse.redirect(target);
   response.cookies.delete(AUTH_NEXT_COOKIE);
   return response;

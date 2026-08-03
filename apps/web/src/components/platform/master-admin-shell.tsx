@@ -107,7 +107,7 @@ export function MasterAdminShell({
         <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#070b12]/90 px-4 backdrop-blur-xl lg:hidden">
           <div className="flex h-16 items-center justify-between gap-4">
             <Brand />
-            <form action="/auth/logout" method="post">
+            <form action="/auth/logout?next=/admin/discordbots" method="post">
               <button
                 type="submit"
                 className="grid size-9 place-items-center rounded-lg border border-slate-700 text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
@@ -141,4 +141,3 @@ export function MasterAdminShell({
     </div>
   );
 }
-
