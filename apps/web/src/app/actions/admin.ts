@@ -871,6 +871,44 @@ export async function saveCatalogStoreAction(
   }
 }
 
+export async function deleteCatalogStoreAction(
+  storeId: string,
+): Promise<AdminActionState> {
+  const parsed = uuidSchema.safeParse(storeId);
+  if (!parsed.success) return { ok: false, message: "Loja invÃ¡lida." };
+
+  const { supabase } = await actionContext();
+  const { data, error } = await supabase.rpc("admin_archive_catalog_store", {
+    p_store_id: parsed.data,
+  });
+  if (error) {
+    if (error.message.includes("catalog_store_default_protected")) {
+      return {
+        ok: false,
+        message: "A loja principal nÃ£o pode ser excluÃ­da. Arquive o jogo para removÃª-la.",
+      };
+    }
+    if (error.message.includes("catalog_store_not_empty")) {
+      return {
+        ok: false,
+        message: "Mova todos os produtos para outra loja antes de excluir esta loja.",
+      };
+    }
+    if (error.message.includes("catalog_store_not_found")) {
+      return { ok: false, message: "Loja nÃ£o encontrada ou jÃ¡ excluÃ­da." };
+    }
+    return databaseFailure(error.code);
+  }
+  if (!data) return { ok: false, message: "A loja nÃ£o pÃ´de ser excluÃ­da." };
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/estoque");
+  revalidatePath("/catalogo/produtos");
+  return synchronizeCatalogStorefront(
+    "Loja excluÃ­da. O canal foi preservado e a vitrine removida do Discord.",
+  );
+}
+
 export async function moveCatalogProductsAction(
   formData: FormData,
 ): Promise<AdminActionState> {

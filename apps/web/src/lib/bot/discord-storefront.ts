@@ -271,6 +271,27 @@ export function withStorefrontConfigurations(
   };
 }
 
+export async function deleteDiscordStorefrontMessages(
+  storefront: DiscordStorefrontConfiguration,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  assertSnowflake(storefront.channel_id, "canal");
+  for (const messageId of storefront.message_ids) {
+    assertSnowflake(messageId, "mensagem");
+    const response = await fetcher(
+      `${discordApiUrl()}/channels/${storefront.channel_id}/messages/${messageId}`,
+      {
+        method: "DELETE",
+        headers: discordHeaders(),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Discord recusou a remoÃ§Ã£o da vitrine (${response.status}).`);
+    }
+  }
+}
+
 export async function publishDiscordStorefront({
   channel,
   catalog,

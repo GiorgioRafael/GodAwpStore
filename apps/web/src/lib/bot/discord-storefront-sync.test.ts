@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   createAdminSupabaseClient: vi.fn(),
+  deleteDiscordStorefrontMessages: vi.fn(),
   listCatalog: vi.fn(),
   publishDiscordStorefront: vi.fn(),
   readStorefrontConfigurations: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("./supabase-repository", () => ({
   SupabaseBotCommerceRepository: class {},
 }));
 vi.mock("./discord-storefront", () => ({
+  deleteDiscordStorefrontMessages: mocks.deleteDiscordStorefrontMessages,
   publishDiscordStorefront: mocks.publishDiscordStorefront,
   readStorefrontConfigurations: mocks.readStorefrontConfigurations,
   withStorefrontConfigurations: mocks.withStorefrontConfigurations,
@@ -65,6 +67,7 @@ describe("sincronização automática da vitrine Discord", () => {
     mocks.loadBotMessageCustomization.mockResolvedValue(customization);
     mocks.publishDiscordStorefront.mockResolvedValue({ configuration: storefront });
     mocks.synchronizeDiscordProductEmojis.mockResolvedValue({ failed: 0 });
+    mocks.deleteDiscordStorefrontMessages.mockResolvedValue(undefined);
   });
 
   it("edita a vitrine já publicada e persiste os IDs rastreados", async () => {
@@ -155,6 +158,54 @@ describe("sincronização automática da vitrine Discord", () => {
     const client = clientMock();
     mocks.createAdminSupabaseClient.mockReturnValue(client);
     mocks.publishDiscordStorefront.mockRejectedValueOnce(new Error("Discord indisponível"));
+
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
+      published: 0,
+      failed: 1,
+      productEmojiFailures: 0,
+    });
+    expect(client.update).not.toHaveBeenCalled();
+  });
+
+  it("remove a vitrine rastreada quando a loja foi excluÃ­da", async () => {
+    const scopedStorefront = {
+      ...storefront,
+      catalog_store_id: "e5b82d6f-a324-47fa-a861-a046559e3a11",
+      catalog_store_name: "Mundo removido",
+    };
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.readStorefrontConfigurations.mockReturnValue([scopedStorefront]);
+    mocks.listCatalog.mockResolvedValue([]);
+    mocks.withStorefrontConfigurations.mockReturnValue({ storefronts: [] });
+
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
+      published: 0,
+      failed: 0,
+      productEmojiFailures: 0,
+    });
+    expect(mocks.deleteDiscordStorefrontMessages).toHaveBeenCalledWith(scopedStorefront);
+    expect(mocks.publishDiscordStorefront).not.toHaveBeenCalled();
+    expect(mocks.withStorefrontConfigurations).toHaveBeenCalledWith(
+      expect.anything(),
+      [],
+    );
+    expect(client.update).toHaveBeenCalledWith({ configuration: { storefronts: [] } });
+  });
+
+  it("mantÃ©m a configuraÃ§Ã£o para repetir a limpeza se o Discord falhar", async () => {
+    const scopedStorefront = {
+      ...storefront,
+      catalog_store_id: "e5b82d6f-a324-47fa-a861-a046559e3a11",
+      catalog_store_name: "Mundo removido",
+    };
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.readStorefrontConfigurations.mockReturnValue([scopedStorefront]);
+    mocks.listCatalog.mockResolvedValue([]);
+    mocks.deleteDiscordStorefrontMessages.mockRejectedValueOnce(
+      new Error("Discord indisponÃ­vel"),
+    );
 
     await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
       published: 0,

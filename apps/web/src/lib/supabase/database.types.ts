@@ -1893,6 +1893,10 @@ export type Database = {
         Args: { p_product_ids: string[]; p_target_store_id: string };
         Returns: number;
       };
+      admin_archive_catalog_store: {
+        Args: { p_store_id: string };
+        Returns: boolean;
+      };
       admin_create_giveaway: {
         Args: {
           p_public_slug: string;

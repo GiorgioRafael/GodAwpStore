@@ -39,6 +39,13 @@ values
     'Outro jogo',
     'outro-jogo',
     'active'
+  ),
+  (
+    'a2000000-0000-4000-8000-000000000003',
+    'a1000000-0000-4000-8000-000000000001',
+    'Loja descartavel',
+    'loja-descartavel',
+    'active'
   );
 
 insert into public.substores (id, game_id, name, slug, title, status)
@@ -105,6 +112,14 @@ begin
     raise exception 'non-admin unexpectedly moved catalog stock';
   exception when insufficient_privilege then null;
   end;
+
+  begin
+    perform public.admin_archive_catalog_store(
+      'a2000000-0000-4000-8000-000000000003'
+    );
+    raise exception 'non-admin unexpectedly archived a catalog store';
+  exception when insufficient_privilege then null;
+  end;
 end
 $$;
 
@@ -155,10 +170,51 @@ begin
     raise exception 'cross-game product move was unexpectedly accepted';
   exception when check_violation then null;
   end;
+
+  begin
+    perform public.admin_archive_catalog_store(
+      'a2000000-0000-4000-8000-000000000001'
+    );
+    raise exception 'non-empty catalog store was unexpectedly archived';
+  exception when check_violation then null;
+  end;
+
+  begin
+    perform public.admin_archive_catalog_store(
+      (
+        select id
+        from public.catalog_stores
+        where game_id = 'a1000000-0000-4000-8000-000000000001'
+          and is_default
+      )
+    );
+    raise exception 'default catalog store was unexpectedly archived';
+  exception when check_violation then null;
+  end;
+
+  if not public.admin_archive_catalog_store(
+    'a2000000-0000-4000-8000-000000000003'
+  ) then
+    raise exception 'empty catalog store archive returned false';
+  end if;
 end
 $$;
 
 reset role;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.catalog_stores
+    where id = 'a2000000-0000-4000-8000-000000000003'
+      and status = 'archived'
+      and archived_at is not null
+  ) then
+    raise exception 'empty catalog store was not archived';
+  end if;
+end
+$$;
 
 do $$
 begin
@@ -171,6 +227,13 @@ begin
     'execute'
   ) then
     raise exception 'anon can execute the product move RPC';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.admin_archive_catalog_store(uuid)',
+    'execute'
+  ) then
+    raise exception 'anon can execute the catalog store archive RPC';
   end if;
 end
 $$;

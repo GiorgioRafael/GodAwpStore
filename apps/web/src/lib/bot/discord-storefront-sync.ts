@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { BotCommerceService } from "./commerce-service";
 import {
+  deleteDiscordStorefrontMessages,
   publishDiscordStorefront,
   readStorefrontConfigurations,
   withStorefrontConfigurations,
@@ -61,9 +62,13 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
           try {
             const game = storefront.catalog_store_id
               ? catalog.find((item) => item.catalogStoreId === storefront.catalog_store_id) ?? null
-              : storefront.game_id
-                ? catalog.find((item) => item.id === storefront.game_id && item.isDefaultStore) ?? null
-                : null;
+                : storefront.game_id
+                  ? catalog.find((item) => item.id === storefront.game_id && item.isDefaultStore) ?? null
+                  : null;
+            if (storefront.catalog_store_id && !game) {
+              await deleteDiscordStorefrontMessages(storefront);
+              return { ok: true as const, configuration: null };
+            }
             const publication = await publishDiscordStorefront({
               channel: { id: storefront.channel_id, name: storefront.channel_name },
               catalog: storefront.game_id ? (game ? [game] : []) : catalog,
@@ -94,10 +99,14 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
           }
         }),
       );
-      const published = publicationResults.filter((result) => result.ok).length;
-      if (published === 0) {
+      const succeeded = publicationResults.filter((result) => result.ok).length;
+      if (succeeded === 0) {
         return { published: 0, failed: publicationResults.length };
       }
+
+      const published = publicationResults.filter(
+        (result) => result.ok && result.configuration !== null,
+      ).length;
 
       try {
         const { data: updated, error: updateError } = await client
@@ -105,7 +114,9 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
           .update({
             configuration: withStorefrontConfigurations(
               guild.configuration,
-              publicationResults.map((result) => result.configuration),
+              publicationResults
+                .map((result) => result.configuration)
+                .filter((configuration) => configuration !== null),
             ),
           })
           .eq("id", guild.id)
@@ -114,7 +125,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
         if (updateError || !updated) throw new Error("Configuração da vitrine não foi salva.");
         return {
           published,
-          failed: publicationResults.length - published,
+          failed: publicationResults.length - succeeded,
         };
       } catch (syncError) {
         const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
