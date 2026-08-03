@@ -36,7 +36,10 @@ export async function proxy(request: NextRequest) {
   // values that never pass through RLS — still travels with the 307.
   if (!isPublicAdminPanelPath(request.nextUrl.pathname)) {
     const identity = data.user ? extractDiscordIdentity(data.user) : null;
-    if (!identity) return redirectPreservingSession(request, response, "/login");
+    if (!identity) {
+      const next = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+      return redirectPreservingSession(request, response, "/login", { next });
+    }
     if (!parseAdminDiscordIds().has(identity.discordId)) {
       return redirectPreservingSession(request, response, "/acesso-negado");
     }
@@ -50,10 +53,14 @@ function redirectPreservingSession(
   request: NextRequest,
   response: NextResponse,
   pathname: string,
+  searchParams?: Record<string, string>,
 ) {
   const target = request.nextUrl.clone();
   target.pathname = pathname;
   target.search = "";
+  for (const [key, value] of Object.entries(searchParams ?? {})) {
+    target.searchParams.set(key, value);
+  }
   const redirect = NextResponse.redirect(target);
   for (const cookie of response.cookies.getAll()) {
     redirect.cookies.set(cookie);

@@ -15,7 +15,22 @@ describe("páginas de autenticação", () => {
     expect(screen.getByRole("heading", { name: "Entre no painel" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Continuar com Discord/i })).toHaveAttribute(
       "href",
-      "/auth/login?next=/",
+      "/auth/login?next=%2F",
+    );
+  });
+
+  it("preserva o destino do painel no inÃ­cio do OAuth", async () => {
+    render(
+      <AuthShell>
+        {await LoginPage({
+          searchParams: Promise.resolve({ next: "/admin/discordbots?periodo=atual" }),
+        })}
+      </AuthShell>,
+    );
+
+    expect(screen.getByRole("link", { name: /Continuar com Discord/i })).toHaveAttribute(
+      "href",
+      "/auth/login?next=%2Fadmin%2Fdiscordbots%3Fperiodo%3Datual",
     );
   });
 

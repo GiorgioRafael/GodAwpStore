@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withMicrofrontends } from "@vercel/microfrontends/next/config";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@godawp/domain"],
@@ -36,4 +37,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Vercel injects the group's microfrontends configuration during its builds.
+// Local Next commands do not have that remote config, so keep development and
+// CI type generation independent from the Vercel routing layer.
+export default process.env.VERCEL === "1"
+  ? withMicrofrontends(nextConfig)
+  : nextConfig;

@@ -7,6 +7,7 @@ import { isPublicAdminPanelPath } from "./admin-routes";
 // o allow-list falha fechado, então ela nasce protegida.
 const ADMIN_PATHS = [
   "/",
+  "/admin/discordbots",
   "/auditoria",
   "/catalogo/jogos",
   "/catalogo/produtos",

@@ -118,8 +118,8 @@ export default async function SettingsPage() {
         }
       }),
   );
-  const parsedCommission = Number(settings?.global_commission_bps ?? 3_000);
-  const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 3_000;
+  const parsedCommission = Number(settings?.global_commission_bps ?? 200);
+  const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 200;
   const parsedUpsellDiscount = Number(settings?.upsell_discount_bps ?? 500);
   const upsellDiscountBps = Number.isInteger(parsedUpsellDiscount)
     ? Math.min(Math.max(parsedUpsellDiscount, 1), 500)

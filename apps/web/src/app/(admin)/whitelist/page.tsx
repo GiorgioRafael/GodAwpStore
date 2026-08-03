@@ -15,8 +15,8 @@ export default async function WhitelistPage() {
     getPlatformSettings(),
     listOperationalRows("guilds", 500),
   ]);
-  const parsedCommission = Number(settings?.global_commission_bps ?? 3_000);
-  const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 3_000;
+  const parsedCommission = Number(settings?.global_commission_bps ?? 200);
+  const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 200;
   const guildCounts: Record<string, number> = {};
 
   for (const guild of guildRows) {

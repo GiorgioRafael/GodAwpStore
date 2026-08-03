@@ -93,6 +93,7 @@ type WhitelistEntryRow = {
   notes: string | null;
   is_active: boolean;
   commission_override_bps: number | null;
+  admin_panel_url: string | null;
   created_by: string | null;
   archived_at: string | null;
   created_at: string;
@@ -212,6 +213,7 @@ type GuildRow = {
   archived_at: string | null;
   joined_at: string | null;
   left_at: string | null;
+  last_bot_seen_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1596,6 +1598,37 @@ export type Database = {
           gross_revenue_last_7_days_cents: number;
           gross_revenue_last_30_days_cents: number;
           average_order_cents: number;
+          last_paid_at: string | null;
+        };
+        Relationships: [];
+      };
+      discord_bots_admin_monthly_revenue: {
+        Row: {
+          month_start: string;
+          gross_revenue_cents: number;
+          commission_cents: number;
+          paid_orders_count: number;
+        };
+        Relationships: [];
+      };
+      discord_bots_admin_companies: {
+        Row: {
+          guild_id: string;
+          discord_guild_id: string;
+          guild_name: string;
+          owner_discord_id: string;
+          guild_status: Database["public"]["Enums"]["guild_status"];
+          joined_at: string | null;
+          last_bot_seen_at: string | null;
+          updated_at: string;
+          whitelist_entry_id: string | null;
+          company_name: string;
+          admin_panel_url: string | null;
+          effective_commission_bps: number;
+          current_month_revenue_cents: number;
+          previous_month_revenue_cents: number;
+          current_month_commission_cents: number;
+          current_month_paid_orders_count: number;
           last_paid_at: string | null;
         };
         Relationships: [];

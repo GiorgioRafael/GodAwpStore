@@ -11,9 +11,10 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ setup?: string; erro?: string }>;
+  searchParams: Promise<{ setup?: string; erro?: string; next?: string }>;
 }) {
   const query = await searchParams;
+  const authHref = `/auth/login?next=${encodeURIComponent(query.next ?? "/")}`;
   const feedback = query.setup
     ? "O login ainda precisa das variáveis do Supabase e do Discord neste ambiente."
     : query.erro
@@ -42,7 +43,7 @@ export default async function LoginPage({
           </div>
         ) : null}
 
-        <LinkButton href="/auth/login?next=/" size="lg" className="mt-7 w-full justify-between px-4">
+        <LinkButton href={authHref} size="lg" className="mt-7 w-full justify-between px-4">
           <span className="flex items-center gap-2.5">
             <MessageCircleMore aria-hidden="true" className="size-[18px]" />
             Continuar com Discord

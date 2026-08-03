@@ -285,6 +285,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       status: "active" as const,
       archived_at: null,
       left_at: null,
+      last_bot_seen_at: now,
     };
 
     const query = existing
