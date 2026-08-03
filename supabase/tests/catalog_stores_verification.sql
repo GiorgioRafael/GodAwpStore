@@ -123,7 +123,15 @@ begin
   if v_count <> 1 then
     raise exception 'product move returned the wrong count';
   end if;
+end
+$$;
 
+-- The RPC is security definer, so service_role only needs EXECUTE. Switch
+-- back to the migration owner before inspecting the protected table directly.
+reset role;
+
+do $$
+begin
   if not exists (
     select 1 from public.products
     where id = 'a4000000-0000-4000-8000-000000000001'
@@ -132,7 +140,13 @@ begin
   ) then
     raise exception 'product or stock did not move atomically';
   end if;
+end
+$$;
 
+set local role service_role;
+
+do $$
+begin
   begin
     perform public.admin_move_products_to_catalog_store(
       array['a4000000-0000-4000-8000-000000000001']::uuid[],
