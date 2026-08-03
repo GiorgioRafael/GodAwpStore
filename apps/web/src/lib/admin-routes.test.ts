@@ -41,6 +41,8 @@ const PUBLIC_PATHS = [
   "/api/sorteios/oauth/iniciar",
   "/api/sorteios/oauth/retorno",
   "/api/cron/discord-ticket-close-reconciliation",
+  "/discordbots-assets/_next/static/chunks/app.css",
+  "/vc-ap-dfea66/_next/static/chunks/app.js",
 ];
 
 describe("portaria do painel", () => {

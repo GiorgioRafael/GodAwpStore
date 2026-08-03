@@ -15,6 +15,10 @@ const PUBLIC_PREFIXES = [
   "/auth/",
   "/api/",
   "/_next/",
+  // Vercel Microfrontends prefixes the child app's static assets. These paths
+  // must stay public or CSS/JS requests are redirected to /login as HTML.
+  "/discordbots-assets/",
+  "/vc-ap-dfea66/",
 ];
 
 /** Exact paths that are public even though their prefix is not. */
