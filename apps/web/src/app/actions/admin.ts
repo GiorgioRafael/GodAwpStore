@@ -27,7 +27,10 @@ import {
   withStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
-import { synchronizeDiscordProductEmojis } from "@/lib/bot/discord-product-emojis";
+import {
+  deleteDiscordApplicationEmoji,
+  synchronizeDiscordProductEmojis,
+} from "@/lib/bot/discord-product-emojis";
 import { DISCORD_STOREFRONT_PRODUCT_LIMIT } from "@/lib/bot/discord-product-emoji-shared";
 import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
@@ -89,6 +92,10 @@ const catalogStoreMoveSchema = z.object({
     (ids) => new Set(ids).size === ids.length,
     "A lista de produtos contém itens repetidos.",
   ),
+});
+const catalogGameNameSchema = z.object({
+  id: uuidSchema,
+  name: z.string().trim().min(1, "Informe o nome do jogo.").max(120),
 });
 
 function text(formData: FormData, name: string): string {
@@ -217,6 +224,51 @@ export async function saveGameAction(
   revalidatePath("/catalogo/jogos");
   revalidatePath("/dashboard");
   return synchronizeCatalogStorefront(id ? "Jogo atualizado." : "Jogo criado.");
+}
+
+export async function renameCatalogGameAction(
+  _previousState: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  const parsed = catalogGameNameSchema.safeParse({
+    id: text(formData, "id"),
+    name: text(formData, "name"),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Revise o nome do jogo.",
+      fieldErrors: errorsFromZod(parsed.error),
+    };
+  }
+
+  const { supabase } = await actionContext();
+  const { data: existingGames, error: slugError } = await supabase
+    .from("games")
+    .select("slug")
+    .neq("id", parsed.data.id)
+    .is("archived_at", null);
+  if (slugError) return databaseFailure(slugError.code);
+  const slug = uniqueSlug(
+    slugFromName(parsed.data.name),
+    (existingGames ?? []).map((game) => game.slug),
+  );
+  const { data, error } = await supabase
+    .from("games")
+    .update({ name: parsed.data.name, slug })
+    .eq("id", parsed.data.id)
+    .is("archived_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return databaseFailure(error.code);
+  if (!data) return { ok: false, message: "Jogo não encontrado." };
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/catalogo/jogos");
+  revalidatePath("/catalogo/sublojas");
+  revalidatePath("/catalogo/produtos");
+  revalidatePath("/estoque");
+  return synchronizeCatalogStorefront("Nome do jogo atualizado.");
 }
 
 export async function saveSubstoreAction(
@@ -788,18 +840,40 @@ export async function saveCatalogStoreAction(
 
   if (parsed.data.id) {
     const { data, error } = await supabase
-      .from("catalog_stores")
-      .update({ name: parsed.data.name, slug })
-      .eq("id", parsed.data.id)
-      .eq("game_id", parsed.data.gameId)
-      .is("archived_at", null)
-      .select("id")
-      .maybeSingle();
-    if (error) return databaseFailure(error.code);
-    if (!data) return { ok: false, message: "Loja não encontrada." };
+      .rpc("admin_update_catalog_store", {
+        p_store_id: parsed.data.id,
+        p_game_id: parsed.data.gameId,
+        p_name: parsed.data.name,
+        p_slug: slug,
+      });
+    if (error) {
+      if (error.message.includes("catalog_store_default_game_protected")) {
+        return {
+          ok: false,
+          message: "A loja principal não pode ser movida para outro jogo.",
+          fieldErrors: { gameId: ["Crie ou use uma loja secundária para esse jogo."] },
+        };
+      }
+      if (error.message.includes("catalog_store_game_has_products")) {
+        return {
+          ok: false,
+          message: "Mova ou exclua todos os produtos antes de trocar o jogo da loja.",
+          fieldErrors: { gameId: ["A loja precisa estar vazia para mudar de jogo."] },
+        };
+      }
+      if (error.message.includes("catalog_store_target_game_unavailable")) {
+        return { ok: false, message: "O jogo escolhido não está ativo." };
+      }
+      if (error.message.includes("catalog_store_not_found")) {
+        return { ok: false, message: "Loja não encontrada." };
+      }
+      return databaseFailure(error.code);
+    }
+    if (!data) return { ok: false, message: "A loja não pôde ser atualizada." };
     revalidatePath("/configuracoes");
     revalidatePath("/estoque");
-    return synchronizeCatalogStorefront("Nome da loja atualizado.");
+    revalidatePath("/catalogo/produtos");
+    return synchronizeCatalogStorefront("Configurações da loja atualizadas.");
   }
 
   const { data: createdStore, error: createError } = await supabase
@@ -875,7 +949,7 @@ export async function deleteCatalogStoreAction(
   storeId: string,
 ): Promise<AdminActionState> {
   const parsed = uuidSchema.safeParse(storeId);
-  if (!parsed.success) return { ok: false, message: "Loja invÃ¡lida." };
+  if (!parsed.success) return { ok: false, message: "Loja inválida." };
 
   const { supabase } = await actionContext();
   const { data, error } = await supabase.rpc("admin_archive_catalog_store", {
@@ -885,7 +959,7 @@ export async function deleteCatalogStoreAction(
     if (error.message.includes("catalog_store_default_protected")) {
       return {
         ok: false,
-        message: "A loja principal nÃ£o pode ser excluÃ­da. Arquive o jogo para removÃª-la.",
+        message: "A loja principal não pode ser excluída. Arquive o jogo para removê-la.",
       };
     }
     if (error.message.includes("catalog_store_not_empty")) {
@@ -895,18 +969,74 @@ export async function deleteCatalogStoreAction(
       };
     }
     if (error.message.includes("catalog_store_not_found")) {
-      return { ok: false, message: "Loja nÃ£o encontrada ou jÃ¡ excluÃ­da." };
+      return { ok: false, message: "Loja não encontrada ou já excluída." };
     }
     return databaseFailure(error.code);
   }
-  if (!data) return { ok: false, message: "A loja nÃ£o pÃ´de ser excluÃ­da." };
+  if (!data) return { ok: false, message: "A loja não pôde ser excluída." };
 
   revalidatePath("/configuracoes");
   revalidatePath("/estoque");
   revalidatePath("/catalogo/produtos");
   return synchronizeCatalogStorefront(
-    "Loja excluÃ­da. O canal foi preservado e a vitrine removida do Discord.",
+    "Loja excluída. O canal foi preservado e a vitrine removida do Discord.",
   );
+}
+
+export async function deleteProductAction(
+  productId: string,
+): Promise<AdminActionState> {
+  const parsed = uuidSchema.safeParse(productId);
+  if (!parsed.success) return { ok: false, message: "Produto inválido." };
+
+  const { supabase } = await actionContext();
+  const { data, error } = await supabase.rpc("admin_delete_unused_product", {
+    p_product_id: parsed.data,
+  });
+  if (error) {
+    if (error.message.includes("product_stock_remaining")) {
+      return {
+        ok: false,
+        message: "Zere o estoque deste produto antes de excluí-lo definitivamente.",
+      };
+    }
+    if (error.message.includes("product_has_history")) {
+      return {
+        ok: false,
+        message: "Este produto possui histórico de estoque, pedido, sorteio ou roleta e só pode ser arquivado.",
+      };
+    }
+    if (error.message.includes("product_not_found")) {
+      return { ok: false, message: "Produto não encontrado ou já excluído." };
+    }
+    return databaseFailure(error.code);
+  }
+
+  const emojiId =
+    data && typeof data === "object" && !Array.isArray(data) &&
+    typeof data.discord_application_emoji_id === "string"
+      ? data.discord_application_emoji_id
+      : null;
+  let emojiWarning = "";
+  if (emojiId) {
+    try {
+      await deleteDiscordApplicationEmoji(emojiId);
+    } catch (emojiError) {
+      console.error(
+        `[admin:product-delete-emoji:${parsed.data}] ${emojiError instanceof Error ? emojiError.message : "erro desconhecido"}`,
+      );
+      emojiWarning = " O produto foi excluído, mas o ícone antigo do Discord não pôde ser removido.";
+    }
+  }
+
+  revalidatePath("/catalogo/produtos");
+  revalidatePath("/estoque");
+  revalidatePath("/dashboard");
+  revalidatePath("/configuracoes");
+  const synchronized = await synchronizeCatalogStorefront("Produto excluído definitivamente.");
+  return emojiWarning
+    ? { ...synchronized, message: `${synchronized.message}${emojiWarning}` }
+    : synchronized;
 }
 
 export async function moveCatalogProductsAction(

@@ -86,7 +86,7 @@ async function synchronizeProductEmoji(
 
   if (!shouldHaveEmoji) {
     if (!product.discord_application_emoji_id) return "unchanged";
-    await deleteApplicationEmoji(product.discord_application_emoji_id, fetcher);
+    await deleteDiscordApplicationEmoji(product.discord_application_emoji_id, fetcher);
     await updateProductEmojiMetadata(client, product, null, null);
     return "deleted";
   }
@@ -107,12 +107,12 @@ async function synchronizeProductEmoji(
   try {
     await updateProductEmojiMetadata(client, product, createdEmoji.id, sourceSha256);
   } catch (error) {
-    await deleteApplicationEmoji(createdEmoji.id, fetcher).catch(() => undefined);
+    await deleteDiscordApplicationEmoji(createdEmoji.id, fetcher).catch(() => undefined);
     throw error;
   }
 
   if (product.discord_application_emoji_id) {
-    await deleteApplicationEmoji(product.discord_application_emoji_id, fetcher).catch((error) => {
+    await deleteDiscordApplicationEmoji(product.discord_application_emoji_id, fetcher).catch((error) => {
       const message = error instanceof Error ? error.message : "erro desconhecido";
       console.error(`[discord-product-emoji:cleanup:${product.id}] ${message}`);
     });
@@ -235,7 +235,10 @@ async function createApplicationEmoji(
   return { id: payload.id };
 }
 
-async function deleteApplicationEmoji(emojiId: string, fetcher: typeof fetch) {
+export async function deleteDiscordApplicationEmoji(
+  emojiId: string,
+  fetcher: typeof fetch = fetch,
+) {
   if (!EMOJI_ID_PATTERN.test(emojiId)) throw new Error("ID do emoji de produto inválido.");
   const applicationId = applicationIdFromEnvironment();
   const response = await discordBotRequest(

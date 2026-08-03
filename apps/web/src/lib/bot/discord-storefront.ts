@@ -287,7 +287,7 @@ export async function deleteDiscordStorefrontMessages(
       },
     );
     if (!response.ok && response.status !== 404) {
-      throw new Error(`Discord recusou a remoÃ§Ã£o da vitrine (${response.status}).`);
+      throw new Error(`Discord recusou a remoção da vitrine (${response.status}).`);
     }
   }
 }

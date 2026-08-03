@@ -807,4 +807,5 @@ select 'GodAwpStore transactional integration checks passed' as result;
 \ir discord_product_emoji_verification.sql
 \ir product_order_verification.sql
 \ir catalog_stores_verification.sql
+\ir catalog_management_verification.sql
 \ir admin_order_analytics_verification.sql

@@ -1897,6 +1897,19 @@ export type Database = {
         Args: { p_store_id: string };
         Returns: boolean;
       };
+      admin_update_catalog_store: {
+        Args: {
+          p_store_id: string;
+          p_game_id: string;
+          p_name: string;
+          p_slug: string;
+        };
+        Returns: boolean;
+      };
+      admin_delete_unused_product: {
+        Args: { p_product_id: string };
+        Returns: Json;
+      };
       admin_create_giveaway: {
         Args: {
           p_public_slug: string;
