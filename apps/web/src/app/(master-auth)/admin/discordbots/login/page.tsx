@@ -1,7 +1,8 @@
 import { AlertTriangle, ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 
-import { LinkButton } from "@/components/ui/button";
+import { buttonStyles } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { cn } from "@/components/ui/cn";
 import { MASTER_ADMIN_ROOT } from "@/lib/master-admin-auth";
 
 export default async function MasterAdminLoginPage({
@@ -42,7 +43,13 @@ export default async function MasterAdminLoginPage({
           </div>
         ) : null}
 
-        <LinkButton href={authHref} size="lg" className="mt-7 w-full justify-between bg-violet-500 px-4 text-white hover:bg-violet-400">
+        <a
+          href={authHref}
+          className={cn(
+            buttonStyles({ size: "lg" }),
+            "mt-7 w-full justify-between bg-violet-500 px-4 text-white hover:bg-violet-400",
+          )}
+        >
           <span className="flex items-center gap-2.5">
             <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px]" fill="none">
               <path fill="#fff" d="M21.6 12.23c0-.71-.06-1.4-.18-2.07H12v3.92h5.38a4.6 4.6 0 0 1-2 3.02v2.54h3.24c1.9-1.75 2.98-4.33 2.98-7.41Z" />
@@ -53,7 +60,7 @@ export default async function MasterAdminLoginPage({
             Continuar com Google
           </span>
           <ArrowRight aria-hidden="true" className="size-4" />
-        </LinkButton>
+        </a>
 
         <div className="mt-6 flex items-start gap-3 rounded-xl border border-slate-800 bg-white/[0.02] p-3.5">
           <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-emerald-400" />
