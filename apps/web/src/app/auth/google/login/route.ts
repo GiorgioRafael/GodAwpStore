@@ -21,7 +21,9 @@ export async function GET(request: NextRequest) {
   }
 
   const callback = new URL("/auth/callback", siteOrigin);
-  callback.searchParams.set("next", next);
+  // Keep the production callback URL exact. Supabase matches redirect allow-list
+  // entries against the full URL, so appending `next` makes it fall back to the
+  // GWStore Site URL. The short-lived, HttpOnly cookie below carries the target.
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
