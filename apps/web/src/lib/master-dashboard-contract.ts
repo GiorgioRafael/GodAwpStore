@@ -1,10 +1,11 @@
 import { z } from "zod";
 
 const moneyCentsSchema = z.number().int().nonnegative();
+const isoDateTimeSchema = z.string().datetime({ offset: true });
 
 export const serviceDashboardSnapshotSchema = z.object({
   version: z.literal(1),
-  generatedAt: z.string().datetime(),
+  generatedAt: isoDateTimeSchema,
   service: z.object({
     id: z.string().min(1).max(64),
     name: z.string().min(1).max(120),
@@ -24,8 +25,8 @@ export const serviceDashboardSnapshotSchema = z.object({
       guildName: z.string().min(1),
       ownerDiscordId: z.string().min(1),
       status: z.enum(["active", "suspended", "left", "archived"]),
-      lastSeenAt: z.string().datetime().nullable(),
-      lastPaidAt: z.string().datetime().nullable(),
+      lastSeenAt: isoDateTimeSchema.nullable(),
+      lastPaidAt: isoDateTimeSchema.nullable(),
       currentMonthRevenueCents: moneyCentsSchema,
       previousMonthRevenueCents: moneyCentsSchema,
       currentMonthPaidOrdersCount: z.number().int().nonnegative(),
@@ -34,4 +35,3 @@ export const serviceDashboardSnapshotSchema = z.object({
 });
 
 export type ServiceDashboardSnapshot = z.infer<typeof serviceDashboardSnapshotSchema>;
-
