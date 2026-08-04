@@ -37,9 +37,14 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Vercel injects the group's microfrontends configuration during its builds.
-// Local Next commands do not have that remote config, so keep development and
-// CI type generation independent from the Vercel routing layer.
-export default process.env.VERCEL === "1"
+// Only GWStore belongs to the 101Devs microfrontend group. Other branded
+// deployments (such as Loja TH) use the same application as standalone sites.
+const isGwStoreDeployment =
+  (process.env.NEXT_PUBLIC_STORE_NAME?.trim().toLocaleLowerCase("en-US") || "gwstore") ===
+  "gwstore";
+
+// Vercel injects the group's microfrontends configuration during GWStore
+// builds. Local commands and standalone store deployments do not use it.
+export default process.env.VERCEL === "1" && isGwStoreDeployment
   ? withMicrofrontends(nextConfig)
   : nextConfig;
