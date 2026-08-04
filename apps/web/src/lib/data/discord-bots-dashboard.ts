@@ -39,6 +39,7 @@ export type DiscordBotService = {
   currentMonthRevenueCents: number;
   previousMonthRevenueCents: number;
   currentMonthCommissionCents: number;
+  previousMonthCommissionCents: number;
   currentMonthPaidOrdersCount: number;
   lastPaidAt: string | null;
 };
@@ -124,6 +125,7 @@ function sourceToService(source: ServiceSource, commissionBps: number): DiscordB
   const currentMonth = snapshot?.monthlyRevenue.at(-1);
   const previousMonth = snapshot?.monthlyRevenue.at(-2);
   const currentMonthRevenueCents = safeInteger(currentMonth?.grossRevenueCents);
+  const previousMonthRevenueCents = safeInteger(previousMonth?.grossRevenueCents);
 
   return {
     id: source.id,
@@ -135,8 +137,9 @@ function sourceToService(source: ServiceSource, commissionBps: number): DiscordB
     bots,
     effectiveCommissionBps: commissionBps,
     currentMonthRevenueCents,
-    previousMonthRevenueCents: safeInteger(previousMonth?.grossRevenueCents),
+    previousMonthRevenueCents,
     currentMonthCommissionCents: calculateCommissionFromGross(currentMonthRevenueCents, commissionBps),
+    previousMonthCommissionCents: calculateCommissionFromGross(previousMonthRevenueCents, commissionBps),
     currentMonthPaidOrdersCount: safeInteger(currentMonth?.paidOrdersCount),
     lastPaidAt: latestIso(bots.map((bot) => bot.lastPaidAt)),
   };

@@ -31,6 +31,7 @@ const services: DiscordBotService[] = [
     currentMonthRevenueCents: 34_180,
     previousMonthRevenueCents: 118_435,
     currentMonthCommissionCents: 684,
+    previousMonthCommissionCents: 2_369,
     currentMonthPaidOrdersCount: 60,
     lastPaidAt: "2026-08-04T12:00:00.000Z",
   },
@@ -46,6 +47,7 @@ const services: DiscordBotService[] = [
     currentMonthRevenueCents: 10_000,
     previousMonthRevenueCents: 8_000,
     currentMonthCommissionCents: 200,
+    previousMonthCommissionCents: 160,
     currentMonthPaidOrdersCount: 4,
     lastPaidAt: null,
   },
@@ -57,17 +59,20 @@ describe("tabela multi-serviço", () => {
 
     const gwRow = screen.getByRole("row", { name: /GWStore/ });
     const thRow = screen.getByRole("row", { name: /Loja TH/ });
+    expect(screen.getByRole("columnheader", { name: "Comissão mês atual" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Comissão mês anterior" })).toBeInTheDocument();
     expect(within(gwRow).getByText("R$ 341,80")).toBeInTheDocument();
     expect(within(gwRow).getByText("R$ 6,84")).toBeInTheDocument();
+    expect(within(gwRow).getByText("R$ 23,69")).toBeInTheDocument();
     expect(within(gwRow).getByRole("link", { name: "Abrir painel" })).toHaveAttribute(
       "href",
       "https://gwstore.vercel.app",
     );
     expect(within(thRow).getByText("R$ 100,00")).toBeInTheDocument();
+    expect(within(thRow).getByText("R$ 1,60")).toBeInTheDocument();
     expect(within(thRow).getByRole("link", { name: "Abrir painel" })).toHaveAttribute(
       "href",
       "https://thstoreadm.vercel.app",
     );
   });
 });
-

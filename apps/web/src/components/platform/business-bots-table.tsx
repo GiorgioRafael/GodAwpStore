@@ -95,7 +95,7 @@ export function BusinessBotsTable({ services }: { services: DiscordBotService[] 
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1180px] border-collapse text-left">
+        <table className="w-full min-w-[1360px] border-collapse text-left">
           <thead className="bg-white/[0.018] text-xs font-medium text-slate-400">
             <tr>
               <th className="px-6 py-3.5">Serviço</th>
@@ -103,7 +103,8 @@ export function BusinessBotsTable({ services }: { services: DiscordBotService[] 
               <th className="px-5 py-3.5">Status</th>
               <th className="px-5 py-3.5">Mês atual</th>
               <th className="px-5 py-3.5">Mês anterior</th>
-              <th className="px-5 py-3.5">Comissão</th>
+              <th className="px-5 py-3.5">Comissão mês atual</th>
+              <th className="px-5 py-3.5">Comissão mês anterior</th>
               <th className="px-6 py-3.5 text-right">Ações</th>
             </tr>
           </thead>
@@ -148,6 +149,12 @@ export function BusinessBotsTable({ services }: { services: DiscordBotService[] 
                   <td className="px-5 py-4">
                     <p className="text-sm font-medium text-white">
                       {service.available ? formatBrl(service.currentMonthCommissionCents) : "—"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-600">Taxa {formatCommission(service.effectiveCommissionBps)}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="text-sm font-medium text-white">
+                      {service.available ? formatBrl(service.previousMonthCommissionCents) : "—"}
                     </p>
                     <p className="mt-1 text-[11px] text-slate-600">Taxa {formatCommission(service.effectiveCommissionBps)}</p>
                   </td>
