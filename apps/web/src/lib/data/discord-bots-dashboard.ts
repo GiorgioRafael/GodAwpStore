@@ -73,6 +73,9 @@ const REMOTE_SERVICES = [
   },
 ] as const;
 
+const GWSTORE_ADMIN_URL =
+  process.env.GWSTORE_ADMIN_URL?.trim() || "https://gwstore.vercel.app";
+
 function safeInteger(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value ?? 0);
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
@@ -178,7 +181,7 @@ export async function getDiscordBotsDashboard(): Promise<DiscordBotsDashboard> {
     {
       id: "gwstore",
       name: "GWStore",
-      adminPanelUrl: localSnapshot.service.adminPanelUrl,
+      adminPanelUrl: GWSTORE_ADMIN_URL,
       snapshot: localSnapshot,
       error: null,
     },
