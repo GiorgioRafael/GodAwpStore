@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
-import { getSiteUrl } from "@/lib/env";
+import { getMasterAdminSiteUrl } from "@/lib/env";
 import { masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const siteOrigin = getSiteUrl(request.nextUrl.origin);
+  const siteOrigin = getMasterAdminSiteUrl(request.nextUrl.origin);
   const next = safeInternalPath(
     request.nextUrl.searchParams.get("next"),
     siteOrigin,

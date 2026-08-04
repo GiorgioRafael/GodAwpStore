@@ -59,6 +59,30 @@ export function getSiteUrl(requestOrigin?: string): string {
   return "http://localhost:3000";
 }
 
+export function getMasterAdminSiteUrl(requestOrigin?: string): string {
+  const configured = process.env.MASTER_ADMIN_SITE_URL?.trim();
+  if (configured) {
+    const configuredUrl = new URL(configured);
+    if (process.env.NODE_ENV === "production" && configuredUrl.protocol !== "https:") {
+      throw new Error("MASTER_ADMIN_SITE_URL deve usar HTTPS em produção.");
+    }
+    if (configuredUrl.protocol === "http:" || configuredUrl.protocol === "https:") {
+      return configuredUrl.origin;
+    }
+  }
+
+  if (process.env.NODE_ENV === "production") return "https://101devs.com";
+
+  if (requestOrigin) {
+    const requestUrl = new URL(requestOrigin);
+    if (requestUrl.protocol === "http:" || requestUrl.protocol === "https:") {
+      return requestUrl.origin;
+    }
+  }
+
+  return "http://localhost:3000";
+}
+
 export function isSupabaseConfigured(): boolean {
   return getSupabaseServerConfig() !== null;
 }

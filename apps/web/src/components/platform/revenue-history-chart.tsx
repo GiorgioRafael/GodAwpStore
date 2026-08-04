@@ -68,7 +68,7 @@ export function RevenueHistoryChart({ data }: { data: DiscordBotsMonthlyRevenue[
           <h2 id="historico-faturamento" className="text-base font-semibold tracking-tight text-white sm:text-lg">
             Faturamento dos últimos 6 meses
           </h2>
-          <p className="mt-1 text-sm text-slate-500">Somente pagamentos LivePix confirmados.</p>
+          <p className="mt-1 text-sm text-slate-500">Soma da GWStore e da Loja TH; somente pagamentos LivePix confirmados.</p>
         </div>
         <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-violet-400/15 bg-violet-500/[0.08] text-violet-300">
           <BarChart3 aria-hidden="true" className="size-[17px]" />

@@ -1,5 +1,5 @@
 export type BotHealth = {
-  label: "Online" | "Ativo" | "Suspenso" | "Desconectado" | "Arquivado";
+  label: "Online" | "Ativo" | "Suspenso" | "Desconectado" | "Arquivado" | "Indisponível";
   tone: "success" | "neutral" | "warning" | "danger";
 };
 
@@ -43,3 +43,11 @@ export function calculateRevenueChange(
   return ((currentRevenueCents - previousRevenueCents) / previousRevenueCents) * 100;
 }
 
+export function calculateCommissionFromGross(
+  grossRevenueCents: number,
+  commissionBps: number,
+): number {
+  if (!Number.isSafeInteger(grossRevenueCents) || grossRevenueCents <= 0) return 0;
+  if (!Number.isSafeInteger(commissionBps) || commissionBps <= 0) return 0;
+  return Math.round((grossRevenueCents * commissionBps) / 10_000);
+}

@@ -12,7 +12,7 @@ import {
 
 const navigation = [
   { label: "Visão geral", href: "#visao-geral", icon: LayoutDashboard },
-  { label: "Empresas", href: "#empresas", icon: Building2 },
+  { label: "Serviços", href: "#empresas", icon: Building2 },
   { label: "Bots", href: "#empresas", icon: Bot },
   { label: "Financeiro", href: "#financeiro", icon: ChartNoAxesCombined },
   { label: "Configurações", href: "#comissao", icon: Settings2 },

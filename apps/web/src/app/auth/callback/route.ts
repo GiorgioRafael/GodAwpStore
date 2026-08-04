@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getSiteUrl } from "@/lib/env";
+import { getMasterAdminSiteUrl, getSiteUrl } from "@/lib/env";
 import { AUTH_NEXT_COOKIE } from "@/lib/auth-next";
 import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const siteOrigin = getSiteUrl(request.nextUrl.origin);
   const code = request.nextUrl.searchParams.get("code");
   // The query string is the primary carrier and the cookie is what survives a
   // provider that rewrites it. Both are re-validated: a cookie is still input.
@@ -15,7 +14,10 @@ export async function GET(request: NextRequest) {
     request.nextUrl.searchParams.get("next") ??
     request.cookies.get(AUTH_NEXT_COOKIE)?.value ??
     null;
-  const next = safeInternalPath(requested, siteOrigin);
+  const next = safeInternalPath(requested, request.nextUrl.origin);
+  const siteOrigin = isMasterAdminPath(next)
+    ? getMasterAdminSiteUrl(request.nextUrl.origin)
+    : getSiteUrl(request.nextUrl.origin);
   const supabase = await createServerSupabaseClient();
 
   if (!code || !supabase) {

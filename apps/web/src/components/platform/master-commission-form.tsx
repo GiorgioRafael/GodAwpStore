@@ -26,7 +26,7 @@ export function MasterCommissionForm({ globalCommissionBps }: { globalCommission
         Comissão da plataforma
       </h2>
       <p className="mt-1 text-sm leading-6 text-slate-500">
-        Taxa padrão usada nas novas vendas das empresas sem exceção própria.
+        Taxa da 101Devs aplicada ao faturamento bruto consolidado de todos os serviços.
       </p>
 
       <form action={formAction} className="mt-6 space-y-4">
@@ -71,7 +71,7 @@ export function MasterCommissionForm({ globalCommissionBps }: { globalCommission
           </span>
         </div>
         <p id={`${inputId}-help`} className={error ? "text-xs text-rose-300" : "text-xs leading-5 text-slate-500"}>
-          {error ?? "Aplicada sobre o faturamento bruto pago. O cálculo é automático e auditável por pedido."}
+          {error ?? "Aplicada automaticamente sobre o faturamento bruto confirmado da GWStore e da Loja TH."}
         </p>
 
         <button

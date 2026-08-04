@@ -22,7 +22,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Bots Discord | 101Devs",
-  description: "Painel privado de operação, faturamento e comissão dos bots Discord.",
+  description: "Painel privado de gestão, faturamento e comissão dos serviços da 101Devs.",
 };
 
 function MetricCard({
@@ -87,10 +87,10 @@ export function DiscordBotsDashboardView({
       <header className="flex flex-col gap-5 pb-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-[-0.035em] text-white sm:text-[32px]">
-            Visão geral dos bots
+            Visão geral dos serviços
           </h1>
           <p className="mt-2 text-sm text-slate-400 sm:text-base">
-            Operação, vendas e comissões em um só lugar.
+            GWStore e Loja TH, com vendas, bots e comissões em um só lugar.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -129,7 +129,7 @@ export function DiscordBotsDashboardView({
         <MetricCard
           label="Bots ativos"
           value={`${dashboard.activeBotsCount.toLocaleString("pt-BR")} ativos`}
-          detail={`${dashboard.onlineBotsCount.toLocaleString("pt-BR")} online agora · ${dashboard.companiesCount.toLocaleString("pt-BR")} empresas`}
+          detail={`${dashboard.onlineBotsCount.toLocaleString("pt-BR")} online agora · ${dashboard.servicesCount.toLocaleString("pt-BR")} serviços`}
           icon={Bot}
           accent="success"
         />
@@ -140,7 +140,7 @@ export function DiscordBotsDashboardView({
         <MasterCommissionForm globalCommissionBps={dashboard.globalCommissionBps} />
       </div>
 
-      <BusinessBotsTable companies={dashboard.companies} />
+      <BusinessBotsTable services={dashboard.services} />
     </div>
   );
 }

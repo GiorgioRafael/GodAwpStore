@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   calculateRevenueChange,
+  calculateCommissionFromGross,
   formatDashboardMonth,
   getBotHealth,
 } from "./discord-bots-dashboard";
@@ -32,5 +33,9 @@ describe("Discord bots master dashboard", () => {
     expect(calculateRevenueChange(12_000, 10_000)).toBe(20);
     expect(calculateRevenueChange(12_000, 0)).toBeNull();
   });
-});
 
+  it("calcula a comissão configurada sobre o faturamento bruto", () => {
+    expect(calculateCommissionFromGross(34_180, 200)).toBe(684);
+    expect(calculateCommissionFromGross(0, 200)).toBe(0);
+  });
+});
