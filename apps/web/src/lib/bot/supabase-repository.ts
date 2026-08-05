@@ -272,12 +272,12 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
 
     const { data: existing, error: existingError } = await this.client
       .from("guilds")
-      .select("id")
+      .select("id,owner_discord_id,whitelist_entry_id,name,status,configuration,archived_at,left_at,last_bot_seen_at")
       .eq("discord_guild_id", identity.discordGuildId)
       .maybeSingle();
     assertQuery(existingError, "servidor existente");
 
-    const now = new Date().toISOString();
+    const now = new Date();
     const record = {
       owner_discord_id: identity.ownerDiscordId,
       name: identity.name,
@@ -285,8 +285,25 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       status: "active" as const,
       archived_at: null,
       left_at: null,
-      last_bot_seen_at: now,
+      last_bot_seen_at: now.toISOString(),
     };
+
+    if (
+      existing &&
+      existing.owner_discord_id === record.owner_discord_id &&
+      existing.name === record.name &&
+      existing.whitelist_entry_id === record.whitelist_entry_id &&
+      existing.status === record.status &&
+      existing.archived_at === null &&
+      existing.left_at === null &&
+      isRecentGuildHeartbeat(existing.last_bot_seen_at, now.getTime())
+    ) {
+      return {
+        id: existing.id,
+        whitelistEntryId: existing.whitelist_entry_id,
+        boosterDiscount: readBoosterDiscountConfiguration(existing.configuration),
+      };
+    }
 
     const query = existing
       ? this.client.from("guilds").update(record).eq("id", existing.id).select("id,whitelist_entry_id,configuration").single()
@@ -295,7 +312,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
           .insert({
             ...record,
             discord_guild_id: identity.discordGuildId,
-            joined_at: now,
+            joined_at: now.toISOString(),
           })
           .select("id,whitelist_entry_id,configuration")
           .single();
@@ -572,8 +589,20 @@ function interactionReference(interactionId: string) {
   return `discord:${interactionId}`;
 }
 
-function assertQuery(error: { message: string } | null, operation: string): asserts error is null {
-  if (error) throw new Error(`Falha ao consultar ${operation}.`);
+function isRecentGuildHeartbeat(value: string | null, now: number) {
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(timestamp) && timestamp >= now - 5 * 60 * 1_000;
+}
+
+function assertQuery(
+  error: { code?: string; message: string } | null,
+  operation: string,
+): asserts error is null {
+  if (!error) return;
+  console.error(
+    `[supabase-repository:${operation}] ${error.code ?? "unknown"}: ${error.message}`,
+  );
+  throw new Error(`Falha ao consultar ${operation}.`);
 }
 
 function safeInteger(value: number) {
