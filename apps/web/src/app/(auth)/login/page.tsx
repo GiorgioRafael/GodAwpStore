@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AlertTriangle, ArrowRight, LockKeyhole, MessageCircleMore, ShieldCheck, Sparkles } from "lucide-react";
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { STORE_SLUG } from "@/lib/brand";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 
 export const metadata: Metadata = {
   title: "Entrar",
@@ -53,7 +53,7 @@ export default async function LoginPage({
 
         {/* A raiz do site é o painel, então é aqui que cai quem só queria
             jogar. Sem esta saída ele lê "apenas IDs autorizados" e desiste. */}
-        {STORE_SLUG === "gwstore" ? (
+        {ROULETTE_AVAILABLE ? (
           <LinkButton href="/roleta" variant="secondary" size="lg" className="mt-3 w-full justify-between px-4">
             <span className="flex items-center gap-2.5">
               <Sparkles aria-hidden="true" className="size-[18px]" />

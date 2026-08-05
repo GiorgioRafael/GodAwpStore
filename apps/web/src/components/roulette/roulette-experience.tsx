@@ -774,9 +774,9 @@ export function RouletteExperience({
                       <span
                         className="grid size-[52px] place-items-center overflow-hidden rounded-xl border bg-black/20"
                         style={{
-                          borderColor: `${slot.accent}55`,
+                          borderColor: slot.accentSoft,
                           color: slot.accent,
-                          backgroundColor: `${slot.surface}cc`,
+                          backgroundColor: slot.surfaceSoft,
                         }}
                       >
                         {item.imageUrl ? (

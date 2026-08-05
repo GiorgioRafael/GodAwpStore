@@ -4,7 +4,10 @@ import { redirect } from "next/navigation";
 
 import { extractDiscordIdentity, type AdminIdentity } from "@/lib/auth-identity";
 import { getAdminSession } from "@/lib/auth";
-import { STORE_SLUG } from "@/lib/brand";
+import {
+  ROULETTE_AVAILABLE,
+  ROULETTE_UNAVAILABLE_MESSAGE,
+} from "@/lib/roulette/availability";
 import { getSiteUrl } from "@/lib/env";
 import type { RouletteCoinPurchaseStatus } from "@/lib/roulette/coin-purchase";
 import {
@@ -341,8 +344,8 @@ type RouletteSession = {
 };
 
 async function readRouletteSession(): Promise<RouletteSession | { message: string }> {
-  if (STORE_SLUG !== "gwstore") {
-    return { message: "Esta experiência está disponível somente na GWStore." };
+  if (!ROULETTE_AVAILABLE) {
+    return { message: ROULETTE_UNAVAILABLE_MESSAGE };
   }
 
   const supabase = await createServerSupabaseClient();

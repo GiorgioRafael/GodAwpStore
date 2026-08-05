@@ -1,6 +1,6 @@
 "use server";
 
-import { STORE_SLUG } from "@/lib/brand";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 const MAXIMUM_EVENTS = 20;
@@ -35,7 +35,7 @@ export async function readRouletteOverlayEvents(
   sinceIso: string | null,
 ): Promise<RouletteOverlayFeed> {
   const now = new Date().toISOString();
-  if (STORE_SLUG !== "gwstore") return { events: [], cursor: now };
+  if (!ROULETTE_AVAILABLE) return { events: [], cursor: now };
 
   const configuredToken = process.env.ROULETTE_OVERLAY_TOKEN?.trim();
   // Fail closed: no configured token means no feed.

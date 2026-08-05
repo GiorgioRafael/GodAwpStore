@@ -7,7 +7,8 @@ import { RouletteHeader } from "@/components/roulette/roulette-header";
 import { LinkButton } from "@/components/ui/button";
 import { getAdminSession } from "@/lib/auth";
 import { extractDiscordIdentity } from "@/lib/auth-identity";
-import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
+import { STORE_NAME } from "@/lib/brand";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import {
   buildRouletteWheelPrizes,
   normalizeDemoRouletteInventory,
@@ -30,7 +31,7 @@ export default async function RoulettePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (STORE_SLUG !== "gwstore") notFound();
+  if (!ROULETTE_AVAILABLE) notFound();
 
   const [query, supabase] = await Promise.all([
     searchParams,

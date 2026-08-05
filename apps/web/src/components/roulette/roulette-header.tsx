@@ -25,8 +25,11 @@ export function RouletteHeader({
             <BrandMark priority />
             <span className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-inset ring-white/10" />
           </span>
+          {/* O nome vem da loja. Escrito à mão, a roleta da segunda loja
+              anunciava a primeira — no cabeçalho, em cima da roda dela. */}
           <span className="text-[17px] font-black uppercase italic tracking-[-0.035em] text-white sm:text-xl">
-            <span className="text-fuchsia-400">GW</span>Store
+            <span className="text-fuchsia-400">{STORE_NAME.slice(0, 2)}</span>
+            {STORE_NAME.slice(2)}
           </span>
         </Link>
 

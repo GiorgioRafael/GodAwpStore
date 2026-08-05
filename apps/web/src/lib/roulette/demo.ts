@@ -23,9 +23,15 @@ export function rouletteSlotPalette(index: number, total: number) {
   const span = Math.max(total - 1, 1);
   const hue = 250 + (Math.max(index, 0) / span) * 90;
   const dim = index % 2 === 1;
+  const h = hue.toFixed(1);
   return {
-    accent: `hsl(${hue.toFixed(1)} 88% ${dim ? 56 : 66}%)`,
-    surface: `hsl(${hue.toFixed(1)} 58% ${dim ? 13 : 18}%)`,
+    accent: `hsl(${h} 88% ${dim ? 56 : 66}%)`,
+    surface: `hsl(${h} 58% ${dim ? 13 : 18}%)`,
+    // Transparência tem que sair pronta daqui. Concatenar "55" num hsl() gera
+    // "hsl(280.0 88% 66%)55", que o CSS descarta inteiro — a borda e o fundo do
+    // inventário caíam para o valor padrão em vez da cor da fatia.
+    accentSoft: `hsl(${h} 88% ${dim ? 56 : 66}% / 0.33)`,
+    surfaceSoft: `hsl(${h} 58% ${dim ? 13 : 18}% / 0.8)`,
   };
 }
 

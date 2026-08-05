@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ArrowLeft, Ban, ShieldAlert, Sparkles } from "lucide-react";
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { STORE_SLUG } from "@/lib/brand";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 
 export const metadata: Metadata = {
   title: "Acesso negado",
@@ -25,7 +25,7 @@ export default function AccessDeniedPage() {
         {/* Sem isto a página é um beco sem saída: a raiz do site é o painel, e
             um jogador que entra por ela autentica, é recusado aqui, e a única
             saída o devolve ao login do painel. A roleta é o que ele veio usar. */}
-        {STORE_SLUG === "gwstore" ? (
+        {ROULETTE_AVAILABLE ? (
           <>
             <LinkButton href="/roleta" size="lg" className="mt-7 w-full">
               <Sparkles aria-hidden="true" className="size-4" />

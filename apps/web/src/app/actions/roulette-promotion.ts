@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import type { AdminActionState } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
-import { STORE_SLUG } from "@/lib/brand";
+import {
+  ROULETTE_AVAILABLE,
+  ROULETTE_UNAVAILABLE_MESSAGE,
+} from "@/lib/roulette/availability";
 import { getSiteUrl } from "@/lib/env";
 import { publishRoulettePromotion } from "@/lib/roulette/promotion";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -20,8 +23,8 @@ export async function saveRoulettePromotionAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
-  if (STORE_SLUG !== "gwstore") {
-    return { ok: false, message: "A divulgação da roleta existe apenas na GWStore." };
+  if (!ROULETTE_AVAILABLE) {
+    return { ok: false, message: ROULETTE_UNAVAILABLE_MESSAGE };
   }
 
   const title = text(formData, "title");

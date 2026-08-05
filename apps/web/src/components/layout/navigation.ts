@@ -18,7 +18,7 @@ import {
   WalletCards,
   type LucideIcon,
 } from "lucide-react";
-import { STORE_SLUG } from "@/lib/brand";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 
 export interface NavigationItem {
   label: string;
@@ -33,7 +33,7 @@ export interface NavigationGroup {
 
 /** A roleta roda só na GWStore, então as páginas dela não aparecem nas outras. */
 const rouletteItems: NavigationItem[] =
-  STORE_SLUG === "gwstore"
+  ROULETTE_AVAILABLE
     ? [
         { label: "Resgates", href: "/resgates", icon: PackageCheck },
         { label: "Roleta", href: "/metricas-roleta", icon: ChartNoAxesCombined },

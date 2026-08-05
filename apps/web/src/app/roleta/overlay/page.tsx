@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { RouletteOverlay } from "@/components/roulette/roulette-overlay";
-import { STORE_SLUG } from "@/lib/brand";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import {
   buildRouletteWheelPrizes,
   normalizeRoulettePrizeProducts,
@@ -32,7 +32,7 @@ export default async function RouletteOverlayPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (STORE_SLUG !== "gwstore") notFound();
+  if (!ROULETTE_AVAILABLE) notFound();
 
   const configuredToken = process.env.ROULETTE_OVERLAY_TOKEN?.trim();
   const query = await searchParams;
