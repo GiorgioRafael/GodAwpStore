@@ -16,7 +16,10 @@ import { STORE_SLUG } from "@/lib/brand";
  * the page against a database that has none of it. Adding a store here is a
  * commit, which is the same review the migration goes through.
  */
-const STORES_WITH_ROULETTE: ReadonlySet<string> = new Set(["gwstore"]);
+const STORES_WITH_ROULETTE: ReadonlySet<string> = new Set([
+  "gwstore",
+  "thstore",
+]);
 
 export const ROULETTE_AVAILABLE = STORES_WITH_ROULETTE.has(STORE_SLUG);
 

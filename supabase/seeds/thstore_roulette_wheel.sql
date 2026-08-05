@@ -40,7 +40,7 @@ insert into wheel_seed (prize_key, product_name, prize_quantity, draw_weight) va
   ('premio_6',  '1b Sheckles',                               1,  500),
   ('premio_7',  '5x Star Fruit (Promoção)',                  1,  180),
   ('premio_8',  '50x Super Watering + 50x Super Sprinkler',  1,   90),
-  ('premio_9',  '150m Fall Sheckels',                        1,   26),
+  ('premio_9',  '100m Fall Sheckels',                        1,   26),
   ('premio_10', 'Black Dragon (Top 25)',                     1,    2);
 
 -- Um nome que não casa, ou que casa com dois produtos, para tudo aqui.
