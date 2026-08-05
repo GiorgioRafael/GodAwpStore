@@ -10,9 +10,9 @@
 -- transação inteira é recusada em vez de montar meia roda — uma fatia faltando
 -- muda a chance de todas as outras, e portanto o RTP.
 --
--- RTP 64,2%. Prêmio médio R$ 0,642 por giro, custo R$ 0,378 com markup de 70%,
--- sobra R$ 0,572 — 60% da receita líquida, contra os 41% que uma venda normal
--- rende. Seguro com recompra de 50% e de 100%: a 100% cada giro devolve 64% de
+-- RTP 62,9%. Prêmio médio R$ 0,629 por giro, custo R$ 0,370 com markup de 70%,
+-- sobra R$ 0,580 — 61% da receita líquida, contra os 41% que uma venda normal
+-- rende. Seguro com recompra de 50% e de 100%: a 100% cada giro devolve 63% de
 -- uma moeda, abaixo do teto de 100% em que o saldo do jogador pararia de
 -- encolher e um depósito viraria giros sem fim.
 --
@@ -103,7 +103,7 @@ select
     sum(slot.draw_weight * product.minimum_price_cents * slot.prize_quantity)::numeric
       / sum(slot.draw_weight) / 100,
     2
-  ) as rtp_percentual
+  ) as premio_medio_reais
 from public.roulette_prize_products as slot
 join public.products as product on product.id = slot.product_id;
 
