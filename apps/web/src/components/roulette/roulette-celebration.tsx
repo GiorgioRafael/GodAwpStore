@@ -1,6 +1,16 @@
 "use client";
 
-const COLORS = ["#fbbf24", "#f472b6", "#e879f9", "#fde68a", "#a78bfa", "#34d399"];
+// O momento mais visível da roleta saía com as cores da primeira loja em
+// qualquer loja. O dourado e o verde ficam — são prêmio e raridade, não marca;
+// as três de marca vêm do tema.
+const COLORS = [
+  "#fbbf24",
+  "var(--rlt-brand-300)",
+  "var(--rlt-brand-400)",
+  "#fde68a",
+  "var(--rlt-brand-200)",
+  "#34d399",
+];
 
 const PIECES = Array.from({ length: 34 }, (_, index) => ({
   left: 4 + ((index * 41) % 92),

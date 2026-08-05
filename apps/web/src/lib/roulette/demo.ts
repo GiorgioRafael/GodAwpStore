@@ -1,3 +1,5 @@
+import { STORE_SLUG } from "@/lib/brand";
+
 /** The wheel is configured in the admin panel, so nothing here may assume how
  * many slices there are. Slot styling is generated from the position instead of
  * listed, and every projection is driven by what the server returned. */
@@ -12,6 +14,16 @@ export const MAXIMUM_WHEEL_SLOTS = 10;
  */
 export const MAXIMUM_SELECTION_LINES = 50;
 
+/**
+ * O arco de matiz das fatias, por loja. Fica aqui em vez de no CSS porque a cor
+ * de cada fatia é calculada em JS e vai para o SVG da roda.
+ */
+const SLICE_HUES: Record<string, { from: number; span: number }> = {
+  thstore: { from: 198, span: 44 },
+};
+const { from: ROULETTE_SLICE_HUE_FROM, span: ROULETTE_SLICE_HUE_SPAN } =
+  SLICE_HUES[STORE_SLUG] ?? { from: 250, span: 90 };
+
 const PRIZE_KEY_PATTERN = /^premio_([1-9][0-9]?)$/;
 
 /**
@@ -21,7 +33,10 @@ const PRIZE_KEY_PATTERN = /^premio_([1-9][0-9]?)$/;
  */
 export function rouletteSlotPalette(index: number, total: number) {
   const span = Math.max(total - 1, 1);
-  const hue = 250 + (Math.max(index, 0) / span) * 90;
+  // O arco vem do tema da loja: violeta->magenta na GWStore, ciano->azul na
+  // THStore. Cravar 250..340 aqui pintava as fatias de roxo em qualquer loja.
+  const hue =
+    ROULETTE_SLICE_HUE_FROM + (Math.max(index, 0) / span) * ROULETTE_SLICE_HUE_SPAN;
   const dim = index % 2 === 1;
   const h = hue.toFixed(1);
   return {

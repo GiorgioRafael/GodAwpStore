@@ -356,10 +356,10 @@ export function RouletteExperience({
   const celebrating = landed && bigPrize;
 
   return (
-    <main className="relative min-h-[calc(100vh-76px)] overflow-hidden bg-[#050306] text-white">
+    <main className="relative min-h-[calc(100vh-76px)] overflow-hidden bg-[var(--rlt-ink)] text-white">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,rgba(217,70,239,.11),transparent_32%),radial-gradient(circle_at_84%_78%,rgba(126,34,206,.08),transparent_30%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,rgba(217,70,239,.11),transparent_32%),radial-gradient(circle_at_84%_78%,color-mix(in oklab, var(--rlt-brand-600) 8%, transparent),transparent_30%)]"
       />
       <div className="sticky top-0 z-30 border-b border-amber-300/20 bg-[#0b0705]/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
@@ -388,7 +388,7 @@ export function RouletteExperience({
           <a
             href="#inventario"
             aria-label={`Inventário: ${totalPrizes} ${totalPrizes === 1 ? "prêmio" : "prêmios"}`}
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-fuchsia-300/35 bg-fuchsia-400/10 px-3 text-sm font-bold text-fuchsia-100 transition-colors hover:bg-fuchsia-400/20"
+            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-brand-300/35 bg-brand-400/10 px-3 text-sm font-bold text-brand-100 transition-colors hover:bg-brand-400/20"
           >
             <Box aria-hidden="true" className="size-4" />
             {totalPrizes}
@@ -466,7 +466,7 @@ export function RouletteExperience({
                   ))}
                 </div>
                 {isAdmin ? (
-                  <p className="rounded-lg border border-fuchsia-300/25 bg-fuchsia-400/10 px-3 py-2 text-xs font-semibold text-fuchsia-200">
+                  <p className="rounded-lg border border-brand-300/25 bg-brand-400/10 px-3 py-2 text-xs font-semibold text-brand-200">
                     Modo administrador: o giro é grátis, mas a venda de itens credita moedas de
                     verdade nesta conta.
                   </p>
@@ -479,10 +479,10 @@ export function RouletteExperience({
 
       <div className="relative mx-auto grid max-w-[1440px] gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,.85fr)] lg:gap-0 lg:px-10 [@media(max-height:820px)]:py-7">
         <section className="min-w-0 lg:pr-10 xl:pr-14">
-          <h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-[#fbf8fc] sm:text-4xl lg:text-[44px] lg:leading-[1.08]">
+          <h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-[var(--rlt-text)] sm:text-4xl lg:text-[44px] lg:leading-[1.08]">
             Gire e descubra seu prêmio
           </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-[#ae98b7] sm:text-base">
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--rlt-text-muted)] sm:text-base">
             {isAdmin
               ? "Modo administrador: os giros são gratuitos para testes internos."
               : "Cada moeda vale R$ 1,00 e paga um giro. Não gostou do prêmio? Venda de volta por moedas."}
@@ -499,7 +499,7 @@ export function RouletteExperience({
                       ? topPrize
                         ? "bg-amber-400/30"
                         : "bg-emerald-400/25"
-                      : "bg-fuchsia-500/10"
+                      : "bg-brand-500/10"
                   }`}
                 />
                 <span
@@ -509,11 +509,11 @@ export function RouletteExperience({
                     borderLeft: "clamp(18px, 4vw, 22px) solid transparent",
                     borderRight: "clamp(18px, 4vw, 22px) solid transparent",
                     borderTop: `clamp(32px, 6vw, 39px) solid ${
-                      celebrating ? (topPrize ? "#fbbf24" : "#34d399") : "#e879f9"
+                      celebrating ? (topPrize ? "#fbbf24" : "#34d399") : "var(--rlt-brand-300)"
                     }`,
                   }}
                 />
-                <div className="absolute inset-[5.5%] rounded-full border border-fuchsia-200/35 bg-[#0b0710] p-[2.2%] shadow-[0_0_0_5px_rgba(217,70,239,.06),0_0_54px_rgba(217,70,239,.24),inset_0_0_28px_rgba(217,70,239,.12)]">
+                <div className="absolute inset-[5.5%] rounded-full border border-brand-200/35 bg-[var(--rlt-ink-deep)] p-[2.2%] shadow-[0_0_0_5px_rgba(217,70,239,.06),0_0_54px_color-mix(in oklab, var(--rlt-brand-400) 24%, transparent),inset_0_0_28px_rgba(217,70,239,.12)]">
                   <svg
                     viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
                     role="img"
@@ -546,7 +546,7 @@ export function RouletteExperience({
                       cx={WHEEL_CENTER}
                       cy={WHEEL_CENTER}
                       r={WHEEL_RADIUS + 10}
-                      fill="#08040c"
+                      fill="var(--rlt-ink-deep)"
                       stroke="rgba(244,114,182,.72)"
                       strokeWidth="3"
                     />
@@ -567,7 +567,7 @@ export function RouletteExperience({
                               x={label.x}
                               y={label.y - 7}
                               textAnchor="middle"
-                              fill="#fff8ff"
+                              fill="var(--rlt-text)"
                               fontSize="13"
                               fontWeight="800"
                               style={{
@@ -598,7 +598,7 @@ export function RouletteExperience({
                       })}
                     </g>
                   </svg>
-                  <span className="absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full border-2 border-fuchsia-200/55 bg-[#08040c] p-[8px] shadow-[0_0_25px_rgba(217,70,239,.42)]">
+                  <span className="absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full border-2 border-brand-200/55 bg-[var(--rlt-ink-deep)] p-[8px] shadow-[0_0_25px_rgba(217,70,239,.42)]">
                     <BrandMark className="rounded-full" />
                   </span>
                 </div>
@@ -614,7 +614,7 @@ export function RouletteExperience({
                           ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
                           : bigPrize
                             ? "border-emerald-300/70 bg-gradient-to-b from-[#062018]/95 to-[#03120d]/95"
-                            : "border-fuchsia-300/55 bg-gradient-to-b from-[#1d0f26]/95 to-[#0f0714]/95"
+                            : "border-brand-300/55 bg-gradient-to-b from-[var(--rlt-ink-raised)]/95 to-[var(--rlt-ink-soft)]/95"
                       }`}
                     >
                       <p
@@ -623,7 +623,7 @@ export function RouletteExperience({
                             ? "text-amber-300"
                             : bigPrize
                               ? "text-emerald-300"
-                              : "text-fuchsia-300"
+                              : "text-brand-300"
                         }`}
                       >
                         <Sparkles aria-hidden="true" className="size-3.5" />
@@ -641,7 +641,7 @@ export function RouletteExperience({
                             ? "bg-amber-400/25 text-amber-200"
                             : bigPrize
                               ? "bg-emerald-400/20 text-emerald-200"
-                              : "bg-fuchsia-400/20 text-fuchsia-200"
+                              : "bg-brand-400/20 text-brand-200"
                         }`}
                       >
                         {formatCoins(lastPrize.valueCents)} moedas
@@ -655,7 +655,7 @@ export function RouletteExperience({
                 type="button"
                 onClick={canSpin ? handleSpin : () => setBuyOpen(true)}
                 disabled={isBusy || !available}
-                className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-fuchsia-200/55 bg-gradient-to-b from-fuchsia-500 to-[#b81780] px-6 text-base font-bold text-white shadow-[0_0_0_3px_rgba(217,70,239,.1),0_15px_40px_rgba(217,70,239,.24)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
+                className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-brand-200/55 bg-gradient-to-b from-brand-500 to-[var(--rlt-brand-600)] px-6 text-base font-bold text-white shadow-[0_0_0_3px_rgba(217,70,239,.1),0_15px_40px_color-mix(in oklab, var(--rlt-brand-400) 24%, transparent)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
               >
                 {phase === "spinning" ? (
                   <RotateCw aria-hidden="true" className="size-5 animate-spin" />
@@ -673,13 +673,13 @@ export function RouletteExperience({
               {phase === "awaiting_payment" ? (
                 <div
                   role="status"
-                  className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-fuchsia-300/25 bg-[#140b1a]/90 p-4 text-center"
+                  className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-brand-300/25 bg-[var(--rlt-ink-raised)]/90 p-4 text-center"
                 >
-                  <p className="flex items-center justify-center gap-2 text-sm font-semibold text-fuchsia-200">
+                  <p className="flex items-center justify-center gap-2 text-sm font-semibold text-brand-200">
                     <Loader2 aria-hidden="true" className="size-4 animate-spin" />
                     Aguardando a confirmação do Pix
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-[#9e88a8]">
+                  <p className="mt-2 text-xs leading-5 text-[var(--rlt-text-muted)]">
                     As moedas caem no seu saldo assim que a LivePix confirmar.
                   </p>
                   {checkoutUrl ? (
@@ -687,7 +687,7 @@ export function RouletteExperience({
                       href={checkoutUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-fuchsia-200/50 bg-fuchsia-500/15 px-4 text-sm font-semibold text-fuchsia-100 transition-colors hover:bg-fuchsia-500/25"
+                      className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand-200/50 bg-brand-500/15 px-4 text-sm font-semibold text-brand-100 transition-colors hover:bg-brand-500/25"
                     >
                       <QrCode aria-hidden="true" className="size-4" />
                       Abrir o Pix
@@ -727,18 +727,18 @@ export function RouletteExperience({
 
         <aside
           id="inventario"
-          className="scroll-mt-24 border-t border-fuchsia-300/15 pt-9 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0 xl:pl-14"
+          className="scroll-mt-24 border-t border-brand-300/15 pt-9 lg:border-l lg:border-t-0 lg:pl-10 lg:pt-0 xl:pl-14"
         >
           <div className="flex items-end justify-between gap-4">
             <div>
               <h2 className="text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
                 Seu inventário
               </h2>
-              <p className="mt-2 text-sm text-[#a88fb2]">
+              <p className="mt-2 text-sm text-[var(--rlt-text-muted)]">
                 {totalPrizes === 1 ? "1 prêmio" : `${totalPrizes} prêmios`}
               </p>
             </div>
-            <Box aria-hidden="true" className="mb-1 size-5 text-fuchsia-300/75" />
+            <Box aria-hidden="true" className="mb-1 size-5 text-brand-300/75" />
           </div>
 
           {inventory.length ? (
@@ -757,7 +757,7 @@ export function RouletteExperience({
                     className={`overflow-hidden rounded-2xl border p-3.5 shadow-[inset_0_1px_rgba(255,255,255,.025)] transition-colors ${
                       picked > 0
                         ? "border-amber-300/50 bg-[#191207]/90"
-                        : "border-fuchsia-300/20 bg-[#100a15]/90"
+                        : "border-brand-300/20 bg-[var(--rlt-ink-soft)]/90"
                     }`}
                   >
                     <div className="grid grid-cols-[auto_52px_1fr_auto] items-center gap-3">
@@ -786,7 +786,7 @@ export function RouletteExperience({
                         )}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold text-[#fbf8fc]">
+                        <span className="block truncate text-sm font-semibold text-[var(--rlt-text)]">
                           {item.name}
                         </span>
                         <span className="mt-0.5 block text-xs text-[#9e8a76]">
@@ -794,7 +794,7 @@ export function RouletteExperience({
                         </span>
                       </span>
                       <span
-                        className="min-w-10 border-l border-fuchsia-300/15 pl-3 text-center text-xl font-bold"
+                        className="min-w-10 border-l border-brand-300/15 pl-3 text-center text-xl font-bold"
                         style={{ color: slot.accent }}
                         aria-label={`Quantidade: ${item.quantity}`}
                       >
@@ -840,17 +840,17 @@ export function RouletteExperience({
               })}
             </ul>
           ) : (
-            <div className="mt-7 grid min-h-56 place-items-center rounded-2xl border border-dashed border-fuchsia-300/25 bg-[#0e0913]/75 px-6 text-center">
+            <div className="mt-7 grid min-h-56 place-items-center rounded-2xl border border-dashed border-brand-300/25 bg-[var(--rlt-ink-soft)]/75 px-6 text-center">
               <div>
                 <PackageOpen
                   aria-hidden="true"
-                  className="mx-auto size-9 text-fuchsia-300/45"
+                  className="mx-auto size-9 text-brand-300/45"
                   strokeWidth={1.5}
                 />
-                <p className="mt-4 text-sm font-medium text-[#d7c9dc]">
+                <p className="mt-4 text-sm font-medium text-[var(--rlt-text)]">
                   Seu inventário está vazio
                 </p>
-                <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-[#8f7b98]">
+                <p className="mx-auto mt-2 max-w-xs text-xs leading-5 text-[var(--rlt-text-faint)]">
                   Gire a roleta para receber seu primeiro prêmio.
                 </p>
               </div>
@@ -887,10 +887,10 @@ export function RouletteExperience({
             </div>
           ) : null}
 
-          <div className="mt-5 flex gap-3 border-t border-fuchsia-300/10 pt-5 text-xs leading-5 text-[#87728f]">
+          <div className="mt-5 flex gap-3 border-t border-brand-300/10 pt-5 text-xs leading-5 text-[var(--rlt-text-faint)]">
             <ShieldCheck
               aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-fuchsia-300/55"
+              className="mt-0.5 size-4 shrink-0 text-brand-300/55"
             />
             <p>
               Os itens são configurados no painel. Vender devolve

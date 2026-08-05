@@ -18,6 +18,54 @@
   --warning: #e4ad55;
 }
 
+/**
+ * A cor da roleta, por loja.
+ *
+ * A roleta não usa o tema dourado do painel — ela pinta o próprio fundo por
+ * cima e tinha a paleta escrita à mão em cinco arquivos, duplicada entre o site
+ * e o overlay. Como variáveis do tema, o Tailwind continua aceitando os
+ * modificadores de opacidade (brand-300/40), o que `var()` cru não permite: ele
+ * resolve com color-mix. Uma loja nova é um bloco aqui, não uma varredura.
+ */
+:root {
+  --rlt-brand-100: #f5d0fe;
+  --rlt-brand-200: #f0abfc;
+  --rlt-brand-300: #e879f9;
+  --rlt-brand-400: #d946ef;
+  --rlt-brand-500: #c026d3;
+  --rlt-brand-600: #a21caf;
+  --rlt-ink: #050306;
+  --rlt-ink-soft: #0e0913;
+  --rlt-ink-raised: #17101c;
+  --rlt-ink-deep: #08040c;
+  --rlt-text: #fbf8fc;
+  --rlt-text-muted: #aa94b3;
+  --rlt-text-faint: #8f7b98;
+  /* Arco de matiz das fatias: violeta -> magenta. */
+  --rlt-slice-hue-from: 250;
+  --rlt-slice-hue-span: 90;
+}
+
+[data-store="thstore"] {
+  --rlt-brand-100: #cfe4ff;
+  --rlt-brand-200: #9ec6ff;
+  --rlt-brand-300: #5fa2ff;
+  --rlt-brand-400: #2f7bf0;
+  --rlt-brand-500: #1d5bc4;
+  --rlt-brand-600: #143f8c;
+  --rlt-ink: #03060d;
+  --rlt-ink-soft: #070d18;
+  --rlt-ink-raised: #0d1626;
+  --rlt-ink-deep: #020610;
+  --rlt-text: #f2f7ff;
+  --rlt-text-muted: #93aac6;
+  --rlt-text-faint: #6d829c;
+  /* Ciano -> azul. Passar de ~245 puxa para o violeta e a roda deixa de ler
+     como azul escuro, que é a identidade pedida. */
+  --rlt-slice-hue-from: 198;
+  --rlt-slice-hue-span: 44;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
@@ -34,6 +82,19 @@
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-brand-100: var(--rlt-brand-100);
+  --color-brand-200: var(--rlt-brand-200);
+  --color-brand-300: var(--rlt-brand-300);
+  --color-brand-400: var(--rlt-brand-400);
+  --color-brand-500: var(--rlt-brand-500);
+  --color-brand-600: var(--rlt-brand-600);
+  --color-rlt-ink: var(--rlt-ink);
+  --color-rlt-ink-soft: var(--rlt-ink-soft);
+  --color-rlt-ink-raised: var(--rlt-ink-raised);
+  --color-rlt-ink-deep: var(--rlt-ink-deep);
+  --color-rlt-text: var(--rlt-text);
+  --color-rlt-text-muted: var(--rlt-text-muted);
+  --color-rlt-text-faint: var(--rlt-text-faint);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --shadow-panel: 0 18px 60px rgba(0, 0, 0, 0.34);

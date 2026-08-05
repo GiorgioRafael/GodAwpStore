@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
-import { STORE_LOGO_URL, STORE_NAME } from "@/lib/brand";
+import { STORE_LOGO_URL, STORE_NAME, STORE_SLUG } from "@/lib/brand";
 
 import "./globals.css";
 
@@ -40,9 +40,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // data-store fica no elemento raiz: é o seletor que troca a paleta da
+  // roleta, que não passa pelo tema dourado do painel.
   return (
     <html
       lang="pt-BR"
+      data-store={STORE_SLUG}
       data-scroll-behavior="smooth"
       className={`${geistSans.variable} ${geistMono.variable} h-full bg-background antialiased`}
     >

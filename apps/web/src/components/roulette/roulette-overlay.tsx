@@ -196,17 +196,17 @@ export function RouletteOverlay({
               ? jackpot
                 ? "bg-amber-400/40"
                 : "bg-emerald-400/30"
-              : "bg-fuchsia-500/20"
+              : "bg-brand-500/20"
           }`}
         />
 
         <span
           aria-hidden="true"
-          className="absolute left-1/2 top-[-6px] z-30 h-0 w-0 -translate-x-1/2 drop-shadow-[0_0_18px_rgba(244,114,182,1)]"
+          className="absolute left-1/2 top-[-6px] z-30 h-0 w-0 -translate-x-1/2 drop-shadow-[0_0_18px_var(--rlt-brand-300)]"
           style={{
             borderLeft: "20px solid transparent",
             borderRight: "20px solid transparent",
-            borderTop: `38px solid ${celebrating ? (jackpot ? "#fbbf24" : "#34d399") : "#e879f9"}`,
+            borderTop: `38px solid ${celebrating ? (jackpot ? "#fbbf24" : "#34d399") : "var(--rlt-brand-300)"}`,
           }}
         />
 
@@ -224,8 +224,8 @@ export function RouletteOverlay({
               </linearGradient>
             ))}
             <radialGradient id="ov-hub" cx="50%" cy="35%">
-              <stop offset="0%" stopColor="#2a0f36" />
-              <stop offset="100%" stopColor="#08040c" />
+              <stop offset="0%" stopColor="var(--rlt-brand-600)" />
+              <stop offset="100%" stopColor="var(--rlt-ink-deep)" />
             </radialGradient>
             <filter id="ov-glow" x="-40%" y="-40%" width="180%" height="180%">
               <feGaussianBlur stdDeviation="3.5" result="blur" />
@@ -272,7 +272,7 @@ export function RouletteOverlay({
                     x={label.x}
                     y={label.y - 7}
                     textAnchor="middle"
-                    fill="#fff8ff"
+                    fill="var(--rlt-text)"
                     fontSize="14"
                     fontWeight="800"
                     style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.6)", strokeWidth: 3.5 }}
@@ -332,7 +332,7 @@ export function RouletteOverlay({
                   ? "border-amber-300 bg-gradient-to-b from-[#2c1f04]/95 to-[#160f02]/95"
                   : big
                     ? "border-emerald-300/70 bg-gradient-to-b from-[#062018]/95 to-[#03120d]/95"
-                    : "border-fuchsia-300/60 bg-gradient-to-b from-[#1d0f26]/95 to-[#0f0714]/95"
+                    : "border-brand-300/60 bg-gradient-to-b from-[var(--rlt-ink-raised)]/95 to-[var(--rlt-ink-soft)]/95"
               }`}
             >
               {jackpot ? (
@@ -346,7 +346,7 @@ export function RouletteOverlay({
               ) : null}
               <p className="text-[4.6cqw] font-bold leading-tight text-white">
                 <span
-                  className={jackpot ? "text-amber-300" : big ? "text-emerald-300" : "text-fuchsia-300"}
+                  className={jackpot ? "text-amber-300" : big ? "text-emerald-300" : "text-brand-300"}
                 >
                   {current.maskedDisplayName}
                 </span>{" "}
@@ -364,7 +364,7 @@ export function RouletteOverlay({
                     ? "bg-amber-400/25 text-amber-200"
                     : big
                       ? "bg-emerald-400/20 text-emerald-200"
-                      : "bg-fuchsia-400/20 text-fuchsia-200"
+                      : "bg-brand-400/20 text-brand-200"
                 }`}
               >
                 {formatCoins(current.valueCents)} moedas
