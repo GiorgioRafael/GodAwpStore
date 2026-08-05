@@ -270,33 +270,53 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       .maybeSingle();
     assertQuery(whitelistError, "whitelist do servidor");
 
-    const { data: existing, error: existingError } = await this.client
+    const { data: existingWithHeartbeat, error: existingWithHeartbeatError } = await this.client
       .from("guilds")
       .select("id,owner_discord_id,whitelist_entry_id,name,status,configuration,archived_at,left_at,last_bot_seen_at")
       .eq("discord_guild_id", identity.discordGuildId)
       .maybeSingle();
-    assertQuery(existingError, "servidor existente");
+
+    let existing = existingWithHeartbeat;
+    let supportsHeartbeat = true;
+    if (isMissingGuildHeartbeatColumn(existingWithHeartbeatError)) {
+      const { data: existingWithoutHeartbeat, error: existingWithoutHeartbeatError } =
+        await this.client
+          .from("guilds")
+          .select("id,owner_discord_id,whitelist_entry_id,name,status,configuration,archived_at,left_at")
+          .eq("discord_guild_id", identity.discordGuildId)
+          .maybeSingle();
+      assertQuery(existingWithoutHeartbeatError, "servidor existente");
+      existing = existingWithoutHeartbeat
+        ? { ...existingWithoutHeartbeat, last_bot_seen_at: null }
+        : null;
+      supportsHeartbeat = false;
+    } else {
+      assertQuery(existingWithHeartbeatError, "servidor existente");
+    }
 
     const now = new Date();
-    const record = {
+    const baseRecord = {
       owner_discord_id: identity.ownerDiscordId,
       name: identity.name,
       whitelist_entry_id: whitelist?.id ?? null,
       status: "active" as const,
       archived_at: null,
       left_at: null,
-      last_bot_seen_at: now.toISOString(),
     };
+    const record = supportsHeartbeat
+      ? { ...baseRecord, last_bot_seen_at: now.toISOString() }
+      : baseRecord;
 
     if (
       existing &&
-      existing.owner_discord_id === record.owner_discord_id &&
-      existing.name === record.name &&
-      existing.whitelist_entry_id === record.whitelist_entry_id &&
-      existing.status === record.status &&
+      existing.owner_discord_id === baseRecord.owner_discord_id &&
+      existing.name === baseRecord.name &&
+      existing.whitelist_entry_id === baseRecord.whitelist_entry_id &&
+      existing.status === baseRecord.status &&
       existing.archived_at === null &&
       existing.left_at === null &&
-      isRecentGuildHeartbeat(existing.last_bot_seen_at, now.getTime())
+      (!supportsHeartbeat ||
+        isRecentGuildHeartbeat(existing.last_bot_seen_at, now.getTime()))
     ) {
       return {
         id: existing.id,
@@ -592,6 +612,16 @@ function interactionReference(interactionId: string) {
 function isRecentGuildHeartbeat(value: string | null, now: number) {
   const timestamp = value ? Date.parse(value) : Number.NaN;
   return Number.isFinite(timestamp) && timestamp >= now - 5 * 60 * 1_000;
+}
+
+function isMissingGuildHeartbeatColumn(
+  error: { code?: string; message: string } | null,
+) {
+  return Boolean(
+    error &&
+      (error.code === "42703" || error.code === "PGRST204") &&
+      error.message.includes("last_bot_seen_at"),
+  );
 }
 
 function assertQuery(
