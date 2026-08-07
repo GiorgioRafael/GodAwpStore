@@ -1,6 +1,6 @@
 import "server-only";
 
-import { STORE_NAME } from "@/lib/brand";
+import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
 import {
   assertDiscordBotGuildAccess,
   DiscordApiError,
@@ -81,7 +81,7 @@ export function roulettePromotionPayload(
 ) {
   const rouletteUrl = new URL("/roleta", normalizeSiteUrl(siteUrl)).toString();
   const bannerUrl = new URL(
-    "/brands/gwstore-storefront-banner.png",
+    roulettePromotionBannerPath(),
     normalizeSiteUrl(siteUrl),
   ).toString();
 
@@ -111,6 +111,12 @@ export function roulettePromotionPayload(
       },
     ],
   };
+}
+
+export function roulettePromotionBannerPath(storeSlug = STORE_SLUG) {
+  return storeSlug === "thstore"
+    ? "/brands/thstore-roulette-banner.png"
+    : "/brands/gwstore-storefront-banner.png";
 }
 
 async function ensurePromotionChannel(

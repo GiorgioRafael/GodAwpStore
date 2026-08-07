@@ -37,6 +37,34 @@ values (
   'active'
 );
 
+insert into public.catalog_stores (
+  id, game_id, name, slug, status, sort_order
+)
+values (
+  'a6000000-0000-4000-8000-000000000001',
+  'a2000000-0000-4000-8000-000000000001',
+  'Segundo mundo',
+  'segundo-mundo',
+  'active',
+  1
+);
+
+insert into public.products (
+  id, substore_id, catalog_store_id, name, slug,
+  minimum_price_cents, stock_quantity, status, sort_order
+)
+values (
+  'a4000000-0000-4000-8000-000000000002',
+  'a3000000-0000-4000-8000-000000000001',
+  'a6000000-0000-4000-8000-000000000001',
+  'Cross-world bestseller',
+  'cross-world-bestseller',
+  300,
+  10,
+  'active',
+  -10
+);
+
 insert into public.guilds (
   id, discord_guild_id, owner_discord_id, whitelist_entry_id, name, status
 )
@@ -175,6 +203,50 @@ begin
   exception
     when insufficient_privilege then null;
   end;
+end
+$$;
+
+do $$
+declare
+  scoped_offer record;
+  mixed_cart_offer record;
+begin
+  update public.platform_settings
+  set upsell_strategy = 'automatic'
+  where id = 1;
+
+  select * into strict scoped_offer
+  from public.create_bot_upsell_offer(
+    '760000000000000020',
+    'a5000000-0000-4000-8000-000000000001',
+    'a1000000-0000-4000-8000-000000000001',
+    '770000000000000020',
+    '[{"product_id":"a4000000-0000-4000-8000-000000000001","quantity":1}]'::jsonb,
+    0,
+    null,
+    1000
+  );
+
+  if not scoped_offer.offered
+    or scoped_offer.offered_product_id <> 'a4000000-0000-4000-8000-000000000001'::uuid then
+    raise exception 'upsell escaped the base product catalog store';
+  end if;
+
+  select * into strict mixed_cart_offer
+  from public.create_bot_upsell_offer(
+    '760000000000000021',
+    'a5000000-0000-4000-8000-000000000001',
+    'a1000000-0000-4000-8000-000000000001',
+    '770000000000000021',
+    '[{"product_id":"a4000000-0000-4000-8000-000000000001","quantity":1},{"product_id":"a4000000-0000-4000-8000-000000000002","quantity":1}]'::jsonb,
+    0,
+    null,
+    1000
+  );
+
+  if mixed_cart_offer.offered or mixed_cart_offer.offer_id is not null then
+    raise exception 'mixed-world base cart unexpectedly received an upsell';
+  end if;
 end
 $$;
 

@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   publishRoulettePromotion,
+  roulettePromotionBannerPath,
   roulettePromotionPayload,
 } from "./promotion";
 
@@ -40,6 +41,15 @@ describe("roulette Discord promotion", () => {
       label: "Abrir a roleta",
       url: "https://gwstore.vercel.app/roleta",
     });
+  });
+
+  it("usa a arte solicitada somente na roleta da THStore", () => {
+    expect(roulettePromotionBannerPath("thstore")).toBe(
+      "/brands/thstore-roulette-banner.png",
+    );
+    expect(roulettePromotionBannerPath("gwstore")).toBe(
+      "/brands/gwstore-storefront-banner.png",
+    );
   });
 
   it("edita a publicação vinculada sem criar uma mensagem duplicada", async () => {
