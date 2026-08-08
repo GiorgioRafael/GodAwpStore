@@ -1,5 +1,7 @@
 import "server-only";
 
+import { STORE_CATALOG_LABEL, STORE_NAME, STORE_SLUG } from "@/lib/brand";
+import { rouletteBrandingFor } from "@/lib/roulette/branding";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export type RoulettePromotionSettings = {
@@ -10,14 +12,20 @@ export type RoulettePromotionSettings = {
   messageId: string | null;
 };
 
-export const DEFAULT_ROULETTE_PROMOTION: RoulettePromotionSettings = {
-  title: "A roleta da GWStore chegou",
-  description:
-    "Agora a GWStore tem uma roleta para você conseguir seus itens dentro do Grow a Garden 2. Gire, descubra seu prêmio e acompanhe tudo pelo site.",
-  buttonLabel: "Abrir a roleta",
-  channelId: null,
-  messageId: null,
-};
+export function defaultRoulettePromotion(
+  storeSlug = STORE_SLUG,
+  storeName = STORE_NAME,
+  catalogLabel = STORE_CATALOG_LABEL,
+): RoulettePromotionSettings {
+  const branding = rouletteBrandingFor(storeSlug, storeName, catalogLabel);
+  return {
+    ...branding.promotion,
+    channelId: null,
+    messageId: null,
+  };
+}
+
+export const DEFAULT_ROULETTE_PROMOTION = defaultRoulettePromotion();
 
 export async function getRoulettePromotionSettings() {
   const client = await createServerSupabaseClient();
@@ -51,12 +59,44 @@ export async function getRoulettePromotionSettings() {
 
   return {
     ok: true as const,
-    settings: {
+    settings: normalizeStoredPromotion({
       title: data.roulette_promotion_title,
       description: data.roulette_promotion_description,
       buttonLabel: data.roulette_promotion_button_label,
       channelId: data.roulette_promotion_channel_id,
       messageId: data.roulette_promotion_message_id,
-    } satisfies RoulettePromotionSettings,
+    }),
   };
+}
+
+/**
+ * THStore was enabled while both databases still carried the GWStore defaults.
+ * Only replace that exact legacy triplet; anything an owner edited remains
+ * untouched. The channel/message link is preserved so the next save edits the
+ * publication instead of creating a duplicate.
+ */
+export function normalizeStoredPromotion(
+  settings: RoulettePromotionSettings,
+  storeSlug = STORE_SLUG,
+  storeName = STORE_NAME,
+  catalogLabel = STORE_CATALOG_LABEL,
+): RoulettePromotionSettings {
+  if (storeSlug !== "thstore") return settings;
+
+  const gwDefaults = defaultRoulettePromotion(
+    "gwstore",
+    "GWStore",
+    "Grow a Garden 2",
+  );
+  const isLegacyGwCopy =
+    settings.title === gwDefaults.title &&
+    settings.description === gwDefaults.description &&
+    settings.buttonLabel === gwDefaults.buttonLabel;
+
+  return isLegacyGwCopy
+    ? {
+        ...settings,
+        ...rouletteBrandingFor(storeSlug, storeName, catalogLabel).promotion,
+      }
+    : settings;
 }

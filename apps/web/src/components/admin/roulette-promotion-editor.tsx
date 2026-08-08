@@ -10,16 +10,21 @@ import {
   initialAdminActionState,
 } from "@/components/admin/action-feedback";
 import { Button, LinkButton } from "@/components/ui/button";
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/form-field";
 import type { RoulettePromotionSettings } from "@/lib/roulette/promotion-admin";
 
-const ROULETTE_URL = "https://gwstore.vercel.app/roleta";
-
 export function RoulettePromotionEditor({
   settings,
+  rouletteUrl,
 }: {
   settings: RoulettePromotionSettings;
+  rouletteUrl: string;
 }) {
   const formId = useId();
   const [state, action, pending] = useActionState(
@@ -39,13 +44,14 @@ export function RoulettePromotionEditor({
               </h2>
             </div>
             <p className="mt-1 max-w-2xl text-sm leading-6 text-muted">
-              Edite o anúncio do canal <strong className="text-muted-strong">🎰┊roleta</strong>.
-              Ao salvar, o bot atualiza a mensagem já publicada; se ela tiver sido apagada, cria
-              outra automaticamente.
+              Edite o anúncio do canal{" "}
+              <strong className="text-muted-strong">🎰┊roleta</strong>. Ao
+              salvar, o bot atualiza a mensagem já publicada; se ela tiver sido
+              apagada, cria outra automaticamente.
             </p>
           </div>
           <LinkButton
-            href={ROULETTE_URL}
+            href={rouletteUrl}
             target="_blank"
             rel="noreferrer"
             variant="secondary"
@@ -102,8 +108,10 @@ export function RoulettePromotionEditor({
             />
           </Field>
           <div className="rounded-xl border border-border bg-surface-muted px-4 py-3 text-xs leading-5 text-muted">
-            O botão sempre abre <span className="font-medium text-muted-strong">{ROULETTE_URL}</span>.
-            Assim uma edição de texto não consegue mandar jogadores para um endereço errado.
+            O botão sempre abre{" "}
+            <span className="font-medium text-muted-strong">{rouletteUrl}</span>
+            . Assim uma edição de texto não consegue mandar jogadores para um
+            endereço errado.
           </div>
         </CardContent>
         <CardFooter className="flex flex-wrap items-center justify-between gap-4">

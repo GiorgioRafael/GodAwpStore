@@ -181,12 +181,7 @@ begin
 
   begin
     perform public.admin_archive_catalog_store(
-      (
-        select id
-        from public.catalog_stores
-        where game_id = 'a1000000-0000-4000-8000-000000000001'
-          and is_default
-      )
+      'a2000000-0000-4000-8000-000000000001'
     );
     raise exception 'default catalog store was unexpectedly archived';
   exception when check_violation then null;

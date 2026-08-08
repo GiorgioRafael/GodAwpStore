@@ -45,7 +45,7 @@ export function BrandMark({
     <span
       aria-hidden="true"
       className={cn(
-        "grid size-full place-items-center bg-[radial-gradient(circle_at_30%_20%,rgba(244,114,182,.55),transparent_38%),linear-gradient(145deg,#09090b,#3b0764_58%,#701a75)] px-1 text-center text-[.34em] font-black tracking-[-0.04em] text-white",
+        "grid size-full place-items-center bg-[radial-gradient(circle_at_30%_20%,color-mix(in_oklab,var(--rlt-brand-300)_55%,transparent),transparent_38%),linear-gradient(145deg,var(--rlt-ink-deep),var(--rlt-brand-600)_58%,var(--rlt-brand-500))] px-1 text-center text-[.34em] font-black tracking-[-0.04em] text-white",
         className,
       )}
     >

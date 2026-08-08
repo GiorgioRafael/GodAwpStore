@@ -378,7 +378,8 @@ $$;
 -- Multiple people may hold a Pix for the last visible unit. Both unpaid
 -- checkouts leave it visible, but stable product locks allow only the first
 -- verified payment to commit stock. The second payment is retained for
--- manual exchange/refund without a ticket or ledger credit.
+-- manual exchange/refund with a recovery ticket but no delivery ticket or
+-- ledger credit.
 select *
 from public.create_bot_order_with_reservation(
   '820000000000000106',
@@ -510,6 +511,15 @@ begin
     ) <> 0 then
     raise exception 'last-unit payment race was not committed exactly once';
   end if;
+
+  if exists (
+    select 1
+    from public.ledger_entries
+    where order_id = v_first.id
+      and description ilike '%GWStore%'
+  ) then
+    raise exception 'shared financial entry leaked a store name';
+  end if;
 end
 $$;
 
@@ -527,6 +537,39 @@ begin
   exception
     when data_exception then null;
   end;
+end
+$$;
+
+do $$
+declare
+  v_second_order_id uuid := (
+    select id
+    from public.orders
+    where payment_reference = 'discord:820000000000000107'
+  );
+  v_review record;
+begin
+  select *
+  into strict v_review
+  from public.list_late_paid_orders_without_ticket(50)
+  where late_order_id = v_second_order_id;
+
+  if v_review.late_reason <> 'stock_unavailable_after_payment' then
+    raise exception 'paid stock conflict did not enter the recovery queue';
+  end if;
+
+  perform * from public.record_late_payment_ticket(
+    v_second_order_id,
+    '840000000000000002'
+  );
+
+  if (
+    select discord_ticket_channel_id
+    from public.orders
+    where id = v_second_order_id
+  ) <> '840000000000000002' then
+    raise exception 'paid stock conflict recovery ticket was not recorded';
+  end if;
 end
 $$;
 

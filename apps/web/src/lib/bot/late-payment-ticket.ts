@@ -33,6 +33,7 @@ export type LatePaymentTicketInput = {
   productName: string;
   quantity: number;
   amountCents: number;
+  reason?: "late_payment" | "stock_unavailable_after_payment";
 };
 
 /** Marker kept on the channel topic so a retry finds the channel it created. */
@@ -56,7 +57,8 @@ export async function ensureLatePaymentTicket(
   input: LatePaymentTicketInput,
   options: { fetcher?: typeof fetch } = {},
 ) {
-  if (!UUID_PATTERN.test(input.orderId)) throw new Error("ID do pedido inválido.");
+  if (!UUID_PATTERN.test(input.orderId))
+    throw new Error("ID do pedido inválido.");
   if (!SNOWFLAKE_PATTERN.test(input.guildDiscordId)) {
     throw new Error("Servidor do pedido inválido.");
   }
@@ -110,10 +112,15 @@ export async function ensureLatePaymentTicket(
       fetcher,
     );
     created = true;
-  } else if (!samePermissionOverwrites(channel.permission_overwrites ?? [], overwrites)) {
+  } else if (
+    !samePermissionOverwrites(channel.permission_overwrites ?? [], overwrites)
+  ) {
     channel = await discordBotJson<DiscordChannel>(
       `/channels/${channel.id}`,
-      { method: "PATCH", body: JSON.stringify({ permission_overwrites: overwrites }) },
+      {
+        method: "PATCH",
+        body: JSON.stringify({ permission_overwrites: overwrites }),
+      },
       fetcher,
     );
   }
@@ -123,7 +130,10 @@ export async function ensureLatePaymentTicket(
   }
 
   if (created) {
-    const staffMentions = [...new Set(settings.ticketNotificationDiscordUserIds)]
+    const stockUnavailable = input.reason === "stock_unavailable_after_payment";
+    const staffMentions = [
+      ...new Set(settings.ticketNotificationDiscordUserIds),
+    ]
       .map((id) => `<@${id}>`)
       .join(" ");
     await discordBotJson(
@@ -134,19 +144,31 @@ export async function ensureLatePaymentTicket(
           content: `<@${input.buyerDiscordId}>${staffMentions ? ` ${staffMentions}` : ""}`,
           embeds: [
             {
-              title: "Seu pagamento chegou depois do prazo",
-              description:
-                "O Pix caiu depois que o pedido expirou, então ele foi cancelado automaticamente e o item não saiu. " +
-                `**O seu dinheiro não se perdeu.** A equipe da ${STORE_NAME} resolve por aqui: entrega o item ou devolve o valor. ` +
-                "É só responder nesta conversa.",
+              title: stockUnavailable
+                ? "Pagamento confirmado, mas o item esgotou"
+                : "Seu pagamento chegou depois do prazo",
+              description: stockUnavailable
+                ? "Seu Pix foi confirmado, mas outra compra consumiu as últimas unidades antes da confirmação do estoque. " +
+                  `**O seu dinheiro não se perdeu.** A equipe da ${STORE_NAME} resolve por aqui: oferece uma alternativa ou devolve o valor. ` +
+                  "É só responder nesta conversa."
+                : "O Pix caiu depois que o pedido expirou, então ele foi cancelado automaticamente e o item não saiu. " +
+                  `**O seu dinheiro não se perdeu.** A equipe da ${STORE_NAME} resolve por aqui: entrega o item ou devolve o valor. ` +
+                  "É só responder nesta conversa.",
               color: 0xf59e0b,
               fields: [
                 {
                   name: "Pedido",
-                  value: `${input.quantity}x ${input.productName}`.slice(0, 1024),
+                  value: `${input.quantity}x ${input.productName}`.slice(
+                    0,
+                    1024,
+                  ),
                   inline: false,
                 },
-                { name: "Valor pago", value: formatBrl(input.amountCents), inline: true },
+                {
+                  name: "Valor pago",
+                  value: formatBrl(input.amountCents),
+                  inline: true,
+                },
               ],
               footer: { text: `Pedido ${input.orderId}` },
             },
@@ -172,9 +194,12 @@ export async function reconcileLatePaidOrderTickets(
   const client = createAdminSupabaseClient();
   if (!client) return { pending: 0, opened: 0, failed: 0 };
 
-  const { data, error } = await client.rpc("list_late_paid_orders_without_ticket", {
-    p_limit: options.limit ?? 25,
-  });
+  const { data, error } = await client.rpc(
+    "list_late_paid_orders_without_ticket",
+    {
+      p_limit: options.limit ?? 25,
+    },
+  );
   if (error) {
     console.error(`[pagamento-atrasado] ${error.message}`);
     return { pending: 0, opened: 0, failed: 0 };
@@ -194,20 +219,30 @@ export async function reconcileLatePaidOrderTickets(
           productName: order.late_product_name,
           quantity: order.late_quantity,
           amountCents: order.late_amount_cents,
+          reason:
+            order.late_reason === "stock_unavailable_after_payment"
+              ? "stock_unavailable_after_payment"
+              : "late_payment",
         },
         { fetcher: options.fetcher },
       );
-      const { error: recordError } = await client.rpc("record_late_payment_ticket", {
-        p_order_id: order.late_order_id,
-        p_channel_id: ticket.channelId,
-      });
+      const { error: recordError } = await client.rpc(
+        "record_late_payment_ticket",
+        {
+          p_order_id: order.late_order_id,
+          p_channel_id: ticket.channelId,
+        },
+      );
       if (recordError) throw new Error(recordError.message);
       opened += 1;
     } catch (error) {
       failed += 1;
-      const detail = error instanceof Error ? error.message : "erro desconhecido";
+      const detail =
+        error instanceof Error ? error.message : "erro desconhecido";
       // Loud on purpose: a buyer is out of pocket until this succeeds.
-      console.error(`[pagamento-atrasado] pedido ${order.late_order_id}: ${detail}`);
+      console.error(
+        `[pagamento-atrasado] pedido ${order.late_order_id}: ${detail}`,
+      );
     }
   }
 

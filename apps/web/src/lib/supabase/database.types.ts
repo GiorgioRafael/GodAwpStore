@@ -9,15 +9,10 @@
 
 export type JsonObject = { [key: string]: Json | undefined };
 
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonObject
-  | Json[];
+export type Json = string | number | boolean | null | JsonObject | Json[];
 
-type InsertRow<Row, Required extends keyof Row = never> = Partial<Row> & Pick<Row, Required>;
+type InsertRow<Row, Required extends keyof Row = never> = Partial<Row> &
+  Pick<Row, Required>;
 type UpdateRow<Row> = Partial<Row>;
 
 type Relationship<
@@ -806,12 +801,7 @@ export type Database = {
         Insert: InsertRow<SubstoreRow, "game_id" | "name" | "slug" | "title">;
         Update: UpdateRow<SubstoreRow>;
         Relationships: [
-          Relationship<
-            "substores_game_id_fkey",
-            ["game_id"],
-            "games",
-            ["id"]
-          >,
+          Relationship<"substores_game_id_fkey", ["game_id"], "games", ["id"]>,
           Relationship<
             "substores_created_by_fkey",
             ["created_by"],
@@ -850,7 +840,10 @@ export type Database = {
       };
       inventory_batches: {
         Row: InventoryBatchRow;
-        Insert: InsertRow<InventoryBatchRow, "product_id" | "source" | "unit_count">;
+        Insert: InsertRow<
+          InventoryBatchRow,
+          "product_id" | "source" | "unit_count"
+        >;
         Update: UpdateRow<InventoryBatchRow>;
         Relationships: [
           Relationship<
@@ -871,7 +864,12 @@ export type Database = {
         Row: InventoryUnitRow;
         Insert: InsertRow<
           InventoryUnitRow,
-          "product_id" | "batch_id" | "encrypted_payload" | "iv" | "auth_tag" | "fingerprint"
+          | "product_id"
+          | "batch_id"
+          | "encrypted_payload"
+          | "iv"
+          | "auth_tag"
+          | "fingerprint"
         >;
         Update: UpdateRow<InventoryUnitRow>;
         Relationships: [
@@ -897,7 +895,10 @@ export type Database = {
       };
       guilds: {
         Row: GuildRow;
-        Insert: InsertRow<GuildRow, "discord_guild_id" | "owner_discord_id" | "name">;
+        Insert: InsertRow<
+          GuildRow,
+          "discord_guild_id" | "owner_discord_id" | "name"
+        >;
         Update: UpdateRow<GuildRow>;
         Relationships: [
           Relationship<
@@ -1012,7 +1013,12 @@ export type Database = {
         >;
         Update: UpdateRow<GiveawayRow>;
         Relationships: [
-          Relationship<"giveaways_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
+          Relationship<
+            "giveaways_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
           Relationship<
             "giveaways_winner_entry_fkey",
             ["winner_entry_id"],
@@ -1031,7 +1037,11 @@ export type Database = {
         Row: GiveawayPrizeRow;
         Insert: InsertRow<
           GiveawayPrizeRow,
-          "giveaway_id" | "position" | "product_id" | "product_name" | "quantity"
+          | "giveaway_id"
+          | "position"
+          | "product_id"
+          | "product_name"
+          | "quantity"
         >;
         Update: UpdateRow<GiveawayPrizeRow>;
         Relationships: [
@@ -1214,7 +1224,12 @@ export type Database = {
             "whitelist_entries",
             ["id"]
           >,
-          Relationship<"orders_product_id_fkey", ["product_id"], "products", ["id"]>,
+          Relationship<
+            "orders_product_id_fkey",
+            ["product_id"],
+            "products",
+            ["id"]
+          >,
           Relationship<
             "orders_inventory_unit_id_fkey",
             ["inventory_unit_id"],
@@ -1319,7 +1334,12 @@ export type Database = {
         >;
         Update: UpdateRow<UpsellOfferRow>;
         Relationships: [
-          Relationship<"upsell_offers_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
+          Relationship<
+            "upsell_offers_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
           Relationship<
             "upsell_offers_seller_whitelist_entry_id_fkey",
             ["seller_whitelist_entry_id"],
@@ -1332,7 +1352,12 @@ export type Database = {
             "products",
             ["id"]
           >,
-          Relationship<"upsell_offers_order_id_fkey", ["order_id"], "orders", ["id"]>,
+          Relationship<
+            "upsell_offers_order_id_fkey",
+            ["order_id"],
+            "orders",
+            ["id"]
+          >,
         ];
       };
       order_items: {
@@ -1349,7 +1374,12 @@ export type Database = {
         >;
         Update: UpdateRow<OrderItemRow>;
         Relationships: [
-          Relationship<"order_items_order_id_fkey", ["order_id"], "orders", ["id"]>,
+          Relationship<
+            "order_items_order_id_fkey",
+            ["order_id"],
+            "orders",
+            ["id"]
+          >,
           Relationship<
             "order_items_product_id_fkey",
             ["product_id"],
@@ -1360,7 +1390,10 @@ export type Database = {
       };
       order_inventory_units: {
         Row: OrderInventoryUnitRow;
-        Insert: InsertRow<OrderInventoryUnitRow, "order_id" | "inventory_unit_id" | "position">;
+        Insert: InsertRow<
+          OrderInventoryUnitRow,
+          "order_id" | "inventory_unit_id" | "position"
+        >;
         Update: UpdateRow<OrderInventoryUnitRow>;
         Relationships: [
           Relationship<
@@ -1422,7 +1455,10 @@ export type Database = {
       };
       ledger_entries: {
         Row: LedgerEntryRow;
-        Insert: InsertRow<LedgerEntryRow, "whitelist_entry_id" | "kind" | "amount_cents">;
+        Insert: InsertRow<
+          LedgerEntryRow,
+          "whitelist_entry_id" | "kind" | "amount_cents"
+        >;
         Update: UpdateRow<LedgerEntryRow>;
         Relationships: [
           Relationship<
@@ -1431,9 +1467,24 @@ export type Database = {
             "whitelist_entries",
             ["id"]
           >,
-          Relationship<"ledger_entries_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
-          Relationship<"ledger_entries_order_id_fkey", ["order_id"], "orders", ["id"]>,
-          Relationship<"ledger_entries_payout_id_fkey", ["payout_id"], "payouts", ["id"]>,
+          Relationship<
+            "ledger_entries_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
+          Relationship<
+            "ledger_entries_order_id_fkey",
+            ["order_id"],
+            "orders",
+            ["id"]
+          >,
+          Relationship<
+            "ledger_entries_payout_id_fkey",
+            ["payout_id"],
+            "payouts",
+            ["id"]
+          >,
           Relationship<
             "ledger_entries_created_by_fkey",
             ["created_by"],
@@ -1466,7 +1517,10 @@ export type Database = {
       };
       roulette_coin_balances: {
         Row: RouletteCoinBalanceRow;
-        Insert: InsertRow<RouletteCoinBalanceRow, "auth_user_id" | "discord_user_id">;
+        Insert: InsertRow<
+          RouletteCoinBalanceRow,
+          "auth_user_id" | "discord_user_id"
+        >;
         Update: UpdateRow<RouletteCoinBalanceRow>;
         Relationships: [];
       };
@@ -1487,7 +1541,12 @@ export type Database = {
         >;
         Update: UpdateRow<RouletteRedemptionRow>;
         Relationships: [
-          Relationship<"roulette_redemptions_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
+          Relationship<
+            "roulette_redemptions_guild_id_fkey",
+            ["guild_id"],
+            "guilds",
+            ["id"]
+          >,
           Relationship<
             "roulette_redemptions_product_id_fkey",
             ["product_id"],
@@ -1500,7 +1559,11 @@ export type Database = {
         Row: RouletteRedemptionItemRow;
         Insert: InsertRow<
           RouletteRedemptionItemRow,
-          "redemption_id" | "prize_key" | "product_name" | "value_cents" | "quantity"
+          | "redemption_id"
+          | "prize_key"
+          | "product_name"
+          | "value_cents"
+          | "quantity"
         >;
         Update: UpdateRow<RouletteRedemptionItemRow>;
         Relationships: [
@@ -1817,6 +1880,7 @@ export type Database = {
           late_quantity: number;
           late_amount_cents: number;
           late_detected_at: string;
+          late_reason: "late_payment" | "stock_unavailable_after_payment";
         }[];
       };
       record_late_payment_ticket: {
@@ -2020,11 +2084,19 @@ export type Database = {
         Returns: { cancelled_giveaway_id: string; was_cancelled: boolean }[];
       };
       record_giveaway_publication: {
-        Args: { p_giveaway_id: string; p_message_id: string | null; p_error: string | null };
+        Args: {
+          p_giveaway_id: string;
+          p_message_id: string | null;
+          p_error: string | null;
+        };
         Returns: boolean;
       };
       record_giveaway_result_publication: {
-        Args: { p_giveaway_id: string; p_message_id: string | null; p_error: string | null };
+        Args: {
+          p_giveaway_id: string;
+          p_message_id: string | null;
+          p_error: string | null;
+        };
         Returns: boolean;
       };
       record_discord_native_invite_join: {
@@ -2242,7 +2314,11 @@ export type Database = {
         }[];
       };
       complete_giveaway_ticket: {
-        Args: { p_giveaway_id: string; p_claim_token: string; p_channel_id: string };
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_channel_id: string;
+        };
         Returns: boolean;
       };
       complete_giveaway_winner_ticket: {
@@ -2254,7 +2330,11 @@ export type Database = {
         Returns: boolean;
       };
       fail_giveaway_ticket: {
-        Args: { p_giveaway_id: string; p_claim_token: string; p_error: string | null };
+        Args: {
+          p_giveaway_id: string;
+          p_claim_token: string;
+          p_error: string | null;
+        };
         Returns: boolean;
       };
       fail_giveaway_winner_ticket: {
@@ -2321,7 +2401,11 @@ export type Database = {
           p_units: Json;
           p_request_id: string;
         };
-        Returns: { batch_id: string; imported_count: number; reused: boolean }[];
+        Returns: {
+          batch_id: string;
+          imported_count: number;
+          reused: boolean;
+        }[];
       };
       admin_get_inventory_secret: {
         Args: { p_unit_id: string };
@@ -2525,8 +2609,7 @@ export type Database = {
               p_ticket_channel_id: string;
               p_claim_token: string;
               p_completion_source:
-                | "discord_http_interaction"
-                | "discord_close_reconciliation";
+                "discord_http_interaction" | "discord_close_reconciliation";
             };
         Returns: {
           completed_order_id: string;
@@ -2846,11 +2929,7 @@ export type Database = {
     Enums: {
       catalog_status: "active" | "inactive" | "archived";
       inventory_unit_status:
-        | "available"
-        | "reserved"
-        | "delivered"
-        | "quarantined"
-        | "revoked";
+        "available" | "reserved" | "delivered" | "quarantined" | "revoked";
       guild_status: "active" | "suspended" | "left" | "archived";
       order_status:
         | "pending"
@@ -2871,11 +2950,7 @@ export type Database = {
         | "refunded"
         | "failed";
       discord_ticket_status:
-        | "not_created"
-        | "creating"
-        | "open"
-        | "closed"
-        | "failed";
+        "not_created" | "creating" | "open" | "closed" | "failed";
       giveaway_status:
         | "scheduled"
         | "active"
@@ -2905,22 +2980,17 @@ export type Database = {
   };
 };
 
-export type Tables<
-  TableName extends keyof Database["public"]["Tables"],
-> = Database["public"]["Tables"][TableName]["Row"];
+export type Tables<TableName extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][TableName]["Row"];
 
-export type TablesInsert<
-  TableName extends keyof Database["public"]["Tables"],
-> = Database["public"]["Tables"][TableName]["Insert"];
+export type TablesInsert<TableName extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][TableName]["Insert"];
 
-export type TablesUpdate<
-  TableName extends keyof Database["public"]["Tables"],
-> = Database["public"]["Tables"][TableName]["Update"];
+export type TablesUpdate<TableName extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][TableName]["Update"];
 
-export type Views<
-  ViewName extends keyof Database["public"]["Views"],
-> = Database["public"]["Views"][ViewName]["Row"];
+export type Views<ViewName extends keyof Database["public"]["Views"]> =
+  Database["public"]["Views"][ViewName]["Row"];
 
-export type Enums<
-  EnumName extends keyof Database["public"]["Enums"],
-> = Database["public"]["Enums"][EnumName];
+export type Enums<EnumName extends keyof Database["public"]["Enums"]> =
+  Database["public"]["Enums"][EnumName];

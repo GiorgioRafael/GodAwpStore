@@ -50,6 +50,7 @@ import {
   type DemoRoulettePrizeKey,
   type RouletteWheelPrize,
 } from "@/lib/roulette/demo";
+import { ROULETTE_BRANDING } from "@/lib/roulette/branding";
 import {
   EXTRA_TURNS,
   highlightedPrizeValues,
@@ -70,7 +71,11 @@ const PRIZE_ICONS: LucideIcon[] = [Gift, Star, Zap, Gem, Crown];
 
 function prizeIcon(prizeKey: string) {
   const index = rouletteSlotIndex(prizeKey);
-  return PRIZE_ICONS[(Number.isFinite(index) ? index - 1 : 0) % PRIZE_ICONS.length] ?? Gift;
+  return (
+    PRIZE_ICONS[
+      (Number.isFinite(index) ? index - 1 : 0) % PRIZE_ICONS.length
+    ] ?? Gift
+  );
 }
 
 const PAYMENT_POLL_INTERVAL_MS = 4_000;
@@ -101,10 +106,16 @@ export function RouletteExperience({
 }) {
   const [inventory, setInventory] = useState(initialInventory);
   const [balanceCents, setBalanceCents] = useState(initialBalanceCents);
-  const [lastPrizeKey, setLastPrizeKey] = useState<DemoRoulettePrizeKey | null>(null);
+  const [lastPrizeKey, setLastPrizeKey] = useState<DemoRoulettePrizeKey | null>(
+    null,
+  );
   const [landed, setLanded] = useState(false);
-  const [phase, setPhase] = useState<Phase>(initialPurchaseId ? "awaiting_payment" : "idle");
-  const [purchaseId, setPurchaseId] = useState<string | null>(initialPurchaseId);
+  const [phase, setPhase] = useState<Phase>(
+    initialPurchaseId ? "awaiting_payment" : "idle",
+  );
+  const [purchaseId, setPurchaseId] = useState<string | null>(
+    initialPurchaseId,
+  );
   const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
   const [coinQuantity, setCoinQuantity] = useState(MINIMUM_COIN_PURCHASE);
   const [error, setError] = useState<string | null>(null);
@@ -115,14 +126,20 @@ export function RouletteExperience({
   const rotationRef = useRef(0);
   const wheelRef = useRef<SVGGElement | null>(null);
   const phaseRef = useRef(phase);
-  const totalPrizes = inventory.reduce((total, item) => total + item.quantity, 0);
+  const totalPrizes = inventory.reduce(
+    (total, item) => total + item.quantity,
+    0,
+  );
   const isBusy = phase !== "idle";
   const canSpin = isAdmin || balanceCents >= SPIN_COST_CENTS;
   // Selection and totals are read off the item itself. Pricing them through the
   // slot they came from made the button promise whatever that slot points at
   // today, while the server credits what the prize was frozen at.
   const selection: RouletteSelection[] = inventory.flatMap((item) => {
-    const quantity = Math.min(selected[rouletteInventoryKey(item)] ?? 0, item.quantity);
+    const quantity = Math.min(
+      selected[rouletteInventoryKey(item)] ?? 0,
+      item.quantity,
+    );
     return quantity > 0
       ? [
           {
@@ -134,9 +151,15 @@ export function RouletteExperience({
         ]
       : [];
   });
-  const selectedUnits = selection.reduce((total, line) => total + line.quantity, 0);
+  const selectedUnits = selection.reduce(
+    (total, line) => total + line.quantity,
+    0,
+  );
   const selectedSaleCents = inventory.reduce((total, item) => {
-    const quantity = Math.min(selected[rouletteInventoryKey(item)] ?? 0, item.quantity);
+    const quantity = Math.min(
+      selected[rouletteInventoryKey(item)] ?? 0,
+      item.quantity,
+    );
     return total + item.saleValueCents * quantity;
   }, 0);
   const hasSelection = selection.length > 0;
@@ -197,9 +220,12 @@ export function RouletteExperience({
     router.refresh();
     setLanded(false);
 
-    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const reduceMotion = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
     const from = rotationRef.current;
-    const to = demoRouletteRotation(from, result.prizeKey, prizes) + EXTRA_TURNS * 360;
+    const to =
+      demoRouletteRotation(from, result.prizeKey, prizes) + EXTRA_TURNS * 360;
     rotationRef.current = await spinWheelTo(
       wheelRef.current,
       from,
@@ -264,7 +290,10 @@ export function RouletteExperience({
     // Someone returning from the LivePix page may already be credited, so check
     // once right away instead of waiting a full poll interval.
     void check(purchaseId);
-    const timer = window.setInterval(() => void check(purchaseId), PAYMENT_POLL_INTERVAL_MS);
+    const timer = window.setInterval(
+      () => void check(purchaseId),
+      PAYMENT_POLL_INTERVAL_MS,
+    );
 
     return () => {
       cancelled = true;
@@ -345,21 +374,28 @@ export function RouletteExperience({
     setPhase("idle");
   }
 
-  const lastPrize = lastPrizeKey ? rouletteWheelPrize(prizes, lastPrizeKey) : null;
-  const topPrizeCents = prizes.reduce((top, prize) => Math.max(top, prize.valueCents), 0);
+  const lastPrize = lastPrizeKey
+    ? rouletteWheelPrize(prizes, lastPrizeKey)
+    : null;
+  const topPrizeCents = prizes.reduce(
+    (top, prize) => Math.max(top, prize.valueCents),
+    0,
+  );
   const highlighted = useMemo(
     () => highlightedPrizeValues(prizes.map((prize) => prize.valueCents)),
     [prizes],
   );
   const bigPrize = Boolean(lastPrize && highlighted.has(lastPrize.valueCents));
-  const topPrize = Boolean(lastPrize && lastPrize.valueCents >= topPrizeCents && topPrizeCents > 0);
+  const topPrize = Boolean(
+    lastPrize && lastPrize.valueCents >= topPrizeCents && topPrizeCents > 0,
+  );
   const celebrating = landed && bigPrize;
 
   return (
     <main className="relative min-h-[calc(100vh-76px)] overflow-hidden bg-[var(--rlt-ink)] text-white">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,rgba(217,70,239,.11),transparent_32%),radial-gradient(circle_at_84%_78%,color-mix(in oklab, var(--rlt-brand-600) 8%, transparent),transparent_30%)]"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_28%_22%,color-mix(in_oklab,var(--rlt-brand-400)_11%,transparent),transparent_32%),radial-gradient(circle_at_84%_78%,color-mix(in_oklab,var(--rlt-brand-600)_8%,transparent),transparent_30%)]"
       />
       <div className="sticky top-0 z-30 border-b border-amber-300/20 bg-[#0b0705]/90 backdrop-blur">
         <div className="mx-auto flex max-w-[1440px] items-center gap-3 px-4 py-3 sm:px-6 lg:px-10">
@@ -373,7 +409,9 @@ export function RouletteExperience({
           >
             {formatCoins(balanceCents)}
           </strong>
-          <span className="hidden text-sm text-[#9e8a76] sm:inline">moedas</span>
+          <span className="hidden text-sm text-[#9e8a76] sm:inline">
+            moedas
+          </span>
           <button
             type="button"
             onClick={() => setBuyOpen((open) => !open)}
@@ -400,7 +438,8 @@ export function RouletteExperience({
             <div className="mx-auto max-w-[1440px] px-4 py-4 sm:px-6 lg:px-10">
               <div className="mx-auto flex max-w-[560px] flex-col gap-3">
                 <p className="text-sm text-[#c8b49a]">
-                  Cada moeda custa <strong className="text-amber-100">R$ 1,00</strong> e paga um
+                  Cada moeda custa{" "}
+                  <strong className="text-amber-100">R$ 1,00</strong> e paga um
                   giro. O Pix cai no seu saldo automaticamente.
                 </p>
                 <div className="flex items-center gap-2">
@@ -428,7 +467,9 @@ export function RouletteExperience({
                       type="button"
                       aria-label="Mais uma moeda"
                       onClick={() =>
-                        setCoinQuantity((value) => Math.min(MAXIMUM_COIN_PURCHASE, value + 1))
+                        setCoinQuantity((value) =>
+                          Math.min(MAXIMUM_COIN_PURCHASE, value + 1),
+                        )
                       }
                       disabled={isBusy || coinQuantity >= MAXIMUM_COIN_PURCHASE}
                       className="grid size-11 place-items-center rounded-r-xl text-amber-200 transition-colors hover:bg-amber-300/10 disabled:opacity-40"
@@ -467,8 +508,8 @@ export function RouletteExperience({
                 </div>
                 {isAdmin ? (
                   <p className="rounded-lg border border-brand-300/25 bg-brand-400/10 px-3 py-2 text-xs font-semibold text-brand-200">
-                    Modo administrador: o giro é grátis, mas a venda de itens credita moedas de
-                    verdade nesta conta.
+                    Modo administrador: o giro é grátis, mas a venda de itens
+                    credita moedas de verdade nesta conta.
                   </p>
                 ) : null}
               </div>
@@ -480,12 +521,12 @@ export function RouletteExperience({
       <div className="relative mx-auto grid max-w-[1440px] gap-10 px-4 py-10 sm:px-6 sm:py-14 lg:grid-cols-[minmax(0,1.55fr)_minmax(320px,.85fr)] lg:gap-0 lg:px-10 [@media(max-height:820px)]:py-7">
         <section className="min-w-0 lg:pr-10 xl:pr-14">
           <h1 className="max-w-3xl text-3xl font-semibold tracking-[-0.045em] text-[var(--rlt-text)] sm:text-4xl lg:text-[44px] lg:leading-[1.08]">
-            Gire e descubra seu prêmio
+            {ROULETTE_BRANDING.experience.title}
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--rlt-text-muted)] sm:text-base">
             {isAdmin
               ? "Modo administrador: os giros são gratuitos para testes internos."
-              : "Cada moeda vale R$ 1,00 e paga um giro. Não gostou do prêmio? Venda de volta por moedas."}
+              : ROULETTE_BRANDING.experience.description}
           </p>
 
           <div className="mt-7 [@media(max-height:820px)]:mt-4">
@@ -504,16 +545,20 @@ export function RouletteExperience({
                 />
                 <span
                   aria-hidden="true"
-                  className="absolute left-1/2 top-[-1px] z-20 h-0 w-0 -translate-x-1/2 drop-shadow-[0_0_12px_rgba(244,114,182,.95)]"
+                  className="absolute left-1/2 top-[-1px] z-20 h-0 w-0 -translate-x-1/2 drop-shadow-[0_0_12px_var(--rlt-brand-300)]"
                   style={{
                     borderLeft: "clamp(18px, 4vw, 22px) solid transparent",
                     borderRight: "clamp(18px, 4vw, 22px) solid transparent",
                     borderTop: `clamp(32px, 6vw, 39px) solid ${
-                      celebrating ? (topPrize ? "#fbbf24" : "#34d399") : "var(--rlt-brand-300)"
+                      celebrating
+                        ? topPrize
+                          ? "#fbbf24"
+                          : "#34d399"
+                        : "var(--rlt-brand-300)"
                     }`,
                   }}
                 />
-                <div className="absolute inset-[5.5%] rounded-full border border-brand-200/35 bg-[var(--rlt-ink-deep)] p-[2.2%] shadow-[0_0_0_5px_rgba(217,70,239,.06),0_0_54px_color-mix(in oklab, var(--rlt-brand-400) 24%, transparent),inset_0_0_28px_rgba(217,70,239,.12)]">
+                <div className="absolute inset-[5.5%] rounded-full border border-brand-200/35 bg-[var(--rlt-ink-deep)] p-[2.2%] shadow-[0_0_0_5px_color-mix(in_oklab,var(--rlt-brand-400)_6%,transparent),0_0_54px_color-mix(in_oklab,var(--rlt-brand-400)_24%,transparent),inset_0_0_28px_color-mix(in_oklab,var(--rlt-brand-400)_12%,transparent)]">
                   <svg
                     viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
                     role="img"
@@ -530,11 +575,25 @@ export function RouletteExperience({
                           x2="0"
                           y2="1"
                         >
-                          <stop offset="0%" stopColor={prize.accent} stopOpacity="0.45" />
-                          <stop offset="100%" stopColor={prize.surface} stopOpacity="1" />
+                          <stop
+                            offset="0%"
+                            stopColor={prize.accent}
+                            stopOpacity="0.45"
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor={prize.surface}
+                            stopOpacity="1"
+                          />
                         </linearGradient>
                       ))}
-                      <filter id="site-glow" x="-40%" y="-40%" width="180%" height="180%">
+                      <filter
+                        id="site-glow"
+                        x="-40%"
+                        y="-40%"
+                        width="180%"
+                        height="180%"
+                      >
                         <feGaussianBlur stdDeviation="3" result="blur" />
                         <feMerge>
                           <feMergeNode in="blur" />
@@ -547,7 +606,7 @@ export function RouletteExperience({
                       cy={WHEEL_CENTER}
                       r={WHEEL_RADIUS + 10}
                       fill="var(--rlt-ink-deep)"
-                      stroke="rgba(244,114,182,.72)"
+                      stroke="color-mix(in oklab, var(--rlt-brand-300) 72%, transparent)"
                       strokeWidth="3"
                     />
                     <g ref={wheelRef} style={{ transformOrigin: "50% 50%" }}>
@@ -559,7 +618,11 @@ export function RouletteExperience({
                             <path
                               d={wheelSegmentPath(index, prizes.length)}
                               fill={`url(#site-slot-${index})`}
-                              stroke={highlight ? "#fde68a" : "rgba(232,121,249,.36)"}
+                              stroke={
+                                highlight
+                                  ? "#fde68a"
+                                  : "color-mix(in oklab, var(--rlt-brand-300) 36%, transparent)"
+                              }
                               strokeWidth={highlight ? 3 : 1.6}
                               filter={highlight ? "url(#site-glow)" : undefined}
                             />
@@ -598,7 +661,7 @@ export function RouletteExperience({
                       })}
                     </g>
                   </svg>
-                  <span className="absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full border-2 border-brand-200/55 bg-[var(--rlt-ink-deep)] p-[8px] shadow-[0_0_25px_rgba(217,70,239,.42)]">
+                  <span className="absolute left-1/2 top-1/2 grid size-[25%] -translate-x-1/2 -translate-y-1/2 place-items-center overflow-hidden rounded-full border-2 border-brand-200/55 bg-[var(--rlt-ink-deep)] p-[8px] shadow-[0_0_25px_color-mix(in_oklab,var(--rlt-brand-400)_42%,transparent)]">
                     <BrandMark className="rounded-full" />
                   </span>
                 </div>
@@ -627,7 +690,11 @@ export function RouletteExperience({
                         }`}
                       >
                         <Sparkles aria-hidden="true" className="size-3.5" />
-                        {topPrize ? "Prêmio máximo" : bigPrize ? "Prêmio raro" : "Você ganhou"}
+                        {topPrize
+                          ? "Prêmio máximo"
+                          : bigPrize
+                            ? "Prêmio raro"
+                            : "Você ganhou"}
                       </p>
                       <p
                         data-testid="roulette-result"
@@ -655,10 +722,13 @@ export function RouletteExperience({
                 type="button"
                 onClick={canSpin ? handleSpin : () => setBuyOpen(true)}
                 disabled={isBusy || !available}
-                className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-brand-200/55 bg-gradient-to-b from-brand-500 to-[var(--rlt-brand-600)] px-6 text-base font-bold text-white shadow-[0_0_0_3px_rgba(217,70,239,.1),0_15px_40px_color-mix(in oklab, var(--rlt-brand-400) 24%, transparent)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
+                className="mx-auto mt-4 flex h-14 w-full max-w-[420px] items-center justify-center gap-3 rounded-2xl border border-brand-200/55 bg-gradient-to-b from-brand-500 to-[var(--rlt-brand-600)] px-6 text-base font-bold text-white shadow-[0_0_0_3px_color-mix(in_oklab,var(--rlt-brand-400)_10%,transparent),0_15px_40px_color-mix(in_oklab,var(--rlt-brand-400)_24%,transparent)] transition-[filter,transform] hover:-translate-y-0.5 hover:brightness-110 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-55 sm:text-lg"
               >
                 {phase === "spinning" ? (
-                  <RotateCw aria-hidden="true" className="size-5 animate-spin" />
+                  <RotateCw
+                    aria-hidden="true"
+                    className="size-5 animate-spin"
+                  />
                 ) : phase !== "idle" ? (
                   <Loader2 aria-hidden="true" className="size-5 animate-spin" />
                 ) : canSpin ? (
@@ -669,14 +739,16 @@ export function RouletteExperience({
                 {spinButtonLabel(phase, isAdmin, canSpin)}
               </button>
 
-
               {phase === "awaiting_payment" ? (
                 <div
                   role="status"
                   className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-brand-300/25 bg-[var(--rlt-ink-raised)]/90 p-4 text-center"
                 >
                   <p className="flex items-center justify-center gap-2 text-sm font-semibold text-brand-200">
-                    <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                    <Loader2
+                      aria-hidden="true"
+                      className="size-4 animate-spin"
+                    />
                     Aguardando a confirmação do Pix
                   </p>
                   <p className="mt-2 text-xs leading-5 text-[var(--rlt-text-muted)]">
@@ -721,7 +793,6 @@ export function RouletteExperience({
                 </p>
               ) : null}
             </div>
-
           </div>
         </section>
 
@@ -747,7 +818,11 @@ export function RouletteExperience({
                 // The palette still comes from the slice, because that is what
                 // it is: colour. Everything the player reads comes from the
                 // item, so a repointed slice cannot rename what they own.
-                const slot = demoRoulettePrize(item.prizeKey, index, inventory.length);
+                const slot = demoRoulettePrize(
+                  item.prizeKey,
+                  index,
+                  inventory.length,
+                );
                 const Icon = prizeIcon(item.prizeKey);
                 const identity = rouletteInventoryKey(item);
                 const picked = Math.min(selected[identity] ?? 0, item.quantity);
@@ -780,9 +855,17 @@ export function RouletteExperience({
                         }}
                       >
                         {item.imageUrl ? (
-                          <img src={item.imageUrl} alt="" className="size-full object-cover" />
+                          <img
+                            src={item.imageUrl}
+                            alt=""
+                            className="size-full object-cover"
+                          />
                         ) : (
-                          <Icon aria-hidden="true" className="size-5" strokeWidth={1.8} />
+                          <Icon
+                            aria-hidden="true"
+                            className="size-5"
+                            strokeWidth={1.8}
+                          />
                         )}
                       </span>
                       <span className="min-w-0">
@@ -868,7 +951,12 @@ export function RouletteExperience({
                 <button
                   type="button"
                   onClick={handleSell}
-                  disabled={isBusy || !available || !hasSelection || selectedSaleCents <= 0}
+                  disabled={
+                    isBusy ||
+                    !available ||
+                    !hasSelection ||
+                    selectedSaleCents <= 0
+                  }
                   className="flex h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/45 bg-amber-400/15 px-3 text-sm font-bold text-amber-100 transition-colors hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <Coins aria-hidden="true" className="size-4 shrink-0" />
@@ -880,8 +968,13 @@ export function RouletteExperience({
                   disabled={isBusy || !available || !hasSelection}
                   className="flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300/45 bg-emerald-400/15 px-3 text-sm font-bold text-emerald-100 transition-colors hover:bg-emerald-400/25 disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <PackageCheck aria-hidden="true" className="size-4 shrink-0" />
-                  {phase === "redeeming" ? "Resgatando..." : "Resgatar selecionados"}
+                  <PackageCheck
+                    aria-hidden="true"
+                    className="size-4 shrink-0"
+                  />
+                  {phase === "redeeming"
+                    ? "Resgatando..."
+                    : "Resgatar selecionados"}
                 </button>
               </div>
             </div>
@@ -893,8 +986,8 @@ export function RouletteExperience({
               className="mt-0.5 size-4 shrink-0 text-brand-300/55"
             />
             <p>
-              Os itens são configurados no painel. Vender devolve
-              parte do valor em moedas; a entrega dos prêmios ainda será liberada em uma
+              Os itens são configurados no painel. Vender devolve parte do valor
+              em moedas; a entrega dos prêmios ainda será liberada em uma
               próxima etapa.
             </p>
           </div>

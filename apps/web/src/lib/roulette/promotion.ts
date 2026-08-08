@@ -2,15 +2,19 @@ import "server-only";
 
 import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
 import {
+  assertConfiguredDiscordBotIdentity,
   assertDiscordBotGuildAccess,
   DiscordApiError,
   discordBotJson,
 } from "@/lib/bot/discord-api";
+import {
+  ROULETTE_BRANDING,
+  type RouletteBranding,
+} from "@/lib/roulette/branding";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const ROULETTE_CHANNEL_NAME = "🎰┊roleta";
-const ROULETTE_PROMOTION_MARKER = "GWStore • Grow a Garden 2 • roleta";
-const ROULETTE_EMBED_COLOR = 0xd946ef;
+const LEGACY_GWSTORE_PROMOTION_MARKER = "GWStore • Grow a Garden 2 • roleta";
 
 type DiscordChannel = {
   id?: unknown;
@@ -25,7 +29,11 @@ type DiscordMessage = {
   id?: unknown;
   channel_id?: unknown;
   author?: { bot?: unknown };
-  embeds?: Array<{ footer?: { text?: unknown } }>;
+  embeds?: Array<{
+    url?: unknown;
+    image?: { url?: unknown };
+    footer?: { text?: unknown };
+  }>;
 };
 
 export type RoulettePromotionCopy = {
@@ -50,22 +58,35 @@ export async function publishRoulettePromotion(
   validatePromotionInput(input);
   const fetcher = options.fetcher ?? fetch;
   const siteUrl = normalizeSiteUrl(options.siteUrl);
+  await assertConfiguredDiscordBotIdentity(fetcher);
   await assertDiscordBotGuildAccess(input.guildId, fetcher);
 
   const channel = await ensurePromotionChannel(
     input.guildId,
     input.channelId,
+    siteUrl,
+    ROULETTE_BRANDING,
     fetcher,
   );
-  const payload = roulettePromotionPayload(input, siteUrl);
+  const payload = roulettePromotionPayload(input, siteUrl, ROULETTE_BRANDING);
 
   let message = input.messageId
     ? await editPromotionMessage(channel.id, input.messageId, payload, fetcher)
     : null;
   if (!message) {
-    const existing = await findExistingPromotionMessage(channel.id, fetcher);
+    const existing = await findExistingPromotionMessage(
+      channel.id,
+      ROULETTE_BRANDING,
+      siteUrl,
+      fetcher,
+    );
     if (existing) {
-      message = await editPromotionMessage(channel.id, existing.id, payload, fetcher);
+      message = await editPromotionMessage(
+        channel.id,
+        existing.id,
+        payload,
+        fetcher,
+      );
     }
   }
   if (!message) {
@@ -77,11 +98,12 @@ export async function publishRoulettePromotion(
 
 export function roulettePromotionPayload(
   copy: RoulettePromotionCopy,
-  siteUrl = "https://gwstore.vercel.app",
+  siteUrl = ROULETTE_BRANDING.canonicalSiteUrl,
+  branding = ROULETTE_BRANDING,
 ) {
   const rouletteUrl = new URL("/roleta", normalizeSiteUrl(siteUrl)).toString();
   const bannerUrl = new URL(
-    roulettePromotionBannerPath(),
+    branding.bannerPath,
     normalizeSiteUrl(siteUrl),
   ).toString();
 
@@ -89,12 +111,12 @@ export function roulettePromotionPayload(
     allowed_mentions: { parse: [] as string[] },
     embeds: [
       {
-        color: ROULETTE_EMBED_COLOR,
+        color: branding.embedColor,
         title: copy.title,
         url: rouletteUrl,
         description: copy.description,
         image: { url: bannerUrl },
-        footer: { text: ROULETTE_PROMOTION_MARKER },
+        footer: { text: branding.promotionMarker },
       },
     ],
     components: [
@@ -122,6 +144,8 @@ export function roulettePromotionBannerPath(storeSlug = STORE_SLUG) {
 async function ensurePromotionChannel(
   guildId: string,
   preferredChannelId: string | null | undefined,
+  siteUrl: string,
+  branding: RouletteBranding,
   fetcher: typeof fetch,
 ) {
   if (preferredChannelId && SNOWFLAKE_PATTERN.test(preferredChannelId)) {
@@ -132,14 +156,15 @@ async function ensurePromotionChannel(
         fetcher,
       );
       if (
-        preferred.id === preferredChannelId
-        && preferred.guild_id === guildId
-        && preferred.type === 0
+        preferred.id === preferredChannelId &&
+        preferred.guild_id === guildId &&
+        preferred.type === 0
       ) {
         return { id: preferredChannelId };
       }
     } catch (error) {
-      if (!(error instanceof DiscordApiError) || error.status !== 404) throw error;
+      if (!(error instanceof DiscordApiError) || error.status !== 404)
+        throw error;
     }
   }
 
@@ -150,18 +175,18 @@ async function ensurePromotionChannel(
   );
   const existing = channels.find(
     (channel) =>
-      channel.type === 0
-      && channel.name === ROULETTE_CHANNEL_NAME
-      && typeof channel.id === "string"
-      && SNOWFLAKE_PATTERN.test(channel.id),
+      channel.type === 0 &&
+      channel.name === ROULETTE_CHANNEL_NAME &&
+      typeof channel.id === "string" &&
+      SNOWFLAKE_PATTERN.test(channel.id),
   );
   if (existing && typeof existing.id === "string") return { id: existing.id };
 
   const storefront = channels.find(
     (channel) =>
-      channel.type === 0
-      && typeof channel.name === "string"
-      && channel.name.includes("comprar-itens"),
+      channel.type === 0 &&
+      typeof channel.name === "string" &&
+      channel.name.includes("comprar-itens"),
   );
   const created = await discordBotJson<DiscordChannel>(
     `/guilds/${guildId}/channels`,
@@ -170,9 +195,11 @@ async function ensurePromotionChannel(
       body: JSON.stringify({
         name: ROULETTE_CHANNEL_NAME,
         type: 0,
-        topic: `Gire a roleta da ${STORE_NAME} e acompanhe seus prêmios em gwstore.vercel.app/roleta`,
+        topic: `Gire a roleta da ${STORE_NAME} e acompanhe seus prêmios em ${new URL("/roleta", siteUrl).toString()}`,
         parent_id:
-          typeof storefront?.parent_id === "string" ? storefront.parent_id : undefined,
+          typeof storefront?.parent_id === "string"
+            ? storefront.parent_id
+            : undefined,
         permission_overwrites: Array.isArray(storefront?.permission_overwrites)
           ? storefront.permission_overwrites
           : undefined,
@@ -182,13 +209,17 @@ async function ensurePromotionChannel(
     fetcher,
   );
   if (typeof created.id !== "string" || !SNOWFLAKE_PATTERN.test(created.id)) {
-    throw new Error("Discord retornou um canal inválido para a divulgação da roleta.");
+    throw new Error(
+      "Discord retornou um canal inválido para a divulgação da roleta.",
+    );
   }
   return { id: created.id };
 }
 
 async function findExistingPromotionMessage(
   channelId: string,
+  branding: RouletteBranding,
+  siteUrl: string,
   fetcher: typeof fetch,
 ) {
   const messages = await discordBotJson<DiscordMessage[]>(
@@ -198,14 +229,27 @@ async function findExistingPromotionMessage(
   );
   const message = messages.find(
     (candidate) =>
-      candidate.author?.bot === true
-      && candidate.embeds?.some(
-        (embed) => embed.footer?.text === ROULETTE_PROMOTION_MARKER,
-      )
-      && typeof candidate.id === "string"
-      && SNOWFLAKE_PATTERN.test(candidate.id),
+      candidate.author?.bot === true &&
+      candidate.embeds?.some((embed) => {
+        if (embed.footer?.text === branding.promotionMarker) return true;
+        if (embed.footer?.text !== LEGACY_GWSTORE_PROMOTION_MARKER)
+          return false;
+        return [embed.url, embed.image?.url].some(
+          (url) => typeof url === "string" && sameOrigin(url, siteUrl),
+        );
+      }) &&
+      typeof candidate.id === "string" &&
+      SNOWFLAKE_PATTERN.test(candidate.id),
   );
   return message && typeof message.id === "string" ? { id: message.id } : null;
+}
+
+function sameOrigin(candidate: string, expected: string) {
+  try {
+    return new URL(candidate).origin === new URL(expected).origin;
+  } catch {
+    return false;
+  }
 }
 
 async function editPromotionMessage(
@@ -243,9 +287,9 @@ async function createPromotionMessage(
 
 function validMessage(message: DiscordMessage, channelId: string) {
   if (
-    typeof message.id !== "string"
-    || !SNOWFLAKE_PATTERN.test(message.id)
-    || (message.channel_id !== undefined && message.channel_id !== channelId)
+    typeof message.id !== "string" ||
+    !SNOWFLAKE_PATTERN.test(message.id) ||
+    (message.channel_id !== undefined && message.channel_id !== channelId)
   ) {
     throw new Error("Discord retornou uma divulgação de roleta inválida.");
   }
@@ -270,7 +314,8 @@ function validatePromotionInput(
 }
 
 function normalizeSiteUrl(siteUrl?: string) {
-  const url = new URL(siteUrl ?? "https://gwstore.vercel.app");
-  if (url.protocol !== "https:") throw new Error("A divulgação exige um endereço HTTPS.");
+  const url = new URL(siteUrl ?? ROULETTE_BRANDING.canonicalSiteUrl);
+  if (url.protocol !== "https:")
+    throw new Error("A divulgação exige um endereço HTTPS.");
   return url.origin;
 }

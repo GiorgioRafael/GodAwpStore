@@ -33,7 +33,10 @@ export function RouletteHeader({
           </span>
         </Link>
 
-        <nav aria-label="Navegação da roleta" className="ml-3 hidden items-stretch self-stretch sm:flex">
+        <nav
+          aria-label="Navegação da roleta"
+          className="ml-3 hidden items-stretch self-stretch sm:flex"
+        >
           <Link
             href="/roleta"
             className="relative flex items-center px-4 text-sm font-semibold text-brand-300 after:absolute after:inset-x-4 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand-400"
@@ -84,7 +87,7 @@ export function RouletteHeader({
           ) : (
             <Link
               href="/auth/login?next=/roleta"
-              className="inline-flex h-10 items-center justify-center rounded-xl border border-brand-300/40 bg-brand-500 px-4 text-sm font-semibold text-white shadow-[0_10px_32px_rgba(217,70,239,.18)] transition-colors hover:bg-brand-400"
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-brand-300/40 bg-brand-500 px-4 text-sm font-semibold text-white shadow-[0_10px_32px_color-mix(in_oklab,var(--rlt-brand-400)_18%,transparent)] transition-colors hover:bg-brand-400"
             >
               Entrar com Discord
             </Link>

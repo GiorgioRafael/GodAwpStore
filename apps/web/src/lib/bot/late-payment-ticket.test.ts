@@ -2,14 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { rpc, createAdminSupabaseClient, loadBotRuntimeSettings } = vi.hoisted(() => {
-  const rpc = vi.fn();
-  return {
-    rpc,
-    createAdminSupabaseClient: vi.fn(() => ({ rpc })),
-    loadBotRuntimeSettings: vi.fn(),
-  };
-});
+const { rpc, createAdminSupabaseClient, loadBotRuntimeSettings } = vi.hoisted(
+  () => {
+    const rpc = vi.fn();
+    return {
+      rpc,
+      createAdminSupabaseClient: vi.fn(() => ({ rpc })),
+      loadBotRuntimeSettings: vi.fn(),
+    };
+  },
+);
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient }));
 vi.mock("./message-customization-server", () => ({ loadBotRuntimeSettings }));
 
@@ -26,34 +28,43 @@ const STAFF_ID = "900000000000000012";
 const BOT_ID = "900000000000000099";
 const CHANNEL_ID = "900000000000000020";
 
-type Call = { url: string; method: string; body: Record<string, unknown> | null };
+type Call = {
+  url: string;
+  method: string;
+  body: Record<string, unknown> | null;
+};
 
 function stubDiscord(existingChannels: unknown[] = []) {
   const calls: Call[] = [];
-  const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    const method = init?.method ?? "GET";
-    calls.push({
-      url,
-      method,
-      body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
-    });
+  const fetcher = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({
+        url,
+        method,
+        body: typeof init?.body === "string" ? JSON.parse(init.body) : null,
+      });
 
-    if (url.endsWith("/users/@me")) return Response.json({ id: BOT_ID, bot: true });
-    if (url.endsWith(`/guilds/${GUILD_ID}`)) return Response.json({ id: GUILD_ID });
-    if (url.endsWith(`/guilds/${GUILD_ID}/channels`) && method === "GET") {
-      return Response.json(existingChannels);
-    }
-    if (url.endsWith(`/guilds/${GUILD_ID}/channels`) && method === "POST") {
-      return Response.json({ id: CHANNEL_ID, type: 0 });
-    }
-    if (url.includes("/messages")) return Response.json({ id: "900000000000000021" });
-    // Permissões desatualizadas são reparadas em vez de recriar o canal.
-    if (url.endsWith(`/channels/${CHANNEL_ID}`) && method === "PATCH") {
-      return Response.json({ id: CHANNEL_ID, type: 0 });
-    }
-    throw new Error(`requisição inesperada ${method} ${url}`);
-  }) as unknown as typeof fetch;
+      if (url.endsWith("/users/@me"))
+        return Response.json({ id: BOT_ID, bot: true });
+      if (url.endsWith(`/guilds/${GUILD_ID}`))
+        return Response.json({ id: GUILD_ID });
+      if (url.endsWith(`/guilds/${GUILD_ID}/channels`) && method === "GET") {
+        return Response.json(existingChannels);
+      }
+      if (url.endsWith(`/guilds/${GUILD_ID}/channels`) && method === "POST") {
+        return Response.json({ id: CHANNEL_ID, type: 0 });
+      }
+      if (url.includes("/messages"))
+        return Response.json({ id: "900000000000000021" });
+      // Permissões desatualizadas são reparadas em vez de recriar o canal.
+      if (url.endsWith(`/channels/${CHANNEL_ID}`) && method === "PATCH") {
+        return Response.json({ id: CHANNEL_ID, type: 0 });
+      }
+      throw new Error(`requisição inesperada ${method} ${url}`);
+    },
+  ) as unknown as typeof fetch;
   return { fetcher, calls };
 }
 
@@ -88,7 +99,9 @@ describe("canal de recuperação de pagamento atrasado", () => {
     const ticket = await ensureLatePaymentTicket(INPUT, { fetcher });
 
     expect(ticket).toEqual({ channelId: CHANNEL_ID, created: true });
-    const created = calls.find((c) => c.method === "POST" && c.url.endsWith("/channels"));
+    const created = calls.find(
+      (c) => c.method === "POST" && c.url.endsWith("/channels"),
+    );
     expect(created?.body?.topic).toBe(latePaymentTicketMarker(ORDER_ID));
 
     const message = calls.find((c) => c.url.includes("/messages"));
@@ -98,26 +111,54 @@ describe("canal de recuperação de pagamento atrasado", () => {
     // A equipe tem que ser chamada junto, senão ninguém vê.
     expect(String(message?.body?.content)).toContain(`<@${STAFF_ID}>`);
     // O comprador é mencionado de verdade, mas nada de @everyone.
-    expect(message?.body?.allowed_mentions).toEqual({ parse: [], users: [BUYER_ID] });
+    expect(message?.body?.allowed_mentions).toEqual({
+      parse: [],
+      users: [BUYER_ID],
+    });
+  });
+
+  it("explica quando o Pix foi pago mas o último item esgotou", async () => {
+    const { fetcher, calls } = stubDiscord();
+
+    await ensureLatePaymentTicket(
+      { ...INPUT, reason: "stock_unavailable_after_payment" },
+      { fetcher },
+    );
+
+    const message = calls.find((c) => c.url.includes("/messages"));
+    const embed = (message?.body?.embeds as Array<Record<string, unknown>>)[0];
+    expect(embed.title).toBe("Pagamento confirmado, mas o item esgotou");
+    expect(String(embed.description)).toContain("últimas unidades");
+    expect(String(embed.description)).toContain("dinheiro não se perdeu");
   });
 
   it("reencontra o canal em vez de abrir outro", async () => {
     const { fetcher, calls } = stubDiscord([
-      { id: CHANNEL_ID, type: 0, topic: latePaymentTicketMarker(ORDER_ID), permission_overwrites: [] },
+      {
+        id: CHANNEL_ID,
+        type: 0,
+        topic: latePaymentTicketMarker(ORDER_ID),
+        permission_overwrites: [],
+      },
     ]);
 
     const ticket = await ensureLatePaymentTicket(INPUT, { fetcher });
 
     expect(ticket.created).toBe(false);
     // Sem canal novo e sem repetir a mensagem para quem já foi avisado.
-    expect(calls.some((c) => c.method === "POST" && c.url.endsWith("/channels"))).toBe(false);
+    expect(
+      calls.some((c) => c.method === "POST" && c.url.endsWith("/channels")),
+    ).toBe(false);
     expect(calls.some((c) => c.url.includes("/messages"))).toBe(false);
   });
 
   it("recusa dados que não são do Discord", async () => {
     const { fetcher } = stubDiscord();
     await expect(
-      ensureLatePaymentTicket({ ...INPUT, buyerDiscordId: "nao-e-id" }, { fetcher }),
+      ensureLatePaymentTicket(
+        { ...INPUT, buyerDiscordId: "nao-e-id" },
+        { fetcher },
+      ),
     ).rejects.toThrow();
     await expect(
       ensureLatePaymentTicket({ ...INPUT, orderId: "nao-e-uuid" }, { fetcher }),
@@ -140,11 +181,17 @@ describe("varredura dos pagamentos atrasados", () => {
                 late_quantity: 4,
                 late_amount_cents: 198,
                 late_detected_at: "2026-07-27T20:14:16.000Z",
+                late_reason: "stock_unavailable_after_payment",
               },
             ],
             error: null,
           }
-        : { data: [{ recorded_order_id: ORDER_ID, recorded_channel_id: CHANNEL_ID }], error: null },
+        : {
+            data: [
+              { recorded_order_id: ORDER_ID, recorded_channel_id: CHANNEL_ID },
+            ],
+            error: null,
+          },
     );
 
     const result = await reconcileLatePaidOrderTickets({ fetcher });
@@ -154,6 +201,10 @@ describe("varredura dos pagamentos atrasados", () => {
       p_order_id: ORDER_ID,
       p_channel_id: CHANNEL_ID,
     });
+    const messageCall = (
+      fetcher as unknown as { mock: { calls: unknown[][] } }
+    ).mock.calls.find(([url]) => String(url).includes("/messages"));
+    expect(JSON.stringify(messageCall)).toContain("últimas unidades");
   });
 
   it("não marca como resolvido se o Discord recusar", async () => {
@@ -179,7 +230,10 @@ describe("varredura dos pagamentos atrasados", () => {
 
     // O pedido continua na lista, então a próxima passagem tenta de novo.
     expect(result).toEqual({ pending: 1, opened: 0, failed: 1 });
-    expect(rpc).not.toHaveBeenCalledWith("record_late_payment_ticket", expect.anything());
+    expect(rpc).not.toHaveBeenCalledWith(
+      "record_late_payment_ticket",
+      expect.anything(),
+    );
   });
 
   it("um pedido que falha não impede os outros", async () => {
@@ -209,7 +263,12 @@ describe("varredura dos pagamentos atrasados", () => {
             ],
             error: null,
           }
-        : { data: [{ recorded_order_id: ORDER_ID, recorded_channel_id: CHANNEL_ID }], error: null },
+        : {
+            data: [
+              { recorded_order_id: ORDER_ID, recorded_channel_id: CHANNEL_ID },
+            ],
+            error: null,
+          },
     );
 
     const result = await reconcileLatePaidOrderTickets({ fetcher });

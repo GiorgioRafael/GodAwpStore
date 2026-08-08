@@ -11,6 +11,7 @@ import { RouletteOverlayLink } from "@/components/admin/roulette-overlay-link";
 import { RoulettePromotionEditor } from "@/components/admin/roulette-promotion-editor";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getSiteUrl } from "@/lib/env";
 import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import { hasPlayerActivity, getRouletteMetrics } from "@/lib/roulette/metrics";
 import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
@@ -50,9 +51,10 @@ export default async function RouletteMetricsPage() {
         description="A roda, as taxas, o overlay e o resultado — tudo o que a roleta tem, em um lugar só. Os números ficam separados dos pedidos da loja."
       />
       <Notice>
-        Mudanças aqui valem na hora, sem deploy. Os números contam apenas moedas e prêmios de contas
-        de jogador — os giros de teste da equipe ficam de fora, e a receita dos pedidos pagos
-        continua na visão geral, sem soma nem sobreposição.
+        Mudanças aqui valem na hora, sem deploy. Os números contam apenas moedas
+        e prêmios de contas de jogador — os giros de teste da equipe ficam de
+        fora, e a receita dos pedidos pagos continua na visão geral, sem soma
+        nem sobreposição.
       </Notice>
 
       {wheel.ok ? (
@@ -81,7 +83,10 @@ export default async function RouletteMetricsPage() {
         </Card>
       )}
 
-      <RoulettePromotionEditor settings={promotion.settings} />
+      <RoulettePromotionEditor
+        settings={promotion.settings}
+        rouletteUrl={new URL("/roleta", getSiteUrl()).toString()}
+      />
 
       {overlay.status === "ready" ? (
         <RouletteOverlayLink overlayUrl={overlay.url} />
@@ -114,7 +119,10 @@ export default async function RouletteMetricsPage() {
           description="Não foi possível ler os dados da roleta agora. Recarregue a página; se continuar, confira se a sua conta ainda tem acesso de administrador."
         />
       ) : hasPlayerActivity(metrics) ? (
-        <RouletteMetricsPanel metrics={metrics} wheelReturnBps={wheelReturnBps} />
+        <RouletteMetricsPanel
+          metrics={metrics}
+          wheelReturnBps={wheelReturnBps}
+        />
       ) : (
         <EmptyState
           icon={ChartNoAxesCombined}

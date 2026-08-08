@@ -23,9 +23,9 @@ export function Brand({
     >
       <span
         className={cn(
-          "relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-fuchsia-400/35 bg-black shadow-[0_0_22px_rgba(217,70,239,.2)]",
+          "relative grid size-10 shrink-0 place-items-center overflow-hidden rounded-xl border border-brand-400/35 bg-black shadow-[0_0_22px_color-mix(in_oklab,var(--rlt-brand-400)_20%,transparent)]",
           prominent &&
-            "size-24 rounded-3xl border-fuchsia-300/45 shadow-[0_0_42px_rgba(217,70,239,.28)]",
+            "size-24 rounded-3xl border-brand-300/45 shadow-[0_0_42px_color-mix(in_oklab,var(--rlt-brand-400)_28%,transparent)]",
         )}
       >
         <BrandMark priority={prominent} />
@@ -36,7 +36,7 @@ export function Brand({
           <span className="block truncate text-[15px] font-semibold tracking-tight text-foreground">
             {STORE_NAME}
           </span>
-          <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-300">
+          <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-300">
             Admin console
           </span>
         </span>

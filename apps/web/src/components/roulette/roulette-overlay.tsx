@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { readRouletteOverlayEvents } from "@/app/roleta/overlay/actions";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { RouletteConfetti } from "@/components/roulette/roulette-celebration";
+import { STORE_NAME } from "@/lib/brand";
 import {
   demoRouletteRotation,
   formatCoins,
@@ -105,8 +106,14 @@ export function RouletteOverlay({
       setLanded(false);
       stopIdle();
       const from = rotationRef.current;
-      const to = demoRouletteRotation(from, next.prizeKey, prizes) + EXTRA_TURNS * 360;
-      rotationRef.current = await spinWheelTo(wheelRef.current, from, to, spinMs);
+      const to =
+        demoRouletteRotation(from, next.prizeKey, prizes) + EXTRA_TURNS * 360;
+      rotationRef.current = await spinWheelTo(
+        wheelRef.current,
+        from,
+        to,
+        spinMs,
+      );
       if (!active) return;
 
       setCurrent(next);
@@ -213,12 +220,19 @@ export function RouletteOverlay({
         <svg
           viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
           role="img"
-          aria-label="Roleta da GWStore"
+          aria-label={`Roleta da ${STORE_NAME}`}
           className="size-full overflow-visible"
         >
           <defs>
             {prizes.map((slot, index) => (
-              <linearGradient key={slot.key} id={`ov-slot-${index}`} x1="0" y1="0" x2="0" y2="1">
+              <linearGradient
+                key={slot.key}
+                id={`ov-slot-${index}`}
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
                 <stop offset="0%" stopColor={slot.accent} stopOpacity="0.45" />
                 <stop offset="100%" stopColor={slot.surface} stopOpacity="1" />
               </linearGradient>
@@ -241,7 +255,11 @@ export function RouletteOverlay({
             cy={WHEEL_CENTER}
             r={WHEEL_RADIUS + 16}
             fill="none"
-            stroke={celebrating ? "rgba(251,191,36,.9)" : "rgba(244,114,182,.55)"}
+            stroke={
+              celebrating
+                ? "rgba(251,191,36,.9)"
+                : "color-mix(in oklab, var(--rlt-brand-300) 55%, transparent)"
+            }
             strokeWidth="4"
           />
           <circle
@@ -249,7 +267,11 @@ export function RouletteOverlay({
             cy={WHEEL_CENTER}
             r={WHEEL_RADIUS + 9}
             fill="none"
-            stroke={celebrating ? "rgba(251,191,36,.65)" : "rgba(232,121,249,.45)"}
+            stroke={
+              celebrating
+                ? "rgba(251,191,36,.65)"
+                : "color-mix(in oklab, var(--rlt-brand-300) 45%, transparent)"
+            }
             strokeWidth="3"
             strokeDasharray="2 12"
             strokeLinecap="round"
@@ -275,7 +297,11 @@ export function RouletteOverlay({
                     fill="var(--rlt-text)"
                     fontSize="14"
                     fontWeight="800"
-                    style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.6)", strokeWidth: 3.5 }}
+                    style={{
+                      paintOrder: "stroke",
+                      stroke: "rgba(0,0,0,.6)",
+                      strokeWidth: 3.5,
+                    }}
                   >
                     {slot.wheelLabel}
                   </text>
@@ -286,7 +312,11 @@ export function RouletteOverlay({
                     fill={highlight ? "#fde68a" : slot.accent}
                     fontSize={highlight ? 17 : 14}
                     fontWeight="900"
-                    style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,.65)", strokeWidth: 3.5 }}
+                    style={{
+                      paintOrder: "stroke",
+                      stroke: "rgba(0,0,0,.65)",
+                      strokeWidth: 3.5,
+                    }}
                   >
                     {formatCoins(slot.valueCents)}
                   </text>
@@ -295,13 +325,22 @@ export function RouletteOverlay({
             })}
           </g>
 
-          <circle cx={WHEEL_CENTER} cy={WHEEL_CENTER} r="50" fill="url(#ov-hub)" />
+          <circle
+            cx={WHEEL_CENTER}
+            cy={WHEEL_CENTER}
+            r="50"
+            fill="url(#ov-hub)"
+          />
           <circle
             cx={WHEEL_CENTER}
             cy={WHEEL_CENTER}
             r="50"
             fill="none"
-            stroke={celebrating ? "rgba(251,191,36,.95)" : "rgba(244,114,182,.75)"}
+            stroke={
+              celebrating
+                ? "rgba(251,191,36,.95)"
+                : "color-mix(in oklab, var(--rlt-brand-300) 75%, transparent)"
+            }
             strokeWidth="3"
           />
         </svg>
@@ -346,7 +385,13 @@ export function RouletteOverlay({
               ) : null}
               <p className="text-[4.6cqw] font-bold leading-tight text-white">
                 <span
-                  className={jackpot ? "text-amber-300" : big ? "text-emerald-300" : "text-brand-300"}
+                  className={
+                    jackpot
+                      ? "text-amber-300"
+                      : big
+                        ? "text-emerald-300"
+                        : "text-brand-300"
+                  }
                 >
                   {current.maskedDisplayName}
                 </span>{" "}
@@ -405,7 +450,9 @@ function readEvent(row: unknown): RouletteOverlayEvent | null {
     productName: typeof event.productName === "string" ? event.productName : "",
     valueCents: typeof event.valueCents === "number" ? event.valueCents : 0,
     maskedDisplayName:
-      typeof event.maskedDisplayName === "string" ? event.maskedDisplayName : "Jog...",
+      typeof event.maskedDisplayName === "string"
+        ? event.maskedDisplayName
+        : "Jog...",
     isTopPrize: event.isTopPrize === true,
   };
 }
