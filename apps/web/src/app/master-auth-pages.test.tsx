@@ -35,7 +35,7 @@ describe("acesso ao painel mestre 101Devs", () => {
     expect(screen.getByRole("heading", { name: "Acesso não autorizado" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Voltar para o login da 101Devs/i })).toHaveAttribute(
       "href",
-      "/admin/discordbots/login?next=%2Fadmin%2Fdiscordbots",
+      "/admin/discordbots/login?next=%2Fadmin",
     );
     expect(screen.queryByText(/roleta/i)).not.toBeInTheDocument();
     expect(screen.getByText(/jukersrx@gmail\.com/i)).toBeInTheDocument();

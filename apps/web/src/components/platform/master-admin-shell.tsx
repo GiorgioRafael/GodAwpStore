@@ -1,22 +1,9 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import {
-  Bot,
-  Building2,
-  ChartNoAxesCombined,
-  LayoutDashboard,
-  LogOut,
-  Settings2,
-  ShieldCheck,
-} from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 
-const navigation = [
-  { label: "Visão geral", href: "#visao-geral", icon: LayoutDashboard },
-  { label: "Serviços", href: "#empresas", icon: Building2 },
-  { label: "Bots", href: "#empresas", icon: Bot },
-  { label: "Financeiro", href: "#financeiro", icon: ChartNoAxesCombined },
-  { label: "Configurações", href: "#comissao", icon: Settings2 },
-];
+import { MasterAdminNav } from "@/components/platform/master-admin-nav";
+import { MASTER_ADMIN_ROOT } from "@/lib/master-admin-auth";
 
 function initials(name: string) {
   return (
@@ -32,8 +19,8 @@ function initials(name: string) {
 function Brand() {
   return (
     <Link
-      href="/admin/discordbots"
-      aria-label="101Devs — visão geral dos bots"
+      href={MASTER_ADMIN_ROOT}
+      aria-label="101Devs — visão geral dos produtos"
       className="inline-flex items-center rounded-lg text-[21px] font-semibold tracking-tight text-white focus-visible:outline-none"
     >
       <span className="font-mono font-bold tracking-[0.08em] text-violet-400">101</span>
@@ -62,30 +49,7 @@ export function MasterAdminShell({
         <div className="px-7">
           <Brand />
         </div>
-        <nav aria-label="Navegação do painel 101Devs" className="mt-12 flex-1 space-y-2">
-          {navigation.map((item, index) => {
-            const Icon = item.icon;
-            return (
-              <a
-                key={item.label}
-                href={item.href}
-                aria-current={index === 0 ? "page" : undefined}
-                className={
-                  index === 0
-                    ? "relative flex h-12 items-center gap-3 rounded-xl border border-violet-400/10 bg-violet-500/[0.12] px-7 text-sm font-medium text-white before:absolute before:inset-y-0 before:-left-3 before:w-1 before:rounded-r-full before:bg-violet-500"
-                    : "flex h-12 items-center gap-3 rounded-xl px-7 text-sm font-medium text-slate-400 transition-colors hover:bg-white/[0.035] hover:text-white"
-                }
-              >
-                <Icon
-                  aria-hidden="true"
-                  className={index === 0 ? "size-[19px] text-violet-400" : "size-[19px]"}
-                  strokeWidth={1.8}
-                />
-                {item.label}
-              </a>
-            );
-          })}
-        </nav>
+        <MasterAdminNav variant="sidebar" />
 
         <div className="mx-3 rounded-xl border border-slate-800 bg-white/[0.018] p-3">
           <div className="flex items-center gap-3">
@@ -108,7 +72,7 @@ export function MasterAdminShell({
         <header className="sticky top-0 z-30 border-b border-slate-800/90 bg-[#070b12]/90 px-4 backdrop-blur-xl lg:hidden">
           <div className="flex h-16 items-center justify-between gap-4">
             <Brand />
-            <form action="/auth/logout?next=/admin/discordbots" method="post">
+            <form action={`/auth/logout?next=${MASTER_ADMIN_ROOT}`} method="post">
               <button
                 type="submit"
                 className="grid size-9 place-items-center rounded-lg border border-slate-700 text-slate-400 transition-colors hover:border-slate-600 hover:text-white"
@@ -118,21 +82,7 @@ export function MasterAdminShell({
               </button>
             </form>
           </div>
-          <nav aria-label="Atalhos do painel" className="flex gap-1 overflow-x-auto pb-2 [scrollbar-width:none]">
-            {navigation.map((item, index) => (
-              <a
-                key={item.label}
-                href={item.href}
-                className={
-                  index === 0
-                    ? "shrink-0 rounded-lg bg-violet-500/15 px-3 py-2 text-xs font-medium text-violet-200"
-                    : "shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-slate-400"
-                }
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
+          <MasterAdminNav variant="mobile" />
         </header>
 
         <main id="conteudo-master" className="mx-auto w-full max-w-[1600px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">

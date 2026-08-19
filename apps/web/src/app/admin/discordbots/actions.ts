@@ -71,7 +71,7 @@ export async function saveMasterCommissionAction(
   if (error) return { ok: false, message: "Não foi possível salvar a comissão." };
   if (!data) return { ok: false, message: "A configuração da plataforma não foi encontrada." };
 
-  revalidatePath("/admin/discordbots");
+  revalidatePath("/admin", "layout");
   revalidatePath("/configuracoes");
   revalidatePath("/whitelist");
   return { ok: true, message: "Comissão padrão atualizada." };
@@ -106,6 +106,6 @@ export async function saveBusinessAdminUrlAction(
   if (error) return { ok: false, message: "Não foi possível salvar o link." };
   if (!data) return { ok: false, message: "A empresa não foi encontrada." };
 
-  revalidatePath("/admin/discordbots");
+  revalidatePath("/admin", "layout");
   return { ok: true, message: "Link do painel atualizado." };
 }
