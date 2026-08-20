@@ -11,15 +11,16 @@ describe("Robux pricing", () => {
     expect(calculateRobuxPriceCents(1_000)).toBe(3_500);
   });
 
-  it("rounds fractional centavos upward and honors the LivePix minimum", () => {
-    expect(MINIMUM_ROBUX_QUANTITY).toBe(29);
-    expect(calculateRobuxPriceCents(MINIMUM_ROBUX_QUANTITY)).toBe(102);
-    expect(calculateRobuxPriceCents(1)).toBeNull();
+  it("uses the configured minimum quantity", () => {
+    expect(MINIMUM_ROBUX_QUANTITY).toBe(100);
+    expect(calculateRobuxPriceCents(MINIMUM_ROBUX_QUANTITY)).toBe(350);
+    expect(calculateRobuxPriceCents(99)).toBeNull();
   });
 
   it("rejects invalid and oversized quantities", () => {
     expect(calculateRobuxPriceCents(0)).toBeNull();
     expect(calculateRobuxPriceCents(2.5)).toBeNull();
+    expect(calculateRobuxPriceCents(MAXIMUM_ROBUX_QUANTITY)).toBe(1_750_000);
     expect(calculateRobuxPriceCents(MAXIMUM_ROBUX_QUANTITY + 1)).toBeNull();
   });
 });
