@@ -18,9 +18,11 @@ import { Field, Input, Select } from "@/components/ui/form-field";
 import type { DiscordStorefrontGuildOption } from "./discord-storefront-form";
 
 export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOption[] }) {
-  const initialGuild = guilds.find((guild) => guild.robux) ?? guilds[0] ?? null;
+  const initialGuild = guilds.find((guild) => guild.robux || findCatalogRobuxStorefront(guild)) ?? guilds[0] ?? null;
   const [guildId, setGuildId] = useState(initialGuild?.id ?? "");
-  const [channelId, setChannelId] = useState(initialGuild?.robux?.channel_id ?? "");
+  const [channelId, setChannelId] = useState(
+    initialGuild?.robux?.channel_id ?? findCatalogRobuxStorefront(initialGuild)?.channel_id ?? "",
+  );
   const [state, formAction, pending] = useActionState(
     publishDiscordRobuxStorefrontAction,
     initialAdminActionState,
@@ -31,11 +33,14 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
     [guildId, guilds],
   );
   const selectedChannel = selectedGuild?.channels.find((channel) => channel.id === channelId);
+  const catalogRobuxStorefront = findCatalogRobuxStorefront(selectedGuild);
+  const replacesCatalogRobuxStorefront =
+    catalogRobuxStorefront?.channel_id === channelId ? catalogRobuxStorefront : null;
 
   function changeGuild(nextGuildId: string) {
     const guild = guilds.find((item) => item.id === nextGuildId) ?? null;
     setGuildId(nextGuildId);
-    setChannelId(guild?.robux?.channel_id ?? "");
+    setChannelId(guild?.robux?.channel_id ?? findCatalogRobuxStorefront(guild)?.channel_id ?? "");
   }
 
   return (
@@ -117,6 +122,14 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
 
             {selectedGuild?.channelLoadError ? <Notice>{selectedGuild.channelLoadError}</Notice> : null}
 
+            {replacesCatalogRobuxStorefront ? (
+              <Notice>
+                Esta publicação substituirá a vitrine antiga de produtos de Robux em
+                <strong> #{replacesCatalogRobuxStorefront.channel_name}</strong>. O dropdown e o
+                estoque sairão da mensagem; ficará apenas o botão de compra de Robux.
+              </Notice>
+            ) : null}
+
             <div className="grid gap-3 rounded-xl border border-success/20 bg-success/[0.045] p-4 text-sm md:grid-cols-3">
               <div>
                 <p className="font-semibold text-foreground">Preço fixo</p>
@@ -162,4 +175,12 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
       )}
     </Card>
   );
+}
+
+function findCatalogRobuxStorefront(
+  guild: DiscordStorefrontGuildOption | null | undefined,
+) {
+  return guild?.current.find(
+    (storefront) => storefront.catalog_store_name?.trim().toLocaleLowerCase("pt-BR") === "robux",
+  ) ?? null;
 }

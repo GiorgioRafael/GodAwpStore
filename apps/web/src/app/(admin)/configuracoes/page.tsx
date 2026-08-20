@@ -17,7 +17,7 @@ import {
   readStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { readRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
-import { STORE_SLUG } from "@/lib/brand";
+import { IS_GWSTORE } from "@/lib/brand";
 import { readBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
   getPlatformSettings,
@@ -186,7 +186,7 @@ export default async function SettingsPage() {
 
       <DiscordStorefrontForm guilds={guilds} games={storefrontGames} />
 
-      {STORE_SLUG === "gwstore" ? <RobuxSalesForm guilds={guilds} /> : null}
+      {IS_GWSTORE ? <RobuxSalesForm guilds={guilds} /> : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,.95fr)]">
         <PlatformSettingsForm

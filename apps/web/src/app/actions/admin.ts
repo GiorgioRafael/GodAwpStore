@@ -20,6 +20,7 @@ import { BotCommerceService } from "@/lib/bot/commerce-service";
 import { withBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
   createDiscordTextChannel,
+  deleteDiscordStorefrontMessages,
   listDiscordTextChannels,
   publishDiscordStorefront,
   readStorefrontConfigurations,
@@ -31,7 +32,7 @@ import {
   readRobuxStorefrontConfiguration,
   withRobuxStorefrontConfiguration,
 } from "@/lib/bot/discord-robux-storefront";
-import { STORE_SLUG } from "@/lib/brand";
+import { IS_GWSTORE } from "@/lib/brand";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import {
   deleteDiscordApplicationEmoji,
@@ -1091,7 +1092,7 @@ export async function publishDiscordRobuxStorefrontAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
-  if (STORE_SLUG !== "gwstore") {
+  if (!IS_GWSTORE) {
     return { ok: false, message: "A venda de Robux está disponível somente na GWStore." };
   }
   const parsed = robuxStorefrontSchema.safeParse({
@@ -1130,15 +1131,45 @@ export async function publishDiscordRobuxStorefrontAction(
       };
     }
 
+    const currentStorefronts = readStorefrontConfigurations(guild.configuration);
+    const catalogRobuxStorefront = currentStorefronts.find(
+      (storefront) =>
+        storefront.channel_id === channel.id &&
+        storefront.catalog_store_name?.trim().toLocaleLowerCase("pt-BR") === "robux",
+    );
+    const existingRobuxStorefront = readRobuxStorefrontConfiguration(guild.configuration);
     const published = await publishDiscordRobuxStorefront({
       guildId: guild.discord_guild_id,
       channel,
-      previous: readRobuxStorefrontConfiguration(guild.configuration),
+      previous:
+        existingRobuxStorefront ??
+        (catalogRobuxStorefront
+          ? {
+              channel_id: catalogRobuxStorefront.channel_id,
+              channel_name: catalogRobuxStorefront.channel_name,
+              message_id: catalogRobuxStorefront.message_ids[0] ?? "",
+              published_at: catalogRobuxStorefront.published_at,
+            }
+          : null),
     });
+    if (catalogRobuxStorefront && catalogRobuxStorefront.message_ids.length > 1) {
+      await deleteDiscordStorefrontMessages({
+        ...catalogRobuxStorefront,
+        message_ids: catalogRobuxStorefront.message_ids.slice(1),
+      });
+    }
     const { data: updated, error: updateError } = await supabase
       .from("guilds")
       .update({
-        configuration: withRobuxStorefrontConfiguration(guild.configuration, published),
+        configuration: withRobuxStorefrontConfiguration(
+          withStorefrontConfigurations(
+            guild.configuration,
+            catalogRobuxStorefront
+              ? currentStorefronts.filter((storefront) => storefront !== catalogRobuxStorefront)
+              : currentStorefronts,
+          ),
+          published,
+        ),
       })
       .eq("id", guild.id)
       .select("id")

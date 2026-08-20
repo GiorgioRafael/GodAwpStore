@@ -1,6 +1,6 @@
 import "server-only";
 
-import { STORE_SLUG } from "@/lib/brand";
+import { IS_GWSTORE } from "@/lib/brand";
 import { getRobuxPaymentService } from "@/lib/robux/payment-service";
 import {
   calculateRobuxPriceCents,
@@ -59,7 +59,7 @@ export function parseNativeDiscordRobuxInteraction(
 }
 
 export function createNativeDiscordRobuxResponse() {
-  if (STORE_SLUG !== "gwstore") return robuxErrorResponse("Esta venda está disponível somente na GWStore.");
+  if (!IS_GWSTORE) return robuxErrorResponse("Esta venda está disponível somente na GWStore.");
   return {
     type: DISCORD_MODAL_RESPONSE,
     data: {
@@ -88,7 +88,7 @@ export function createNativeDiscordRobuxResponse() {
 
 export async function completeDiscordRobuxPurchase(raw: unknown) {
   try {
-    if (STORE_SLUG !== "gwstore") {
+    if (!IS_GWSTORE) {
       await updateDiscordRobuxResponse(raw, robuxErrorPayload("Esta venda está disponível somente na GWStore."));
       return;
     }

@@ -28,7 +28,18 @@ describe("RobuxSalesForm", () => {
                 categoryName: null,
               },
             ],
-            current: [],
+            current: [
+              {
+                game_id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+                game_name: "ROBUX",
+                catalog_store_id: "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+                catalog_store_name: "ROBUX",
+                channel_id: "223456789012345678",
+                channel_name: "robux",
+                message_ids: ["323456789012345678"],
+                published_at: "2026-08-20T12:00:00.000Z",
+              },
+            ],
             robux: null,
             boosterDiscount: {
               enabled: true,
@@ -43,10 +54,13 @@ describe("RobuxSalesForm", () => {
 
     expect(screen.getByRole("heading", { name: "Venda de Robux" })).toBeInTheDocument();
     expect(screen.getByText(/confere o valor e só então gera o Pix/i)).toBeInTheDocument();
+    expect(screen.getByText(/substituirá a vitrine antiga de produtos de Robux/i)).toBeInTheDocument();
     const channel = screen.getByLabelText("Canal da mensagem de Robux");
     expect(channel).toBeInTheDocument();
     expect(screen.getByText("1.000 Robux = R$ 35,00")).toBeInTheDocument();
     const publish = screen.getByRole("button", { name: "Publicar mensagem" });
+    expect(publish).toBeEnabled();
+    await user.clear(channel);
     expect(publish).toBeDisabled();
     await user.type(channel, "223456789012345678");
     expect(publish).toBeEnabled();

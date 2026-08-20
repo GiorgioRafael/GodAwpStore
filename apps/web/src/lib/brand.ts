@@ -26,6 +26,10 @@ export const STORE_SLUG =
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 32) || "store";
+// GodAwp Store é o nome legado da GWStore no deployment original. Os dois
+// identificadores representam a mesma loja e precisam habilitar os recursos
+// exclusivos dela durante a transição de marca.
+export const IS_GWSTORE = STORE_SLUG === "gwstore" || STORE_SLUG === "godawp-store";
 export const STORE_INITIALS =
   STORE_NAME
     .split(/\s+/)

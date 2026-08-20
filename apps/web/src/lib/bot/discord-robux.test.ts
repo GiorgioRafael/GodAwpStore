@@ -86,4 +86,12 @@ describe("native Discord Robux interactions", () => {
       data: { flags: 64 },
     });
   });
+
+  it("keeps Robux available for the legacy GodAwp Store brand", async () => {
+    vi.stubEnv("NEXT_PUBLIC_STORE_NAME", "GodAwp Store");
+    vi.resetModules();
+    const { createNativeDiscordRobuxResponse } = await import("./discord-robux");
+
+    expect(createNativeDiscordRobuxResponse()).toMatchObject({ type: 9 });
+  });
 });
