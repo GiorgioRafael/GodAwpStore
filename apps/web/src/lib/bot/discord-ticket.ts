@@ -56,6 +56,8 @@ export type PaidOrderTicketInput = {
   quantity: number;
   paidAmountCents: number;
   parentChannelId?: string | null;
+  /** A Robux sale uses the same private ticket shell, but not the item-order controls. */
+  controls?: boolean;
 };
 
 export type PaidOrderTicketResult = {
@@ -240,7 +242,10 @@ export function paidTicketWelcomeMessage(
   const purchasedItems = formatPurchasedItems(productName, input.quantity);
   const orderMarker = welcomeMessageMarker(input.orderId);
   const message = customization.ticket;
-  const nicknamePrompt = interpolateBotMessageLimited(message.nicknamePromptText, {}, 1_000);
+  const nicknamePrompt =
+    input.controls === false
+      ? "Para concluir o atendimento, envie seu nick no jogo neste ticket."
+      : interpolateBotMessageLimited(message.nicknamePromptText, {}, 1_000);
   const configuredNotificationUserIds = normalizeTicketNotificationDiscordUserIds(
     notificationDiscordUserIds,
   );
@@ -290,7 +295,7 @@ export function paidTicketWelcomeMessage(
         footer: { text: orderMarker },
       },
     ],
-    components: buildPaidTicketControlComponents(input.orderId, customization),
+    components: input.controls === false ? [] : buildPaidTicketControlComponents(input.orderId, customization),
   };
 }
 

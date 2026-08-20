@@ -8,6 +8,7 @@ import {
   DiscordStorefrontForm,
   type DiscordStorefrontGuildOption,
 } from "@/components/admin/discord-storefront-form";
+import { RobuxSalesForm } from "@/components/admin/robux-sales-form";
 import { PlatformSettingsForm } from "@/components/admin/platform-settings-form";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -15,6 +16,8 @@ import {
   listDiscordTextChannels,
   readStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
+import { readRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
+import { STORE_SLUG } from "@/lib/brand";
 import { readBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
   getPlatformSettings,
@@ -98,6 +101,7 @@ export default async function SettingsPage() {
             name: guild.name,
             channels: await listDiscordTextChannels(guild.discord_guild_id),
             current: readStorefrontConfigurations(guild.configuration),
+            robux: readRobuxStorefrontConfiguration(guild.configuration),
             boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError: null,
           };
@@ -111,6 +115,7 @@ export default async function SettingsPage() {
             name: guild.name,
             channels: [],
             current: readStorefrontConfigurations(guild.configuration),
+            robux: readRobuxStorefrontConfiguration(guild.configuration),
             boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError:
               "Não foi possível carregar os canais. Confira se o bot está no servidor e possui acesso aos canais de texto.",
@@ -180,6 +185,8 @@ export default async function SettingsPage() {
       />
 
       <DiscordStorefrontForm guilds={guilds} games={storefrontGames} />
+
+      {STORE_SLUG === "gwstore" ? <RobuxSalesForm guilds={guilds} /> : null}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,.95fr)]">
         <PlatformSettingsForm

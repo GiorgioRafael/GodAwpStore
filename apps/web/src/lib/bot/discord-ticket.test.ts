@@ -221,6 +221,20 @@ describe("Discord paid-order ticket", () => {
     });
   });
 
+  it("uses a plain nickname prompt when a paid ticket has no order controls", () => {
+    const payload = ticket.paidTicketWelcomeMessage({
+      ...order,
+      productName: "Robux",
+      quantity: 1_000,
+      paidAmountCents: 3_500,
+      controls: false,
+    });
+
+    expect(payload.content).toContain("envie seu nick no jogo neste ticket");
+    expect(payload.content).not.toContain("botão abaixo");
+    expect(payload.components).toEqual([]);
+  });
+
   it("colapsa concorrência e reutiliza o mesmo ticket sem duplicar mensagem", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
     let channel: ReturnType<typeof channelResponse> | null = null;

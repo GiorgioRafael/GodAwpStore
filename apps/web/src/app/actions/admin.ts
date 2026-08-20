@@ -26,6 +26,12 @@ import {
   withStorefrontConfiguration,
   withStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
+import {
+  publishDiscordRobuxStorefront,
+  readRobuxStorefrontConfiguration,
+  withRobuxStorefrontConfiguration,
+} from "@/lib/bot/discord-robux-storefront";
+import { STORE_SLUG } from "@/lib/brand";
 import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import {
   deleteDiscordApplicationEmoji,
@@ -79,6 +85,10 @@ const discordStorefrontSchema = z.object({
       message: "A compra mínima precisa manter o Pix final em pelo menos R$ 1,00.",
     });
   }
+});
+const robuxStorefrontSchema = z.object({
+  guildId: uuidSchema,
+  channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
 });
 const catalogStoreSchema = z.object({
   id: uuidSchema.optional(),
@@ -1075,6 +1085,81 @@ export async function moveCatalogProductsAction(
   return synchronizeCatalogStorefront(
     `${Number(data ?? 0)} produto(s) e todo o estoque foram movidos.`,
   );
+}
+
+export async function publishDiscordRobuxStorefrontAction(
+  _previousState: AdminActionState,
+  formData: FormData,
+): Promise<AdminActionState> {
+  if (STORE_SLUG !== "gwstore") {
+    return { ok: false, message: "A venda de Robux está disponível somente na GWStore." };
+  }
+  const parsed = robuxStorefrontSchema.safeParse({
+    guildId: text(formData, "guildId"),
+    channelId: text(formData, "channelId"),
+  });
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Revise o servidor e o canal da mensagem de Robux.",
+      fieldErrors: errorsFromZod(parsed.error),
+    };
+  }
+
+  try {
+    await requireAdmin();
+    const supabase = createAdminSupabaseClient();
+    if (!supabase) throw new Error("Supabase server-only não configurado.");
+    const { data: guild, error: guildError } = await supabase
+      .from("guilds")
+      .select("id,discord_guild_id,name,configuration")
+      .eq("id", parsed.data.guildId)
+      .eq("status", "active")
+      .is("archived_at", null)
+      .maybeSingle();
+    if (guildError) return databaseFailure(guildError.code);
+    if (!guild) return { ok: false, message: "Servidor Discord ativo não encontrado." };
+
+    const channels = await listDiscordTextChannels(guild.discord_guild_id);
+    const channel = channels.find((item) => item.id === parsed.data.channelId);
+    if (!channel) {
+      return {
+        ok: false,
+        message: "O canal selecionado não pertence ao servidor ou o bot não consegue acessá-lo.",
+        fieldErrors: { channelId: ["Selecione um canal de texto acessível ao bot."] },
+      };
+    }
+
+    const published = await publishDiscordRobuxStorefront({
+      guildId: guild.discord_guild_id,
+      channel,
+      previous: readRobuxStorefrontConfiguration(guild.configuration),
+    });
+    const { data: updated, error: updateError } = await supabase
+      .from("guilds")
+      .update({
+        configuration: withRobuxStorefrontConfiguration(guild.configuration, published),
+      })
+      .eq("id", guild.id)
+      .select("id")
+      .maybeSingle();
+    if (updateError) return databaseFailure(updateError.code);
+    if (!updated) return { ok: false, message: "Servidor Discord não encontrado ao salvar." };
+
+    revalidatePath("/configuracoes");
+    return {
+      ok: true,
+      message: `Mensagem de Robux publicada em #${published.channel_name}. O comprador verá o preço de R$ 35,00 por 1.000 Robux antes de pagar.`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    console.error(`[admin:robux-storefront] ${message}`);
+    return {
+      ok: false,
+      message:
+        "Não foi possível publicar a mensagem de Robux. Confira se o bot possui acesso ao canal e tente novamente.",
+    };
+  }
 }
 
 export async function publishDiscordStorefrontAction(

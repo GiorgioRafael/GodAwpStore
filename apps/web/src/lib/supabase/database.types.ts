@@ -490,6 +490,33 @@ type OrderRow = {
   updated_at: string;
 };
 
+type RobuxOrderRow = {
+  id: string;
+  guild_id: string;
+  buyer_discord_id: string;
+  discord_interaction_id: string;
+  robux_quantity: number;
+  amount_cents: number;
+  currency_code: string;
+  status: "awaiting_payment" | "paid";
+  payment_provider: string;
+  payment_provider_reference: string | null;
+  payment_provider_checkout_id: string | null;
+  payment_provider_proof_id: string | null;
+  payment_checkout_url: string | null;
+  payment_reconciliation_sha256: string | null;
+  payment_status: Database["public"]["Enums"]["payment_status"];
+  payment_provider_created_at: string | null;
+  paid_at: string | null;
+  livepix_checkout_claim_token: string | null;
+  livepix_checkout_claimed_at: string | null;
+  discord_ticket_channel_id: string | null;
+  discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+  discord_ticket_claimed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type OrderItemRow = {
   order_id: string;
   position: number;
@@ -1260,6 +1287,21 @@ export type Database = {
             "lead_recovery_offers",
             ["id"]
           >,
+        ];
+      };
+      robux_orders: {
+        Row: RobuxOrderRow;
+        Insert: InsertRow<
+          RobuxOrderRow,
+          | "guild_id"
+          | "buyer_discord_id"
+          | "discord_interaction_id"
+          | "robux_quantity"
+          | "amount_cents"
+        >;
+        Update: UpdateRow<RobuxOrderRow>;
+        Relationships: [
+          Relationship<"robux_orders_guild_id_fkey", ["guild_id"], "guilds", ["id"]>,
         ];
       };
       lead_recovery_offers: {
@@ -2479,6 +2521,88 @@ export type Database = {
       };
       release_livepix_checkout_claim: {
         Args: { p_order_id: string; p_claim_token: string };
+        Returns: boolean;
+      };
+      create_robux_livepix_order: {
+        Args: {
+          p_discord_guild_id: string;
+          p_buyer_discord_id: string;
+          p_discord_interaction_id: string;
+          p_robux_quantity: number;
+        };
+        Returns: { order_id: string; amount_cents: number }[];
+      };
+      find_robux_livepix_checkout_by_order: {
+        Args: { p_order_id: string };
+        Returns: { provider_reference: string | null; checkout_url: string | null }[];
+      };
+      find_robux_livepix_checkout_by_reference: {
+        Args: { p_provider_reference: string };
+        Returns: { order_id: string }[];
+      };
+      claim_robux_livepix_checkout: {
+        Args: { p_order_id: string; p_claim_token: string };
+        Returns: {
+          claimed: boolean;
+          provider_reference: string | null;
+          checkout_url: string | null;
+        }[];
+      };
+      register_claimed_robux_livepix_checkout: {
+        Args: {
+          p_order_id: string;
+          p_claim_token: string;
+          p_provider_reference: string;
+          p_checkout_url: string;
+        };
+        Returns: { registered_order_id: string; checkout_url: string }[];
+      };
+      release_robux_livepix_checkout_claim: {
+        Args: { p_order_id: string; p_claim_token: string };
+        Returns: boolean;
+      };
+      confirm_robux_livepix_payment: {
+        Args: {
+          p_provider_checkout_id: string;
+          p_provider_proof_id: string;
+          p_provider_reference: string;
+          p_amount_cents: number;
+          p_currency_code: string;
+          p_provider_created_at: string;
+          p_reconciliation_sha256: string;
+        };
+        Returns: {
+          processed_order_id: string;
+          discord_guild_id: string;
+          buyer_discord_id: string;
+          robux_quantity: number;
+          paid_amount_cents: number;
+          ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+        }[];
+      };
+      claim_robux_discord_ticket: {
+        Args: { p_order_id: string };
+        Returns: {
+          claimed_order_id: string;
+          claimed: boolean;
+          discord_guild_id: string;
+          buyer_discord_id: string;
+          robux_quantity: number;
+          paid_amount_cents: number;
+          ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+          existing_channel_id: string | null;
+        }[];
+      };
+      complete_robux_discord_ticket: {
+        Args: { p_order_id: string; p_channel_id: string };
+        Returns: {
+          completed_order_id: string;
+          ticket_channel_id: string;
+          was_created: boolean;
+        }[];
+      };
+      fail_robux_discord_ticket: {
+        Args: { p_order_id: string };
         Returns: boolean;
       };
       expire_unpaid_orders: {

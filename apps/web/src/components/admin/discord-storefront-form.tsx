@@ -31,6 +31,7 @@ import type {
   DiscordStorefrontChannel,
   DiscordStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
+import type { DiscordRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
 
 export type DiscordStorefrontGameOption = {
   id: string;
@@ -47,6 +48,7 @@ export type DiscordStorefrontGuildOption = {
   name: string;
   channels: DiscordStorefrontChannel[];
   current: DiscordStorefrontConfiguration[];
+  robux?: DiscordRobuxStorefrontConfiguration | null;
   boosterDiscount: BoosterDiscountConfiguration;
   channelLoadError: string | null;
 };

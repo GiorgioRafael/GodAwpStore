@@ -63,6 +63,11 @@ import {
   completeDiscordGiveawayParticipation,
   parseNativeDiscordGiveawayParticipation,
 } from "@/lib/giveaways/discord-participation";
+import {
+  completeDiscordRobuxPurchase,
+  createNativeDiscordRobuxResponse,
+  parseNativeDiscordRobuxInteraction,
+} from "@/lib/bot/discord-robux";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -92,6 +97,7 @@ export async function POST(request: Request) {
           native.scope === "ticket_close" ||
           native.scope === "ticket_delivery" ||
           native.scope === "roulette_delivery" ||
+          native.scope === "robux" ||
           native.scope === "upsell" ||
           native.scope === "lead_recovery" ||
           (
@@ -106,6 +112,21 @@ export async function POST(request: Request) {
 
       if (native.scope === "ranking") {
         return Response.json(createNativeDiscordRankingResponse());
+      }
+
+      if (native.scope === "robux") {
+        if (native.interaction.kind === "open") {
+          return Response.json(createNativeDiscordRobuxResponse());
+        }
+        after(async () => {
+          try {
+            await completeDiscordRobuxPurchase(native.raw);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-robux] ${message}`);
+          }
+        });
+        return Response.json(native.interaction.response);
       }
 
       if (native.scope === "ticket_close") {
@@ -444,6 +465,9 @@ async function readNativeDiscordInteraction(request: Request) {
       interaction: { kind: "publish" as const },
     };
   }
+
+  const robux = parseNativeDiscordRobuxInteraction(raw);
+  if (robux) return { body, raw, scope: "robux" as const, interaction: robux };
 
   const ticketDelivery = parseNativeDiscordTicketDeliveryInteraction(raw);
   if (ticketDelivery) {

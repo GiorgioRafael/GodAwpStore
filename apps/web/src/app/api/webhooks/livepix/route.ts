@@ -10,6 +10,7 @@ import {
 import { readLimitedBody, RequestBodyTooLargeError } from "@/lib/http/limited-body";
 import { getLivePixPaymentService } from "@/lib/livepix/runtime";
 import { parseLivePixPaymentWebhook } from "@/lib/livepix/webhook";
+import { getRobuxPaymentService } from "@/lib/robux/payment-service";
 import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
 
 export const runtime = "nodejs";
@@ -42,6 +43,14 @@ export async function POST(request: Request) {
       providerReference: event.resource.reference,
     });
     if (!confirmation) {
+      const robux = await getRobuxPaymentService().reconcilePayment({
+        providerPaymentId: event.resource.id,
+        providerReference: event.resource.reference,
+      });
+      if (robux) {
+        return await openRobuxDeliveryTicket(robux);
+      }
+
       // A reference that belongs to no order is either a roulette coin purchase
       // or an event for another integration.
       const coins = await getRouletteCoinPurchaseService().reconcilePayment({
@@ -133,6 +142,45 @@ export async function POST(request: Request) {
   } catch (error) {
     logWebhookError("processing", error);
     return Response.json({ error: "Processamento temporariamente indisponível." }, { status: 503 });
+  }
+}
+
+async function openRobuxDeliveryTicket(confirmation: {
+  orderId: string;
+  discordGuildId: string;
+  buyerDiscordId: string;
+  robuxQuantity: number;
+  paidAmountCents: number;
+  ticketStatus: string;
+}) {
+  const robux = getRobuxPaymentService();
+  const claim = await robux.claimTicket(confirmation.orderId);
+  if (!claim.claimed) {
+    if (claim.ticketStatus === "creating") {
+      return Response.json({ received: false, ticket: "in_progress" }, { status: 503 });
+    }
+    return Response.json({ received: true, robux: "paid", ticket: claim.ticketStatus });
+  }
+
+  try {
+    const ticket = await ensurePaidOrderTicket({
+      orderId: claim.orderId,
+      guildId: claim.discordGuildId,
+      buyerDiscordId: claim.buyerDiscordId,
+      productName: "Robux",
+      quantity: claim.robuxQuantity,
+      paidAmountCents: claim.paidAmountCents,
+      controls: false,
+    });
+    await robux.completeTicket(claim.orderId, ticket.channelId);
+    return Response.json({ received: true, robux: "paid", ticket: "open" });
+  } catch (error) {
+    try {
+      await robux.failTicket(claim.orderId);
+    } catch (releaseError) {
+      logWebhookError("robux_ticket_release", releaseError);
+    }
+    throw error;
   }
 }
 
