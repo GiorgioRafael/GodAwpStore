@@ -33,11 +33,6 @@ import {
   withRobuxStorefrontConfiguration,
 } from "@/lib/bot/discord-robux-storefront";
 import { IS_GWSTORE } from "@/lib/brand";
-import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
-import {
-  deleteDiscordApplicationEmoji,
-  synchronizeDiscordProductEmojis,
-} from "@/lib/bot/discord-product-emojis";
 import { DISCORD_STOREFRONT_PRODUCT_LIMIT } from "@/lib/bot/discord-product-emoji-shared";
 import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
@@ -157,9 +152,19 @@ async function actionContext() {
   return { identity, supabase };
 }
 
+async function synchronizeAllPublishedDiscordStorefronts() {
+  // Image preparation relies on Sharp, a native dependency. Keep it behind the
+  // storefront synchronization boundary so unrelated server actions (such as
+  // Robux checkout publishing) never need to load it at runtime.
+  const { synchronizePublishedDiscordStorefronts } = await import(
+    "@/lib/bot/discord-storefront-sync"
+  );
+  return synchronizePublishedDiscordStorefronts();
+}
+
 async function synchronizeCatalogStorefront(savedMessage: string): Promise<AdminActionState> {
   try {
-    const storefronts = await synchronizePublishedDiscordStorefronts();
+    const storefronts = await synchronizeAllPublishedDiscordStorefronts();
     if (storefronts.failed > 0) {
       return {
         ok: true,
@@ -768,7 +773,7 @@ export async function saveBotMessageCustomizationAction(
   revalidatePath("/customizacao-bot");
 
   const [storefrontSync, ticketControlsSync] = await Promise.allSettled([
-    synchronizePublishedDiscordStorefronts(),
+    synchronizeAllPublishedDiscordStorefronts(),
     synchronizeAllOpenDiscordTicketControls(),
   ]);
   const warnings: string[] = [];
@@ -1031,6 +1036,7 @@ export async function deleteProductAction(
   let emojiWarning = "";
   if (emojiId) {
     try {
+      const { deleteDiscordApplicationEmoji } = await import("@/lib/bot/discord-product-emojis");
       await deleteDiscordApplicationEmoji(emojiId);
     } catch (emojiError) {
       console.error(
@@ -1248,6 +1254,7 @@ export async function publishDiscordStorefrontAction(
       };
     }
 
+    const { synchronizeDiscordProductEmojis } = await import("@/lib/bot/discord-product-emojis");
     const emojiSync = await synchronizeDiscordProductEmojis(supabase);
     const [catalog, customization] = await Promise.all([
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
