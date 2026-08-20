@@ -53,7 +53,6 @@ import {
   parseNativeRouletteDeliveryInteraction,
   parseNativeRouletteNicknameInteraction,
 } from "@/lib/roulette/discord-controls";
-import { synchronizePublishedDiscordStorefronts } from "@/lib/bot/discord-storefront-sync";
 import {
   loadBotMessageCustomization,
   loadBotRuntimeSettings,
@@ -76,6 +75,16 @@ export const maxDuration = 60;
 const MAXIMUM_DISCORD_INTERACTION_BYTES = 64 * 1024;
 const MAXIMUM_DESTRUCTIVE_INTERACTION_AGE_MS = 5 * 60 * 1_000;
 const MAXIMUM_INTERACTION_SETTINGS_LOAD_MS = 1_000;
+
+// Preparing product emojis uses the native image runtime. Keep it out of the
+// interaction module so a delayed image dependency can never prevent Discord
+// from receiving the required response to a button or modal submission.
+async function synchronizePublishedStorefrontsAfterInteraction() {
+  const { synchronizePublishedDiscordStorefronts } = await import(
+    "@/lib/bot/discord-storefront-sync"
+  );
+  return synchronizePublishedDiscordStorefronts();
+}
 
 export async function POST(request: Request) {
   try {
@@ -261,7 +270,7 @@ export async function POST(request: Request) {
               await loadBotMessageCustomization(),
             );
             if (stockChanged) {
-              const storefronts = await synchronizePublishedDiscordStorefronts();
+              const storefronts = await synchronizePublishedStorefrontsAfterInteraction();
               if (storefronts.failed > 0) {
                 console.error(
                   `[discord-upsell] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
@@ -284,7 +293,7 @@ export async function POST(request: Request) {
               await loadBotMessageCustomization(),
             );
             if (stockChanged) {
-              const storefronts = await synchronizePublishedDiscordStorefronts();
+              const storefronts = await synchronizePublishedStorefrontsAfterInteraction();
               if (storefronts.failed > 0) {
                 console.error(
                   `[lead-recovery] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
@@ -316,7 +325,7 @@ export async function POST(request: Request) {
               native.raw,
             );
             if (stockChanged) {
-              const storefronts = await synchronizePublishedDiscordStorefronts();
+              const storefronts = await synchronizePublishedStorefrontsAfterInteraction();
               if (storefronts.failed > 0) {
                 console.error(
                   `[discord-order-cancellation] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
@@ -363,7 +372,7 @@ export async function POST(request: Request) {
               await loadBotMessageCustomization(),
             );
             if (stockChanged) {
-              const storefronts = await synchronizePublishedDiscordStorefronts();
+              const storefronts = await synchronizePublishedStorefrontsAfterInteraction();
               if (storefronts.failed > 0) {
                 console.error(
                   `[discord-cart] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,
@@ -401,7 +410,7 @@ export async function POST(request: Request) {
               customization,
             );
             if (stockChanged) {
-              const storefronts = await synchronizePublishedDiscordStorefronts();
+              const storefronts = await synchronizePublishedStorefrontsAfterInteraction();
               if (storefronts.failed > 0) {
                 console.error(
                   `[discord-quantity] ${storefronts.failed} vitrine(s) não foram sincronizadas.`,

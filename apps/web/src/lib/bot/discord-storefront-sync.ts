@@ -10,7 +10,6 @@ import {
 } from "./discord-storefront";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
 import { loadBotMessageCustomization } from "./message-customization-server";
-import { synchronizeDiscordProductEmojis } from "./discord-product-emojis";
 
 export type DiscordStorefrontSyncResult = {
   published: number;
@@ -44,6 +43,10 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
 
   let productEmojiFailures = 0;
   try {
+    // This import brings in the native image processor. Loading it only when
+    // the optional emoji refresh runs keeps normal Discord interactions alive
+    // if that processor is temporarily unavailable in the server runtime.
+    const { synchronizeDiscordProductEmojis } = await import("./discord-product-emojis");
     productEmojiFailures = (await synchronizeDiscordProductEmojis(client)).failed;
   } catch (emojiError) {
     const message = emojiError instanceof Error ? emojiError.message : "erro desconhecido";
