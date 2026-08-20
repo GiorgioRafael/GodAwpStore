@@ -93,7 +93,7 @@ export function createDiscordRobuxStorefrontPayload() {
         color: 0xa855f7,
         title: "Robux",
         description:
-          "Compre Robux com Pix de forma simples e segura. Clique no botão abaixo, informe a quantidade e o valor será calculado na hora.",
+          "Compre Robux com Pix de forma simples e segura. Clique em comprar, informe a quantidade e confira o valor antes de gerar o Pix.",
         fields: [
           {
             name: "Preço",
@@ -102,7 +102,7 @@ export function createDiscordRobuxStorefrontPayload() {
           },
           {
             name: "Como funciona",
-            value: "Informe a quantidade, pague o Pix e aguarde o ticket privado para a entrega.",
+            value: "Informe a quantidade, finalize a compra, pague o Pix e aguarde o ticket privado para a entrega.",
             inline: false,
           },
         ],

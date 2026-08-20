@@ -10,7 +10,8 @@ import {
 
 describe("Discord Robux storefront", () => {
   it("builds a standalone Robux message with a purchase button", () => {
-    expect(createDiscordRobuxStorefrontPayload()).toMatchObject({
+    const payload = createDiscordRobuxStorefrontPayload();
+    expect(payload).toMatchObject({
       embeds: [{ title: "Robux" }],
       components: [
         {
@@ -18,6 +19,7 @@ describe("Discord Robux storefront", () => {
         },
       ],
     });
+    expect(payload.embeds[0]?.description).toContain("confira o valor antes de gerar o Pix");
   });
 
   it("preserves unrelated guild settings when storing the message", () => {

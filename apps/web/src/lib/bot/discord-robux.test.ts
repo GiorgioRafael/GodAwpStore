@@ -31,7 +31,7 @@ describe("native Discord Robux interactions", () => {
     });
   });
 
-  it("defers the modal submission privately", async () => {
+  it("defers the quantity modal privately to show the purchase preview", async () => {
     const { parseNativeDiscordRobuxInteraction } = await import("./discord-robux");
 
     expect(
@@ -40,9 +40,35 @@ describe("native Discord Robux interactions", () => {
         data: { custom_id: "gwstore_robux:quantity" },
       }),
     ).toEqual({
-      kind: "submit",
+      kind: "preview",
       response: { type: 5, data: { flags: 64 } },
     });
+  });
+
+  it("defers the explicit finalization button with its validated quantity", async () => {
+    const { parseNativeDiscordRobuxInteraction } = await import("./discord-robux");
+
+    expect(
+      parseNativeDiscordRobuxInteraction({
+        type: 3,
+        data: { custom_id: "gwstore_robux:finalize:1000" },
+      }),
+    ).toEqual({
+      kind: "finalize",
+      quantity: 1000,
+      response: { type: 5, data: { flags: 64 } },
+    });
+  });
+
+  it("rejects an invalid quantity in a finalization button", async () => {
+    const { parseNativeDiscordRobuxInteraction } = await import("./discord-robux");
+
+    expect(
+      parseNativeDiscordRobuxInteraction({
+        type: 3,
+        data: { custom_id: "gwstore_robux:finalize:1" },
+      }),
+    ).toBeNull();
   });
 
   it("does not claim unrelated interactions", async () => {

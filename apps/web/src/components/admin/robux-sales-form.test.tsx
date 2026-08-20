@@ -42,6 +42,7 @@ describe("RobuxSalesForm", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Venda de Robux" })).toBeInTheDocument();
+    expect(screen.getByText(/confere o valor e só então gera o Pix/i)).toBeInTheDocument();
     const channel = screen.getByLabelText("Canal da mensagem de Robux");
     expect(channel).toBeInTheDocument();
     expect(screen.getByText("1.000 Robux = R$ 35,00")).toBeInTheDocument();

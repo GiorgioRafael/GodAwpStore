@@ -3,6 +3,7 @@ import "server-only";
 import { STORE_SLUG } from "@/lib/brand";
 import { getRobuxPaymentService } from "@/lib/robux/payment-service";
 import {
+  calculateRobuxPriceCents,
   formatRobuxQuantity,
   MAXIMUM_ROBUX_QUANTITY,
   MINIMUM_ROBUX_QUANTITY,
@@ -17,11 +18,13 @@ const DISCORD_MODAL_RESPONSE = 9;
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const OPEN_CUSTOM_ID = "gwstore_robux:open";
 const QUANTITY_MODAL_CUSTOM_ID = "gwstore_robux:quantity";
+const FINALIZE_CUSTOM_ID_PREFIX = "gwstore_robux:finalize:";
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 
 export type NativeDiscordRobuxInteraction =
   | { kind: "open" }
-  | { kind: "submit"; response: Record<string, unknown> };
+  | { kind: "preview"; response: Record<string, unknown> }
+  | { kind: "finalize"; quantity: number; response: Record<string, unknown> };
 
 export function parseNativeDiscordRobuxInteraction(
   raw: unknown,
@@ -32,12 +35,25 @@ export function parseNativeDiscordRobuxInteraction(
   }
   if (raw.type === DISCORD_MODAL_SUBMIT && raw.data.custom_id === QUANTITY_MODAL_CUSTOM_ID) {
     return {
-      kind: "submit",
+      kind: "preview",
       response: {
         type: DISCORD_DEFERRED_CHANNEL_MESSAGE,
         data: { flags: DISCORD_EPHEMERAL_FLAG },
       },
     };
+  }
+  if (raw.type === DISCORD_MESSAGE_COMPONENT) {
+    const quantity = readFinalizeQuantity(raw.data.custom_id);
+    if (quantity !== null) {
+      return {
+        kind: "finalize",
+        quantity,
+        response: {
+          type: DISCORD_DEFERRED_CHANNEL_MESSAGE,
+          data: { flags: DISCORD_EPHEMERAL_FLAG },
+        },
+      };
+    }
   }
   return null;
 }
@@ -82,7 +98,20 @@ export async function completeDiscordRobuxPurchase(raw: unknown) {
     if (!configured) {
       throw new Error("Esta mensagem de Robux não está mais ativa. Use a mensagem publicada pela loja.");
     }
-    const quantity = readRobuxQuantity(raw);
+    const interaction = parseNativeDiscordRobuxInteraction(raw);
+    if (!interaction || interaction.kind === "open") {
+      throw new Error("Interação de compra de Robux inválida.");
+    }
+    const quantity =
+      interaction.kind === "preview" ? readRobuxQuantity(raw) : interaction.quantity;
+    const amountCents = calculateRobuxPriceCents(quantity);
+    if (!amountCents) throw new Error("Quantidade de Robux inválida.");
+
+    if (interaction.kind === "preview") {
+      await updateDiscordRobuxResponse(raw, createRobuxPurchasePreview(quantity, amountCents));
+      return;
+    }
+
     const checkout = await getRobuxPaymentService().createCheckout({
       discordGuildId: context.guildId,
       buyerDiscordId: context.userId,
@@ -119,6 +148,38 @@ export async function completeDiscordRobuxPurchase(raw: unknown) {
       console.error(`[discord-robux:reply] ${fallback}`);
     });
   }
+}
+
+function createRobuxPurchasePreview(quantity: number, amountCents: number) {
+  return {
+    embeds: [
+      {
+        color: 0xa855f7,
+        title: "Confira sua compra",
+        description: `Você selecionou **${formatRobuxQuantity(quantity)} Robux** por **${formatBrl(amountCents)}**.`,
+        footer: { text: "Clique em Finalizar compra para gerar seu Pix." },
+      },
+    ],
+    components: [
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 2,
+            custom_id: OPEN_CUSTOM_ID,
+            label: "Alterar quantidade",
+          },
+          {
+            type: 2,
+            style: 1,
+            custom_id: `${FINALIZE_CUSTOM_ID_PREFIX}${quantity}`,
+            label: "Finalizar compra",
+          },
+        ],
+      },
+    ],
+  };
 }
 
 function robuxErrorResponse(message: string) {
@@ -206,6 +267,16 @@ function readRobuxQuantity(raw: unknown) {
     );
   }
   return quantity;
+}
+
+function readFinalizeQuantity(customId: unknown) {
+  if (typeof customId !== "string" || !customId.startsWith(FINALIZE_CUSTOM_ID_PREFIX)) {
+    return null;
+  }
+  const rawQuantity = customId.slice(FINALIZE_CUSTOM_ID_PREFIX.length);
+  if (!/^[0-9]{1,6}$/.test(rawQuantity)) return null;
+  const quantity = Number(rawQuantity);
+  return calculateRobuxPriceCents(quantity) ? quantity : null;
 }
 
 function findComponentValue(value: unknown, customId: string): string | null {

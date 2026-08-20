@@ -49,7 +49,7 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
               Publique uma mensagem própria em outro canal. O comprador informa a quantidade,
-              recebe o Pix calculado automaticamente e ganha um ticket privado após o pagamento.
+              confere o valor e só então gera o Pix. Um ticket privado abre após o pagamento.
             </p>
           </div>
           <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-gold/20 bg-gold/[0.06] text-gold">
@@ -124,7 +124,7 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
               </div>
               <div>
                 <p className="font-semibold text-foreground">Pagamento seguro</p>
-                <p className="mt-1 text-xs leading-5 text-muted">O valor é calculado no servidor e o Pix é criado pela LivePix.</p>
+                <p className="mt-1 text-xs leading-5 text-muted">O valor é calculado no servidor; o Pix só é criado ao finalizar a compra.</p>
               </div>
               <div>
                 <p className="font-semibold text-foreground">Entrega organizada</p>
