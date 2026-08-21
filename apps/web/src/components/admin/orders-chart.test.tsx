@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("recharts", () => ({
   ResponsiveContainer: ({ children }: { children: ReactNode }) => <div>{children}</div>,
@@ -21,8 +20,16 @@ const points = [
 ];
 
 describe("OrdersChart", () => {
-  it("inicia em receita e 30 dias e permite alternar os controles", async () => {
-    const user = userEvent.setup();
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-01T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("inicia em receita e 30 dias e permite alternar os controles", () => {
     render(<OrdersChart points={points} />);
 
     expect(screen.getByRole("button", { name: "Receita" })).toHaveAttribute("aria-pressed", "true");
@@ -30,8 +37,8 @@ describe("OrdersChart", () => {
     expect(screen.getByTestId("bar")).toHaveAttribute("data-key", "value");
     expect(screen.getByTestId("line")).toHaveAttribute("data-key", "movingAverage7");
 
-    await user.click(screen.getByRole("button", { name: "Pedidos" }));
-    await user.click(screen.getByRole("button", { name: "90D" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pedidos" }));
+    fireEvent.click(screen.getByRole("button", { name: "90D" }));
 
     expect(screen.getByRole("button", { name: "Pedidos" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "90D" })).toHaveAttribute("aria-pressed", "true");
