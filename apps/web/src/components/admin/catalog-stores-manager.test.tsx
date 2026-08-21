@@ -3,9 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const actionMocks = vi.hoisted(() => ({
-  deleteCatalogStoreAction: vi.fn(async () => ({
+  archiveCatalogStoreAction: vi.fn(async () => ({
     ok: true,
-    message: "Loja excluída.",
+    message: "Loja arquivada.",
+  })),
+  deleteRecordPermanentlyAction: vi.fn(async () => ({
+    ok: true,
+    message: "Loja excluída definitivamente.",
   })),
   saveCatalogStoreAction: vi.fn(async (_previousState: unknown, _formData: FormData) => {
     void _previousState;
@@ -31,8 +35,10 @@ const secondaryStore: CatalogStoreManagerStore = {
   gameId: "ffdcfe41-29b9-4140-9182-f1cbcbd8276f",
   gameName: "Grow a Garden 2",
   name: "Mundo 2",
+  bannerUrl: "https://example.com/mundo-2.webp",
   isDefault: false,
-  productCount: 0,
+  liveProductCount: 0,
+  totalProductCount: 0,
 };
 const secondGame = {
   id: "8a162fbe-7977-44ef-8357-ef90c594b55d",
@@ -42,40 +48,71 @@ const secondGame = {
 describe("gerenciamento de lojas do catálogo", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("confirma a exclusão de uma loja secundária vazia", async () => {
+  it("confirma a exclusão definitiva de uma loja secundária vazia", async () => {
     const user = userEvent.setup();
     renderManager([secondaryStore]);
 
-    await user.click(screen.getByRole("button", { name: "Excluir loja Mundo 2" }));
+    await user.click(screen.getByRole("button", { name: "Excluir definitivamente loja Mundo 2" }));
 
-    expect(screen.getByRole("heading", { name: "Excluir loja" })).toBeInTheDocument();
-    expect(screen.getByText(/canal permanecerá no servidor/i)).toBeInTheDocument();
-    expect(actionMocks.deleteCatalogStoreAction).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Excluir loja definitivamente" })).toBeInTheDocument();
+    expect(screen.getByText(/canal do Discord será preservado/i)).toBeInTheDocument();
+    expect(actionMocks.deleteRecordPermanentlyAction).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
+    await user.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
 
     await waitFor(() => {
-      expect(actionMocks.deleteCatalogStoreAction).toHaveBeenCalledWith(secondaryStore.id);
+      expect(actionMocks.deleteRecordPermanentlyAction).toHaveBeenCalledWith(
+        "catalogStore",
+        secondaryStore.id,
+      );
     });
-    expect(await screen.findByText("Loja excluída.")).toBeInTheDocument();
+    expect(await screen.findByText("Loja excluída definitivamente.")).toBeInTheDocument();
   });
 
-  it("bloqueia a exclusão enquanto a loja possui produtos", async () => {
+  it("arquiva com zero produtos vivos, mas bloqueia a exclusão por produtos arquivados", async () => {
     const user = userEvent.setup();
-    renderManager([{ ...secondaryStore, productCount: 3 }]);
+    renderManager([{ ...secondaryStore, liveProductCount: 0, totalProductCount: 3 }]);
 
-    await user.click(screen.getByRole("button", { name: "Excluir loja Mundo 2" }));
+    await user.click(screen.getByRole("button", { name: "Arquivar loja Mundo 2" }));
+    expect(screen.getByRole("button", { name: "Confirmar arquivamento" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Confirmar arquivamento" }));
+    await waitFor(() => {
+      expect(actionMocks.archiveCatalogStoreAction).toHaveBeenCalledWith(secondaryStore.id);
+    });
+    await user.click(screen.getByRole("button", { name: "Concluir" }));
 
-    expect(screen.getByText(/Mova os 3 produto\(s\)/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toBeDisabled();
-    expect(actionMocks.deleteCatalogStoreAction).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Excluir definitivamente loja Mundo 2" }));
+    expect(screen.getByText(/incluindo arquivados/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
+    expect(actionMocks.deleteRecordPermanentlyAction).not.toHaveBeenCalled();
   });
 
-  it("protege a loja principal", () => {
+  it("mantém as duas ações visíveis e protegidas na loja principal", async () => {
+    const user = userEvent.setup();
     renderManager([{ ...secondaryStore, isDefault: true, name: "Loja principal" }]);
 
-    expect(screen.queryByRole("button", { name: /Excluir loja/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Arquivar loja Loja principal" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Excluir definitivamente loja Loja principal" }));
+    expect(screen.getByText(/loja principal é protegida/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
     expect(screen.getByText(/não pode ser excluída ou movida separadamente/i)).toBeInTheDocument();
+  });
+
+  it("desvincula o banner próprio ao salvar e volta ao banner global", async () => {
+    const user = userEvent.setup();
+    renderManager([secondaryStore]);
+
+    const clearStoreBannerButton = screen
+      .getAllByRole("button", { name: "Usar banner global" })
+      .find((button) => !button.hasAttribute("disabled"));
+    expect(clearStoreBannerButton).toBeDefined();
+    await user.click(clearStoreBannerButton!);
+    await user.click(screen.getByRole("button", { name: "Salvar loja" }));
+
+    await waitFor(() => expect(actionMocks.saveCatalogStoreAction).toHaveBeenCalled());
+    const formData = actionMocks.saveCatalogStoreAction.mock.calls.at(-1)?.[1] as FormData;
+    expect(formData.get("bannerUrl")).toBe("");
+    expect(screen.getByText(/banner global será usado/i)).toBeInTheDocument();
   });
 
   it("permite mover uma loja secundária vazia para outro jogo", async () => {

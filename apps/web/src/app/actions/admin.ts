@@ -51,6 +51,12 @@ export type AdminActionState = {
 };
 
 const archiveTargetSchema = z.enum(["game", "substore", "product", "whitelist"]);
+const permanentDeleteTargetSchema = z.enum([
+  "game",
+  "substore",
+  "catalogStore",
+  "whitelist",
+]);
 const inventoryStatusChangeSchema = z.object({
   unitId: uuidSchema,
   status: z.enum(["available", "quarantined", "revoked"]),
@@ -91,6 +97,20 @@ const catalogStoreSchema = z.object({
   guildId: uuidSchema.optional(),
   gameId: uuidSchema,
   name: z.string().trim().min(1, "Informe o nome da loja.").max(120),
+  bannerUrl: z
+    .string()
+    .trim()
+    .max(2_048, "A URL do banner é longa demais.")
+    .refine((value) => {
+      if (!value) return true;
+      try {
+        const url = new URL(value);
+        return url.protocol === "https:" && !url.username && !url.password;
+      } catch {
+        return false;
+      }
+    }, "Use uma URL HTTPS válida para o banner.")
+    .transform((value) => value || null),
 });
 const catalogStoreMoveSchema = z.object({
   targetStoreId: uuidSchema,
@@ -835,6 +855,7 @@ export async function saveCatalogStoreAction(
     guildId: text(formData, "guildId") || undefined,
     gameId: text(formData, "gameId"),
     name: text(formData, "name"),
+    bannerUrl: text(formData, "bannerUrl"),
   });
   if (!parsed.success) {
     return { ok: false, message: "Revise os dados da loja.", fieldErrors: errorsFromZod(parsed.error) };
@@ -861,6 +882,7 @@ export async function saveCatalogStoreAction(
         p_game_id: parsed.data.gameId,
         p_name: parsed.data.name,
         p_slug: slug,
+        p_banner_url: parsed.data.bannerUrl,
       });
     if (error) {
       if (error.message.includes("catalog_store_default_game_protected")) {
@@ -883,6 +905,13 @@ export async function saveCatalogStoreAction(
       if (error.message.includes("catalog_store_not_found")) {
         return { ok: false, message: "Loja não encontrada." };
       }
+      if (error.message.includes("catalog_stores_banner_url_https")) {
+        return {
+          ok: false,
+          message: "O banner precisa usar uma URL HTTPS válida.",
+          fieldErrors: { bannerUrl: ["Anexe novamente a imagem do banner."] },
+        };
+      }
       return databaseFailure(error.code);
     }
     if (!data) return { ok: false, message: "A loja não pôde ser atualizada." };
@@ -898,6 +927,7 @@ export async function saveCatalogStoreAction(
       game_id: parsed.data.gameId,
       name: parsed.data.name,
       slug,
+      banner_url: parsed.data.bannerUrl,
       created_by: identity.authUserId,
     })
     .select("id,name")
@@ -961,7 +991,7 @@ export async function saveCatalogStoreAction(
   }
 }
 
-export async function deleteCatalogStoreAction(
+export async function archiveCatalogStoreAction(
   storeId: string,
 ): Promise<AdminActionState> {
   const parsed = uuidSchema.safeParse(storeId);
@@ -975,28 +1005,142 @@ export async function deleteCatalogStoreAction(
     if (error.message.includes("catalog_store_default_protected")) {
       return {
         ok: false,
-        message: "A loja principal não pode ser excluída. Arquive o jogo para removê-la.",
+        message: "A loja principal não pode ser arquivada separadamente. Arquive o jogo.",
       };
     }
     if (error.message.includes("catalog_store_not_empty")) {
       return {
         ok: false,
-        message: "Mova todos os produtos para outra loja antes de excluir esta loja.",
+        message: "Mova todos os produtos ativos para outra loja antes de arquivar esta loja.",
       };
     }
     if (error.message.includes("catalog_store_not_found")) {
-      return { ok: false, message: "Loja não encontrada ou já excluída." };
+      return { ok: false, message: "Loja não encontrada ou já arquivada." };
     }
     return databaseFailure(error.code);
   }
-  if (!data) return { ok: false, message: "A loja não pôde ser excluída." };
+  if (!data) return { ok: false, message: "A loja não pôde ser arquivada." };
 
   revalidatePath("/configuracoes");
   revalidatePath("/estoque");
   revalidatePath("/catalogo/produtos");
   return synchronizeCatalogStorefront(
-    "Loja excluída. O canal foi preservado e a vitrine removida do Discord.",
+    "Loja arquivada. O canal foi preservado e a vitrine removida do Discord.",
   );
+}
+
+export async function deleteRecordPermanentlyAction(
+  target: string,
+  id: string,
+): Promise<AdminActionState> {
+  const parsed = z
+    .object({ target: permanentDeleteTargetSchema, id: uuidSchema })
+    .safeParse({ target, id });
+  if (!parsed.success) return { ok: false, message: "Registro inválido." };
+
+  const { supabase } = await actionContext();
+  const result = parsed.data.target === "game"
+    ? await supabase.rpc("admin_delete_unused_game", { p_game_id: parsed.data.id })
+    : parsed.data.target === "substore"
+      ? await supabase.rpc("admin_delete_unused_substore", { p_substore_id: parsed.data.id })
+      : parsed.data.target === "catalogStore"
+        ? await supabase.rpc("admin_delete_unused_catalog_store", { p_store_id: parsed.data.id })
+        : await supabase.rpc("admin_delete_unused_whitelist_entry", {
+            p_whitelist_entry_id: parsed.data.id,
+          });
+
+  if (result.error) {
+    const message = result.error.message;
+    if (message.includes("game_has_substores")) {
+      return {
+        ok: false,
+        message: "Exclua definitivamente todas as categorias deste jogo antes de excluí-lo.",
+      };
+    }
+    if (message.includes("game_has_products")) {
+      return {
+        ok: false,
+        message: "Este jogo ainda possui produtos e só pode ser arquivado.",
+      };
+    }
+    if (message.includes("substore_has_products")) {
+      return {
+        ok: false,
+        message: "Esta categoria possui produtos, inclusive arquivados, e só pode ser arquivada.",
+      };
+    }
+    if (message.includes("catalog_store_default_protected")) {
+      return {
+        ok: false,
+        message: "A loja principal é protegida. Exclua definitivamente o jogo quando ele estiver vazio.",
+      };
+    }
+    if (message.includes("catalog_store_has_products")) {
+      return {
+        ok: false,
+        message: "Esta loja possui produtos, inclusive arquivados, e só pode ser arquivada.",
+      };
+    }
+    if (message.includes("whitelist_has_guilds")) {
+      return {
+        ok: false,
+        message: "Este cadastro está vinculado a um servidor e só pode ser arquivado.",
+      };
+    }
+    if (message.includes("whitelist_has_orders")) {
+      return {
+        ok: false,
+        message: "Este cadastro possui pedidos e só pode ser arquivado.",
+      };
+    }
+    if (message.includes("whitelist_has_financial_history")) {
+      return {
+        ok: false,
+        message: "Este cadastro possui saques ou lançamentos financeiros e só pode ser arquivado.",
+      };
+    }
+    if (
+      message.includes("whitelist_has_upsells") ||
+      message.includes("whitelist_has_lead_recovery")
+    ) {
+      return {
+        ok: false,
+        message: "Este cadastro possui histórico comercial e só pode ser arquivado.",
+      };
+    }
+    if (message.includes("whitelist_has_history")) {
+      return {
+        ok: false,
+        message: "Este cadastro possui histórico relacionado e só pode ser arquivado.",
+      };
+    }
+    if (
+      message.includes("game_not_found") ||
+      message.includes("substore_not_found") ||
+      message.includes("catalog_store_not_found") ||
+      message.includes("whitelist_not_found")
+    ) {
+      return { ok: false, message: "Registro não encontrado ou já excluído." };
+    }
+    return databaseFailure(result.error.code);
+  }
+  if (!result.data) return { ok: false, message: "O registro não pôde ser excluído." };
+
+  revalidatePath("/catalogo/jogos");
+  revalidatePath("/catalogo/sublojas");
+  revalidatePath("/catalogo/produtos");
+  revalidatePath("/whitelist");
+  revalidatePath("/configuracoes");
+  revalidatePath("/estoque");
+  revalidatePath("/dashboard");
+
+  return parsed.data.target === "whitelist"
+    ? { ok: true, message: "Registro excluído definitivamente." }
+    : synchronizeCatalogStorefront(
+        parsed.data.target === "catalogStore"
+          ? "Loja excluída definitivamente. O canal foi preservado e a vitrine removida do Discord."
+          : "Registro excluído definitivamente.",
+      );
 }
 
 export async function deleteProductAction(
@@ -1016,10 +1160,34 @@ export async function deleteProductAction(
         message: "Zere o estoque deste produto antes de excluí-lo definitivamente.",
       };
     }
-    if (error.message.includes("product_has_history")) {
+    if (error.message.includes("product_has_inventory_history")) {
       return {
         ok: false,
-        message: "Este produto possui histórico de estoque, pedido, sorteio ou roleta e só pode ser arquivado.",
+        message: "Este produto possui histórico de estoque importado e só pode ser arquivado.",
+      };
+    }
+    if (error.message.includes("product_has_orders")) {
+      return {
+        ok: false,
+        message: "Este produto possui pedidos e só pode ser arquivado.",
+      };
+    }
+    if (error.message.includes("product_has_giveaways")) {
+      return {
+        ok: false,
+        message: "Este produto está vinculado ao histórico de sorteios e só pode ser arquivado.",
+      };
+    }
+    if (error.message.includes("product_has_offers")) {
+      return {
+        ok: false,
+        message: "Este produto está vinculado a ofertas ou recuperações de venda e só pode ser arquivado.",
+      };
+    }
+    if (error.message.includes("product_has_roulette_history")) {
+      return {
+        ok: false,
+        message: "Este produto possui histórico da roleta e só pode ser arquivado.",
       };
     }
     if (error.message.includes("product_not_found")) {

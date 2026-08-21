@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { Archive, Gamepad2, LoaderCircle, Pencil } from "lucide-react";
+import { Archive, Gamepad2, LoaderCircle, Pencil, Trash2 } from "lucide-react";
 
 import { saveGameAction } from "@/app/actions/admin";
 import { ActionFeedback, fieldError, initialAdminActionState } from "@/components/admin/action-feedback";
@@ -9,6 +9,7 @@ import { AdminDialog } from "@/components/admin/admin-dialog";
 import { formatDateTime } from "@/components/admin/admin-format";
 import { ArchiveDialog } from "@/components/admin/archive-dialog";
 import { CatalogStatusBadge, editableCatalogStatuses } from "@/components/admin/catalog-status";
+import { DeleteRecordDialog } from "@/components/admin/delete-record-dialog";
 import { MediaThumbnail } from "@/components/admin/media-thumbnail";
 import { MediaUploadField } from "@/components/admin/media-upload-field";
 import {
@@ -19,7 +20,10 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/form-field";
 import type { GameRow } from "@/lib/data/admin-repository";
 
-type RelatedCounts = Record<string, { substores: number; products: number }>;
+type RelatedCounts = Record<
+  string,
+  { substores: number; products: number; totalSubstores: number; totalProducts: number }
+>;
 
 interface GamesManagerProps {
   games: GameRow[];
@@ -142,6 +146,11 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
   const [filter, setFilter] = useState("all");
   const [editor, setEditor] = useState<{ mode: "create" } | { mode: "edit"; game: GameRow } | null>(null);
   const [archiveRecord, setArchiveRecord] = useState<{ id: string; label: string } | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<{
+    id: string;
+    label: string;
+    blockedReason: string | null;
+  } | null>(null);
 
   const filteredGames = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -179,7 +188,12 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
         emptyDescription="Crie o primeiro jogo. Depois, adicione categorias e produtos antes de publicar a vitrine."
       >
         {filteredGames.map((game) => {
-          const counts = relatedCounts[game.id] ?? { substores: 0, products: 0 };
+          const counts = relatedCounts[game.id] ?? {
+            substores: 0,
+            products: 0,
+            totalSubstores: 0,
+            totalProducts: 0,
+          };
           return (
             <tr key={game.id} className="border-b border-border/80 last:border-0">
               <td className="px-5 py-4">
@@ -215,6 +229,22 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
                   >
                     <Archive aria-hidden="true" className="size-4" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 text-danger"
+                    aria-label={`Excluir definitivamente ${game.name}`}
+                    title="Excluir jogo definitivamente"
+                    onClick={() => setDeleteRecord({
+                      id: game.id,
+                      label: game.name,
+                      blockedReason: counts.totalSubstores > 0 || counts.totalProducts > 0
+                        ? `Remova definitivamente as ${counts.totalSubstores} categoria(s) e os ${counts.totalProducts} produto(s) vinculados antes de excluir o jogo.`
+                        : null,
+                    })}
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" />
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -235,6 +265,13 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
         record={archiveRecord}
         noun="jogo"
         onClose={() => setArchiveRecord(null)}
+      />
+      <DeleteRecordDialog
+        key={deleteRecord?.id ?? "delete-game"}
+        target="game"
+        record={deleteRecord}
+        noun="jogo"
+        onClose={() => setDeleteRecord(null)}
       />
     </>
   );

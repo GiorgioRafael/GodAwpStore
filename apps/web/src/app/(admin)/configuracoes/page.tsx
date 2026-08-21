@@ -184,8 +184,14 @@ export default async function SettingsPage() {
             gameId: store.game_id,
             gameName: store.games?.name ?? "Jogo",
             name: store.name,
+            bannerUrl: store.banner_url,
             isDefault: store.is_default,
-            productCount: productRows.filter((product) => product.catalog_store_id === store.id).length,
+            liveProductCount: productRows.filter(
+              (product) => product.catalog_store_id === store.id && !product.archived_at,
+            ).length,
+            totalProductCount: productRows.filter(
+              (product) => product.catalog_store_id === store.id,
+            ).length,
           }))}
         games={gameRows
           .filter((game) => game.status === "active" && !game.archived_at)

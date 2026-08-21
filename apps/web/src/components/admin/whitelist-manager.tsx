@@ -1,13 +1,14 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { Archive, LoaderCircle, Pencil, ShieldCheck } from "lucide-react";
+import { Archive, LoaderCircle, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 
 import { saveWhitelistAction } from "@/app/actions/admin";
 import { ActionFeedback, fieldError, initialAdminActionState } from "@/components/admin/action-feedback";
 import { AdminDialog } from "@/components/admin/admin-dialog";
 import { formatCommission, formatCommissionForInput, formatDateTime } from "@/components/admin/admin-format";
 import { ArchiveDialog } from "@/components/admin/archive-dialog";
+import { DeleteRecordDialog } from "@/components/admin/delete-record-dialog";
 import { ResourceManagerShell } from "@/components/admin/resource-manager-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -157,6 +158,11 @@ export function WhitelistManager({ entries, globalCommissionBps, guildCounts }: 
     { mode: "create" } | { mode: "edit"; entry: WhitelistRow } | null
   >(null);
   const [archiveRecord, setArchiveRecord] = useState<{ id: string; label: string } | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<{
+    id: string;
+    label: string;
+    blockedReason: string | null;
+  } | null>(null);
 
   const filteredEntries = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -234,6 +240,25 @@ export function WhitelistManager({ entries, globalCommissionBps, guildCounts }: 
                   >
                     <Archive aria-hidden="true" className="size-4" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-9 text-danger"
+                    aria-label={`Excluir definitivamente ${entry.label || entry.discord_id}`}
+                    title="Excluir Discord ID definitivamente"
+                    onClick={() => {
+                      const guildCount = guildCounts[entry.id] ?? 0;
+                      setDeleteRecord({
+                        id: entry.id,
+                        label: entry.label || entry.discord_id,
+                        blockedReason: guildCount > 0
+                          ? `Este cadastro está vinculado a ${guildCount} servidor(es). Desvincule-os antes de excluir definitivamente.`
+                          : null,
+                      });
+                    }}
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" />
+                  </Button>
                 </div>
               </td>
             </tr>
@@ -255,6 +280,13 @@ export function WhitelistManager({ entries, globalCommissionBps, guildCounts }: 
         record={archiveRecord}
         noun="Discord ID"
         onClose={() => setArchiveRecord(null)}
+      />
+      <DeleteRecordDialog
+        key={deleteRecord?.id ?? "delete-whitelist"}
+        target="whitelist"
+        record={deleteRecord}
+        noun="Discord ID"
+        onClose={() => setDeleteRecord(null)}
       />
     </>
   );

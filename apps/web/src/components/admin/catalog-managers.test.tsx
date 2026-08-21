@@ -22,6 +22,10 @@ const actionMocks = vi.hoisted(() => ({
       message: "Produto excluído definitivamente.",
     };
   }),
+  deleteRecordPermanentlyAction: vi.fn(async () => ({
+    ok: true,
+    message: "Registro excluído definitivamente.",
+  })),
   saveGameAction: vi.fn(async () => ({ ok: true, message: "Jogo salvo." })),
   saveProductOrderAction: vi.fn(async (_formData: FormData) => {
     void _formData;
@@ -138,8 +142,8 @@ describe("gestores do catálogo", () => {
       <GamesManager
         games={[activeGame, archivedGame]}
         relatedCounts={{
-          [activeGame.id]: { substores: 1, products: 1 },
-          [archivedGame.id]: { substores: 0, products: 0 },
+          [activeGame.id]: { substores: 1, products: 1, totalSubstores: 1, totalProducts: 1 },
+          [archivedGame.id]: { substores: 0, products: 0, totalSubstores: 0, totalProducts: 0 },
         }}
       />,
     );
@@ -172,7 +176,7 @@ describe("gestores do catálogo", () => {
   it("exige a dependência correta antes de criar sublojas e produtos", async () => {
     const user = userEvent.setup();
     const substoreView = render(
-      <SubstoresManager games={[]} substores={[]} productCounts={{}} />,
+      <SubstoresManager games={[]} substores={[]} productCounts={{}} totalProductCounts={{}} />,
     );
     expect(screen.getByRole("button", { name: "Nova categoria" })).toBeDisabled();
     substoreView.unmount();
@@ -184,7 +188,12 @@ describe("gestores do catálogo", () => {
     productView.unmount();
 
     const enabledSubstoreView = render(
-      <SubstoresManager games={[activeGame]} substores={[]} productCounts={{}} />,
+      <SubstoresManager
+        games={[activeGame]}
+        substores={[]}
+        productCounts={{}}
+        totalProductCounts={{}}
+      />,
     );
     await user.click(screen.getByRole("button", { name: "Nova categoria" }));
     expect(screen.getByRole("heading", { name: "Nova categoria" })).toBeInTheDocument();
@@ -313,7 +322,14 @@ describe("gestores do catálogo", () => {
     render(
       <GamesManager
         games={[activeGame]}
-        relatedCounts={{ [activeGame.id]: { substores: 1, products: 1 } }}
+        relatedCounts={{
+          [activeGame.id]: {
+            substores: 1,
+            products: 1,
+            totalSubstores: 1,
+            totalProducts: 1,
+          },
+        }}
       />,
     );
 

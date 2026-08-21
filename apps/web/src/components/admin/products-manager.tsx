@@ -2,10 +2,9 @@
 
 import type { DragEvent, KeyboardEvent } from "react";
 import { useActionState, useId, useMemo, useRef, useState, useTransition } from "react";
-import { Archive, LoaderCircle, Menu, PackageOpen, Pencil, Save, Trash2, TriangleAlert } from "lucide-react";
+import { Archive, LoaderCircle, Menu, PackageOpen, Pencil, Save, Trash2 } from "lucide-react";
 
 import {
-  deleteProductAction,
   saveProductAction,
   saveProductOrderAction,
 } from "@/app/actions/admin";
@@ -14,6 +13,7 @@ import { AdminDialog } from "@/components/admin/admin-dialog";
 import { formatCentsForInput, formatMoney } from "@/components/admin/admin-format";
 import { ArchiveDialog } from "@/components/admin/archive-dialog";
 import { CatalogStatusBadge, editableCatalogStatuses } from "@/components/admin/catalog-status";
+import { DeleteRecordDialog } from "@/components/admin/delete-record-dialog";
 import { MediaThumbnail } from "@/components/admin/media-thumbnail";
 import { MediaUploadField } from "@/components/admin/media-upload-field";
 import {
@@ -201,7 +201,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
   const [deleteRecord, setDeleteRecord] = useState<{
     id: string;
     label: string;
-    stockQuantity: number;
+    blockedReason: string | null;
   } | null>(null);
 
   const filteredProducts = useMemo(() => {
@@ -403,7 +403,9 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
                     onClick={() => setDeleteRecord({
                       id: product.id,
                       label: product.name,
-                      stockQuantity: product.stock_quantity,
+                      blockedReason: product.stock_quantity > 0
+                        ? `Zere o estoque atual de ${product.stock_quantity.toLocaleString("pt-BR")} unidade(s) antes de excluir.`
+                        : null,
                     })}
                   >
                     <Trash2 aria-hidden="true" className="size-4" />
@@ -446,77 +448,14 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         noun="produto"
         onClose={() => setArchiveRecord(null)}
       />
-      <DeleteProductDialog
+      <DeleteRecordDialog
         key={deleteRecord?.id ?? "delete-product"}
+        target="product"
         record={deleteRecord}
+        noun="produto"
+        description="Use esta opção somente para produtos sem estoque, pedidos, sorteios, ofertas ou histórico da roleta."
         onClose={() => setDeleteRecord(null)}
       />
     </>
-  );
-}
-
-function DeleteProductDialog({
-  record,
-  onClose,
-}: {
-  record: { id: string; label: string; stockQuantity: number } | null;
-  onClose: () => void;
-}) {
-  const [state, setState] = useState(initialAdminActionState);
-  const [pending, startTransition] = useTransition();
-  const hasStock = (record?.stockQuantity ?? 0) > 0;
-
-  function remove() {
-    if (!record || hasStock) return;
-    startTransition(async () => {
-      setState(await deleteProductAction(record.id));
-    });
-  }
-
-  return (
-    <AdminDialog
-      open={Boolean(record)}
-      onClose={onClose}
-      title="Excluir produto definitivamente"
-      description="Use esta opção somente para cadastros sem uso. Produtos com histórico continuam disponíveis para arquivamento."
-      footer={
-        state.ok ? (
-          <Button onClick={onClose}>Concluir</Button>
-        ) : (
-          <>
-            <Button variant="ghost" onClick={onClose} disabled={pending}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={remove} disabled={pending || hasStock}>
-              {pending ? (
-                <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-              ) : (
-                <Trash2 aria-hidden="true" className="size-4" />
-              )}
-              {pending ? "Excluindo..." : "Excluir definitivamente"}
-            </Button>
-          </>
-        )
-      }
-    >
-      <div className="space-y-4">
-        <p className="text-sm leading-6 text-muted-strong">
-          Esta ação removerá <strong className="font-semibold text-foreground">{record?.label}</strong> permanentemente e não poderá ser desfeita.
-        </p>
-        {hasStock ? (
-          <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">
-            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            <p className="text-sm leading-5">
-              Zere o estoque atual de {record?.stockQuantity.toLocaleString("pt-BR")} unidade(s) antes de excluir.
-            </p>
-          </div>
-        ) : (
-          <p className="rounded-xl border border-border bg-surface-muted p-3 text-xs leading-5 text-muted">
-            A exclusão será recusada se existirem pedidos, estoque importado, sorteios, ofertas ou registros da roleta vinculados.
-          </p>
-        )}
-        <ActionFeedback state={state} />
-      </div>
-    </AdminDialog>
   );
 }

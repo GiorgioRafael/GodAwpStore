@@ -12,14 +12,23 @@ export default async function SubstoresPage() {
     listProducts(),
   ]);
   const productCounts: Record<string, number> = {};
+  const totalProductCounts: Record<string, number> = {};
 
   for (const substore of substores) {
     productCounts[substore.id] = products.filter(
       (product) => product.substore_id === substore.id && product.status !== "archived",
     ).length;
+    totalProductCounts[substore.id] = products.filter(
+      (product) => product.substore_id === substore.id,
+    ).length;
   }
 
   return (
-    <SubstoresManager games={games} substores={substores} productCounts={productCounts} />
+    <SubstoresManager
+      games={games}
+      substores={substores}
+      productCounts={productCounts}
+      totalProductCounts={totalProductCounts}
+    />
   );
 }

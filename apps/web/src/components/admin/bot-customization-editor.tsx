@@ -917,12 +917,12 @@ export function BotCustomizationEditor({
                             Imagem da vitrine
                           </legend>
                           <p className="-mt-2 text-xs leading-5 text-muted">
-                            Banner exibido no topo da mensagem pública da loja no Discord.
+                            Banner global usado como fallback nas lojas sem uma imagem própria.
                           </p>
                           <div className="rounded-xl border border-border bg-surface-muted p-4">
                             <MediaUploadField
                               name="storefrontBannerUrl"
-                              label="Banner da vitrine"
+                              label="Banner global da vitrine (fallback)"
                               folder="storefronts"
                               value={config.storefront.bannerUrl}
                               onValueChange={(bannerUrl) => {

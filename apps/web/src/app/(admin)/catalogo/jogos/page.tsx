@@ -11,18 +11,25 @@ export default async function GamesPage() {
     listSubstores(),
     listProducts(),
   ]);
-  const relatedCounts: Record<string, { substores: number; products: number }> = {};
+  const relatedCounts: Record<
+    string,
+    { substores: number; products: number; totalSubstores: number; totalProducts: number }
+  > = {};
 
   for (const game of games) {
     const gameSubstores = substores.filter(
       (substore) => substore.game_id === game.id && substore.status !== "archived",
     );
+    const allGameSubstores = substores.filter((substore) => substore.game_id === game.id);
     const substoreIds = new Set(gameSubstores.map((substore) => substore.id));
+    const allSubstoreIds = new Set(allGameSubstores.map((substore) => substore.id));
     relatedCounts[game.id] = {
       substores: gameSubstores.length,
       products: products.filter(
         (product) => substoreIds.has(product.substore_id) && product.status !== "archived",
       ).length,
+      totalSubstores: allGameSubstores.length,
+      totalProducts: products.filter((product) => allSubstoreIds.has(product.substore_id)).length,
     };
   }
 

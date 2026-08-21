@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { Archive, LoaderCircle, Pencil, Store } from "lucide-react";
+import { Archive, LoaderCircle, Pencil, Store, Trash2 } from "lucide-react";
 
 import { saveSubstoreAction } from "@/app/actions/admin";
 import { ActionFeedback, fieldError, initialAdminActionState } from "@/components/admin/action-feedback";
@@ -9,6 +9,7 @@ import { AdminDialog } from "@/components/admin/admin-dialog";
 import { formatDateTime } from "@/components/admin/admin-format";
 import { ArchiveDialog } from "@/components/admin/archive-dialog";
 import { CatalogStatusBadge, editableCatalogStatuses } from "@/components/admin/catalog-status";
+import { DeleteRecordDialog } from "@/components/admin/delete-record-dialog";
 import { MediaThumbnail } from "@/components/admin/media-thumbnail";
 import { MediaUploadField } from "@/components/admin/media-upload-field";
 import {
@@ -23,6 +24,7 @@ interface SubstoresManagerProps {
   games: GameRow[];
   substores: SubstoreRow[];
   productCounts: Record<string, number>;
+  totalProductCounts: Record<string, number>;
 }
 
 function SubstoreForm({
@@ -202,13 +204,23 @@ function SubstoreForm({
   );
 }
 
-export function SubstoresManager({ games, substores, productCounts }: SubstoresManagerProps) {
+export function SubstoresManager({
+  games,
+  substores,
+  productCounts,
+  totalProductCounts,
+}: SubstoresManagerProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [editor, setEditor] = useState<
     { mode: "create" } | { mode: "edit"; substore: SubstoreRow } | null
   >(null);
   const [archiveRecord, setArchiveRecord] = useState<{ id: string; label: string } | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<{
+    id: string;
+    label: string;
+    blockedReason: string | null;
+  } | null>(null);
 
   const filteredSubstores = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("pt-BR");
@@ -289,6 +301,25 @@ export function SubstoresManager({ games, substores, productCounts }: SubstoresM
                 >
                   <Archive aria-hidden="true" className="size-4" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-9 text-danger"
+                  aria-label={`Excluir definitivamente ${substore.name}`}
+                  title="Excluir categoria definitivamente"
+                  onClick={() => {
+                    const totalProducts = totalProductCounts[substore.id] ?? 0;
+                    setDeleteRecord({
+                      id: substore.id,
+                      label: substore.name,
+                      blockedReason: totalProducts > 0
+                        ? `Esta categoria possui ${totalProducts} produto(s), incluindo arquivados. Exclua-os definitivamente antes de remover a categoria.`
+                        : null,
+                    });
+                  }}
+                >
+                  <Trash2 aria-hidden="true" className="size-4" />
+                </Button>
               </div>
             </td>
           </tr>
@@ -309,6 +340,13 @@ export function SubstoresManager({ games, substores, productCounts }: SubstoresM
         record={archiveRecord}
         noun="categoria"
         onClose={() => setArchiveRecord(null)}
+      />
+      <DeleteRecordDialog
+        key={deleteRecord?.id ?? "delete-substore"}
+        target="substore"
+        record={deleteRecord}
+        noun="categoria"
+        onClose={() => setDeleteRecord(null)}
       />
     </>
   );

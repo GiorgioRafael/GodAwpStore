@@ -1,10 +1,9 @@
 "use client";
 
-import { useActionState, useId, useState, useTransition } from "react";
-import { FolderPlus, Gamepad2, LoaderCircle, Save, Store, Trash2, TriangleAlert } from "lucide-react";
+import { useActionState, useId, useState } from "react";
+import { Archive, FolderPlus, Gamepad2, LoaderCircle, Save, Store, Trash2 } from "lucide-react";
 
 import {
-  deleteCatalogStoreAction,
   renameCatalogGameAction,
   saveCatalogStoreAction,
 } from "@/app/actions/admin";
@@ -13,7 +12,9 @@ import {
   fieldError,
   initialAdminActionState,
 } from "@/components/admin/action-feedback";
-import { AdminDialog } from "@/components/admin/admin-dialog";
+import { ArchiveDialog } from "@/components/admin/archive-dialog";
+import { DeleteRecordDialog } from "@/components/admin/delete-record-dialog";
+import { MediaUploadField } from "@/components/admin/media-upload-field";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -24,8 +25,10 @@ export type CatalogStoreManagerStore = {
   gameId: string;
   gameName: string;
   name: string;
+  bannerUrl: string | null;
   isDefault: boolean;
-  productCount: number;
+  liveProductCount: number;
+  totalProductCount: number;
 };
 
 export type CatalogStoreManagerGame = {
@@ -102,7 +105,7 @@ export function CatalogStoresManager({
             </div>
           </div>
           <ActionFeedback state={state} />
-          <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1.3fr_auto] lg:items-end">
+          <div className="grid gap-4 lg:grid-cols-3">
             <Field label="Jogo" htmlFor={`${formId}-game`} error={fieldError(state, "gameId")}>
               <Select id={`${formId}-game`} name="gameId" required>
                 {games.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}
@@ -123,6 +126,17 @@ export function CatalogStoresManager({
                 required
               />
             </Field>
+          </div>
+          <MediaUploadField
+            name="bannerUrl"
+            label="Banner da vitrine desta loja"
+            folder="storefronts"
+            error={fieldError(state, "bannerUrl")}
+            clearLabel="Usar banner global"
+            clearMessage="O banner global será usado quando a loja for salva."
+            hint="Opcional. JPG, PNG ou WebP de até 5 MB."
+          />
+          <div className="flex justify-end">
             <Button type="submit" disabled={pending || games.length === 0 || guilds.length === 0}>
               {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <FolderPlus aria-hidden="true" className="size-4" />}
               {pending ? "Criando..." : "Criar loja"}
@@ -145,20 +159,33 @@ function CatalogStoreCard({
     saveCatalogStoreAction,
     initialAdminActionState,
   );
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const formId = useId();
+  const archiveBlockedReason = store.isDefault
+    ? "A loja principal acompanha o jogo. Arquive o jogo para removê-la da vitrine."
+    : store.liveProductCount > 0
+      ? `Mova os ${store.liveProductCount} produto(s) não arquivado(s) para outra loja antes de arquivar.`
+      : null;
+  const deleteBlockedReason = store.isDefault
+    ? "A loja principal é protegida. Exclua definitivamente o jogo quando todas as categorias e produtos tiverem sido removidos."
+    : store.totalProductCount > 0
+      ? `Esta loja ainda possui ${store.totalProductCount} produto(s), incluindo arquivados. Remova-os definitivamente antes de excluir a loja.`
+      : null;
   return (
     <div className="rounded-xl border border-border bg-surface-muted p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">{store.gameName}</p>
-          <p className="mt-1 text-xs text-muted">{store.productCount} produto(s)</p>
+          <p className="mt-1 text-xs text-muted">
+            {store.liveProductCount} não arquivado(s) · {store.totalProductCount} no total
+          </p>
         </div>
         {store.isDefault ? <Badge tone="neutral">Principal</Badge> : null}
       </div>
       <form action={formAction} className="space-y-3">
         <input type="hidden" name="id" value={store.id} />
-        {store.isDefault || store.productCount > 0 ? (
+        {store.isDefault || store.totalProductCount > 0 ? (
           <input type="hidden" name="gameId" value={store.gameId} />
         ) : null}
         <ActionFeedback state={state} />
@@ -175,35 +202,52 @@ function CatalogStoreCard({
           <Field
             label="Jogo da loja"
             htmlFor={`${formId}-game`}
-            hint={store.isDefault ? "Definido pela loja principal" : store.productCount > 0 ? "Esvazie a loja para alterar" : "Pode ser alterado"}
+            hint={store.isDefault ? "Definido pela loja principal" : store.totalProductCount > 0 ? "Esvazie a loja para alterar" : "Pode ser alterado"}
             error={fieldError(state, "gameId")}
           >
             <Select
               id={`${formId}-game`}
-              name={store.isDefault || store.productCount > 0 ? undefined : "gameId"}
+              name={store.isDefault || store.totalProductCount > 0 ? undefined : "gameId"}
               defaultValue={store.gameId}
-              disabled={store.isDefault || store.productCount > 0}
+              disabled={store.isDefault || store.totalProductCount > 0}
             >
               {games.map((game) => <option key={game.id} value={game.id}>{game.name}</option>)}
             </Select>
           </Field>
         </div>
+        <MediaUploadField
+          name="bannerUrl"
+          label="Banner da vitrine desta loja"
+          folder="storefronts"
+          initialValue={store.bannerUrl}
+          error={fieldError(state, "bannerUrl")}
+          clearLabel="Usar banner global"
+          clearMessage="O banner global será usado quando a loja for salva."
+          hint="Opcional. JPG, PNG ou WebP de até 5 MB."
+        />
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="submit" variant="secondary" disabled={pending}>
             {pending ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <Save aria-hidden="true" className="size-4" />}
             {pending ? "Salvando..." : "Salvar loja"}
           </Button>
-          {!store.isDefault ? (
-            <Button
-              type="button"
-              variant="danger"
-              aria-label={`Excluir loja ${store.name}`}
-              onClick={() => setDeleteOpen(true)}
-            >
-              <Trash2 aria-hidden="true" className="size-4" />
-              Excluir loja
-            </Button>
-          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            aria-label={`Arquivar loja ${store.name}`}
+            onClick={() => setArchiveOpen(true)}
+          >
+            <Archive aria-hidden="true" className="size-4" />
+            Arquivar
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            aria-label={`Excluir definitivamente loja ${store.name}`}
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 aria-hidden="true" className="size-4" />
+            Excluir definitivamente
+          </Button>
         </div>
       </form>
       {store.isDefault ? (
@@ -211,9 +255,25 @@ function CatalogStoreCard({
           A loja principal acompanha o jogo e não pode ser excluída ou movida separadamente.
         </p>
       ) : null}
-      <DeleteCatalogStoreDialog
-        open={deleteOpen}
-        store={store}
+      <ArchiveDialog
+        target="catalogStore"
+        noun="loja"
+        record={archiveOpen ? {
+          id: store.id,
+          label: store.name,
+          blockedReason: archiveBlockedReason,
+        } : null}
+        onClose={() => setArchiveOpen(false)}
+      />
+      <DeleteRecordDialog
+        target="catalogStore"
+        noun="loja"
+        description="A mensagem e a configuração da vitrine serão removidas, mas o canal do Discord será preservado."
+        record={deleteOpen ? {
+          id: store.id,
+          label: store.name,
+          blockedReason: deleteBlockedReason,
+        } : null}
         onClose={() => setDeleteOpen(false)}
       />
     </div>
@@ -251,75 +311,5 @@ function CatalogGameNameForm({ game }: { game: CatalogStoreManagerGame }) {
         </Button>
       </div>
     </form>
-  );
-}
-
-function DeleteCatalogStoreDialog({
-  open,
-  store,
-  onClose,
-}: {
-  open: boolean;
-  store: CatalogStoreManagerStore;
-  onClose: () => void;
-}) {
-  const [state, setState] = useState(initialAdminActionState);
-  const [pending, startTransition] = useTransition();
-  const hasProducts = store.productCount > 0;
-
-  function close() {
-    setState(initialAdminActionState);
-    onClose();
-  }
-
-  function remove() {
-    if (hasProducts) return;
-    startTransition(async () => {
-      setState(await deleteCatalogStoreAction(store.id));
-    });
-  }
-
-  return (
-    <AdminDialog
-      open={open}
-      onClose={close}
-      title="Excluir loja"
-      description="A exclusão preserva o histórico e não apaga o canal do Discord."
-      footer={
-        state.ok ? (
-          <Button onClick={close}>Concluir</Button>
-        ) : (
-          <>
-            <Button variant="ghost" onClick={close} disabled={pending}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={remove} disabled={pending || hasProducts}>
-              {pending ? (
-                <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
-              ) : (
-                <Trash2 aria-hidden="true" className="size-4" />
-              )}
-              {pending ? "Excluindo..." : "Confirmar exclusão"}
-            </Button>
-          </>
-        )
-      }
-    >
-      <div className="space-y-4">
-        <p className="text-sm leading-6 text-muted-strong">
-          Você está prestes a excluir <strong className="font-semibold text-foreground">{store.name}</strong>.
-          A mensagem da vitrine será removida, mas o canal permanecerá no servidor.
-        </p>
-        {hasProducts ? (
-          <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">
-            <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            <p className="text-sm leading-5">
-              Mova os {store.productCount} produto(s) para outra loja pela aba Estoque antes de excluir.
-            </p>
-          </div>
-        ) : null}
-        <ActionFeedback state={state} />
-      </div>
-    </AdminDialog>
   );
 }
