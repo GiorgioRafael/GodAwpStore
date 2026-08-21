@@ -1,6 +1,5 @@
 import "server-only";
 
-import { getSiteUrl } from "@/lib/env";
 import { getLivePixClient, type LivePixPayment } from "@/lib/livepix/client";
 import { reconciliationDigest } from "@/lib/livepix/payment-service";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -13,6 +12,7 @@ import {
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const GWSTORE_PUBLIC_SITE_URL = "https://gwstore.vercel.app";
 
 type RpcError = { message: string; code?: string } | null;
 type RpcClient = {
@@ -88,7 +88,7 @@ export class RobuxPaymentService {
     try {
       checkout = await getLivePixClient().createPayment({
         amountCents,
-        redirectUrl: getSiteUrl(),
+        redirectUrl: robuxPaymentReturnUrl(orderId),
       });
     } catch (error) {
       await this.rpc("release_robux_livepix_checkout_claim", {
@@ -191,6 +191,11 @@ let robuxPaymentService: RobuxPaymentService | undefined;
 export function getRobuxPaymentService() {
   robuxPaymentService ??= new RobuxPaymentService();
   return robuxPaymentService;
+}
+
+export function robuxPaymentReturnUrl(orderId: string) {
+  assertUuid(orderId);
+  return new URL(`/pagamento/${orderId}`, GWSTORE_PUBLIC_SITE_URL).toString();
 }
 
 function requireClient(): RpcClient {
