@@ -183,6 +183,6 @@ function findCatalogRobuxStorefront(
   guild: DiscordStorefrontGuildOption | null | undefined,
 ) {
   return guild?.current.find(
-    (storefront) => storefront.catalog_store_name?.trim().toLocaleLowerCase("pt-BR") === "robux",
+    (storefront) => storefront.catalog_store_name?.trim().toLocaleLowerCase("pt-BR").includes("robux"),
   ) ?? null;
 }

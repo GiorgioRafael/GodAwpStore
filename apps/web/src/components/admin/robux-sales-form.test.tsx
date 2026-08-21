@@ -33,7 +33,7 @@ describe("RobuxSalesForm", () => {
                 game_id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
                 game_name: "ROBUX",
                 catalog_store_id: "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
-                catalog_store_name: "ROBUX",
+                catalog_store_name: "ROBUX VIA GAMEPASS",
                 channel_id: "223456789012345678",
                 channel_name: "robux",
                 message_ids: ["323456789012345678"],

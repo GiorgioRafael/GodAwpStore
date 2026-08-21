@@ -251,5 +251,5 @@ export default async function SettingsPage() {
 }
 
 function isRobuxStore(name: string | null | undefined) {
-  return name?.trim().toLocaleLowerCase("pt-BR") === "robux";
+  return name?.trim().toLocaleLowerCase("pt-BR").includes("robux") ?? false;
 }
