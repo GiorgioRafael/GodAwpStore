@@ -77,6 +77,7 @@ export type CatalogStoreRow = Pick<
   | "game_id"
   | "name"
   | "slug"
+  | "banner_url"
   | "status"
   | "is_default"
   | "sort_order"

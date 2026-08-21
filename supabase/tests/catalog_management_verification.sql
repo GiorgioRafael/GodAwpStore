@@ -108,7 +108,8 @@ begin
       'b2000000-0000-4000-8000-000000000001',
       'b1000000-0000-4000-8000-000000000002',
       'Moved world',
-      'moved-world'
+      'moved-world',
+      'https://example.com/non-admin-banner.webp'
     );
     raise exception 'non-admin unexpectedly moved a catalog store';
   exception when insufficient_privilege then null;
@@ -147,7 +148,8 @@ begin
     'b2000000-0000-4000-8000-000000000001',
     'b1000000-0000-4000-8000-000000000002',
     'Moved world',
-    'moved-world'
+    'moved-world',
+    'https://example.com/store-banner.webp'
   ) then
     raise exception 'empty store update returned false';
   end if;
@@ -157,7 +159,8 @@ begin
       'b2000000-0000-4000-8000-000000000002',
       'b1000000-0000-4000-8000-000000000002',
       'Used world',
-      'used-world'
+      'used-world',
+      null
     );
     raise exception 'store with products unexpectedly changed games';
   exception when check_violation then null;
@@ -172,7 +175,8 @@ begin
       ),
       'b1000000-0000-4000-8000-000000000002',
       'Default store',
-      'default-store'
+      'default-store',
+      null
     );
     raise exception 'default store unexpectedly changed games';
   exception when check_violation then null;
@@ -214,6 +218,7 @@ begin
       and game_id = 'b1000000-0000-4000-8000-000000000002'
       and name = 'Moved world'
       and slug = 'moved-world'
+      and banner_url = 'https://example.com/store-banner.webp'
   ) then
     raise exception 'empty store was not moved and renamed';
   end if;
@@ -234,7 +239,7 @@ begin
   end if;
   if has_function_privilege(
     'anon',
-    'public.admin_update_catalog_store(uuid,uuid,text,text)',
+    'public.admin_update_catalog_store(uuid,uuid,text,text,text)',
     'execute'
   ) then
     raise exception 'anon can update catalog stores';

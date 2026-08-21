@@ -115,6 +115,7 @@ type CatalogStoreRow = {
   game_id: string;
   name: string;
   slug: string;
+  banner_url: string | null;
   status: Database["public"]["Enums"]["catalog_status"];
   is_default: boolean;
   sort_order: number;
@@ -2043,8 +2044,25 @@ export type Database = {
           p_game_id: string;
           p_name: string;
           p_slug: string;
+          p_banner_url: string | null;
         };
         Returns: boolean;
+      };
+      admin_delete_unused_game: {
+        Args: { p_game_id: string };
+        Returns: Json;
+      };
+      admin_delete_unused_substore: {
+        Args: { p_substore_id: string };
+        Returns: Json;
+      };
+      admin_delete_unused_catalog_store: {
+        Args: { p_store_id: string };
+        Returns: Json;
+      };
+      admin_delete_unused_whitelist_entry: {
+        Args: { p_whitelist_entry_id: string };
+        Returns: Json;
       };
       admin_delete_unused_product: {
         Args: { p_product_id: string };
