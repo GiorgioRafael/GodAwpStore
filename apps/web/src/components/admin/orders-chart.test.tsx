@@ -17,7 +17,7 @@ vi.mock("recharts", () => ({
 import { OrdersChart } from "./orders-chart";
 
 const points = [
-  { date: "2026-07-22", ordersCount: 4, paidOrdersCount: 2, revenueCents: 1_500 },
+  { date: new Date().toISOString().slice(0, 10), ordersCount: 4, paidOrdersCount: 2, revenueCents: 1_500 },
 ];
 
 describe("OrdersChart", () => {
