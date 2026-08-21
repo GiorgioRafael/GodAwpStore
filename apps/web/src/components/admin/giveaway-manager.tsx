@@ -196,7 +196,7 @@ export function GiveawayManager({
                       : `O pacote inteiro será dividido da forma mais equilibrada possível entre ${winnerCount} ganhadores.`}
                   </p>
                 </div>
-                <Button type="button" variant="secondary" size="sm" disabled={prizes.length >= Math.min(products.length, 20)} onClick={() => setPrizes((current) => [...current, { key: crypto.randomUUID(), productId: "", quantity: "1" }])}>
+                <Button type="button" variant="secondary" size="sm" disabled={pending || prizes.length >= Math.min(products.length, 20)} onClick={() => setPrizes((current) => [...current, { key: crypto.randomUUID(), productId: "", quantity: "1" }])}>
                   <Plus aria-hidden="true" className="size-4" /> Adicionar item
                 </Button>
               </div>
@@ -212,7 +212,7 @@ export function GiveawayManager({
                     <Field label="Quantidade" htmlFor={`${formId}-quantity-${prize.key}`}>
                       <Input id={`${formId}-quantity-${prize.key}`} name="prizeQuantity" type="number" min={1} max={products.find((product) => product.id === prize.productId)?.stockQuantity ?? 10000} value={prize.quantity} onChange={(event) => setPrizes((current) => current.map((item) => item.key === prize.key ? { ...item, quantity: event.target.value } : item))} required />
                     </Field>
-                    <Button type="button" variant="ghost" size="icon" aria-label={`Remover produto ${index + 1}`} disabled={prizes.length === 1} onClick={() => setPrizes((current) => current.filter((item) => item.key !== prize.key))}>
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Remover produto ${index + 1}`} disabled={pending || prizes.length === 1} onClick={() => setPrizes((current) => current.filter((item) => item.key !== prize.key))} title="Remover do pacote. A alteração só será persistida ao criar o sorteio.">
                       <Trash2 aria-hidden="true" className="size-4" />
                     </Button>
                   </div>

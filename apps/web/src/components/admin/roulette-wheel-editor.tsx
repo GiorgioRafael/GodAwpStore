@@ -291,7 +291,7 @@ export function RouletteWheelEditor({
                           type="button"
                           size="sm"
                           variant="ghost"
-                          disabled={draft.length <= 1}
+                          disabled={pending || draft.length <= 1}
                           onClick={() => removeSlot(slot.prizeKey)}
                           title={
                             draft.length <= 1
@@ -316,7 +316,7 @@ export function RouletteWheelEditor({
               variant="secondary"
               size="sm"
               onClick={addSlot}
-              disabled={draft.length >= MAXIMUM_WHEEL_SLOTS || candidates.length === 0}
+              disabled={pending || draft.length >= MAXIMUM_WHEEL_SLOTS || candidates.length === 0}
               title={
                 draft.length >= MAXIMUM_WHEEL_SLOTS
                   ? `A roda vai até ${MAXIMUM_WHEEL_SLOTS} fatias`
@@ -411,8 +411,8 @@ export function RouletteWheelEditor({
         </CardContent>
         <CardFooter className="flex items-center justify-between gap-4">
           <p className="text-xs text-muted">
-            Peso total {economics.totalWeight.toLocaleString("pt-BR")} · a chance é o peso da fatia
-            dividido por ele
+            As alterações nas fatias só são persistidas ao salvar. Peso total{" "}
+            {economics.totalWeight.toLocaleString("pt-BR")} · a chance é o peso da fatia dividido por ele
           </p>
           <Button type="submit" disabled={pending}>
             {pending ? "Salvando..." : "Salvar roda"}

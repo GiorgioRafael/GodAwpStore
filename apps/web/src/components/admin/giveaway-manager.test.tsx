@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const actionMocks = vi.hoisted(() => ({
@@ -114,5 +115,32 @@ describe("GiveawayManager", () => {
     expect((screen.getByLabelText("2. Segundo") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole("button", { name: "Resortear" }) as HTMLButtonElement).disabled)
       .toBe(true);
+  });
+
+  it("remove um prêmio apenas do rascunho antes de criar o sorteio", async () => {
+    const user = userEvent.setup();
+    render(<GiveawayManager
+      guilds={[{
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "GWStore",
+        discordGuildId: "123456789012345678",
+        channels: [{ id: "223456789012345678", name: "sorteios", categoryName: null }],
+        categories: [],
+        error: null,
+      }]}
+      products={[
+        { id: "22222222-2222-4222-8222-222222222222", name: "Item A", stockQuantity: 10, group: "Game" },
+        { id: "33333333-3333-4333-8333-333333333333", name: "Item B", stockQuantity: 10, group: "Game" },
+      ]}
+      giveaways={[]}
+      defaultEndsAt="2026-07-22T12:00"
+    />);
+
+    await user.click(screen.getByRole("button", { name: "Adicionar item" }));
+    expect(screen.getByRole("button", { name: "Remover produto 2" })).toBeEnabled();
+    await user.click(screen.getByRole("button", { name: "Remover produto 2" }));
+
+    expect(screen.queryByRole("button", { name: "Remover produto 2" })).not.toBeInTheDocument();
+    expect(actionMocks.createGiveawayAction).not.toHaveBeenCalled();
   });
 });
