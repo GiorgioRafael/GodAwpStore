@@ -169,7 +169,7 @@ export function DiscordStorefrontForm({
               <p className="text-sm font-semibold text-foreground">Como funciona</p>
               <ol className="mt-3 grid gap-3 text-sm text-muted-strong md:grid-cols-3">
                 <Step number="1" text="Escolha a loja/mundo." />
-                <Step number="2" text="Cole o UID do canal dessa loja." />
+                <Step number="2" text="Escolha o canal dessa loja." />
                 <Step number="3" text="Publique o estoque independente." />
               </ol>
             </div>
@@ -282,25 +282,20 @@ export function DiscordStorefrontForm({
                 </Field>
 
                 <Field
-                  label="2. UID do canal no Discord"
+                  label="2. Canal da vitrine"
                   htmlFor={`${formId}-channel`}
-                  hint="Cole o ID ou escolha uma sugestão"
+                  hint="Escolha um canal de texto do servidor"
                   error={fieldError(state, "channelId")}
                 >
-                  <Input
+                  <Select
                     id={`${formId}-channel`}
                     name="channelId"
-                    list={`${formId}-channel-options`}
                     value={selectedChannelId}
                     onChange={(event) => setSelectedChannelId(event.target.value)}
-                    placeholder="123456789012345678"
-                    inputMode="numeric"
-                    pattern="[0-9]{15,22}"
-                    maxLength={22}
                     disabled={!selectedGuild}
                     required
-                  />
-                  <datalist id={`${formId}-channel-options`}>
+                  >
+                    <option value="">Selecione um canal</option>
                     {selectedGuild?.channels.map((channel) => {
                       const usedBy = selectedGuild.current.find(
                         (storefront) =>
@@ -314,14 +309,10 @@ export function DiscordStorefrontForm({
                         </option>
                       );
                     })}
-                  </datalist>
+                  </Select>
                   {selectedChannel ? (
                     <p className="mt-2 text-xs text-muted">
                       Canal reconhecido: <strong className="text-muted-strong">#{selectedChannel.name}</strong>
-                    </p>
-                  ) : selectedChannelId ? (
-                    <p className="mt-2 text-xs text-warning">
-                      O bot validará se esse ID pertence ao servidor antes de publicar.
                     </p>
                   ) : null}
                 </Field>

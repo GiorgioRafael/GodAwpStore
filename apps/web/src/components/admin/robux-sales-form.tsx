@@ -14,7 +14,7 @@ import { Notice } from "@/components/admin/notice";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
-import { Field, Input, Select } from "@/components/ui/form-field";
+import { Field, Select } from "@/components/ui/form-field";
 import type { DiscordStorefrontGuildOption } from "./discord-storefront-form";
 
 export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOption[] }) {
@@ -92,26 +92,21 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
                 hint="Pode ser diferente das vitrines de produtos"
                 error={fieldError(state, "channelId")}
               >
-                <Input
+                <Select
                   id={`${formId}-channel`}
                   name="channelId"
-                  list={`${formId}-channels`}
                   value={channelId}
                   onChange={(event) => setChannelId(event.target.value)}
-                  placeholder="123456789012345678"
-                  inputMode="numeric"
-                  pattern="[0-9]{15,22}"
-                  maxLength={22}
                   required
                   disabled={!selectedGuild || Boolean(selectedGuild.channelLoadError)}
-                />
-                <datalist id={`${formId}-channels`}>
+                >
+                  <option value="">Selecione um canal</option>
                   {selectedGuild?.channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
                       {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
                     </option>
                   ))}
-                </datalist>
+                </Select>
                 {selectedChannel ? (
                   <p className="mt-2 text-xs text-muted">
                     Canal reconhecido: <strong className="text-muted-strong">#{selectedChannel.name}</strong>

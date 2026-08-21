@@ -57,12 +57,13 @@ describe("RobuxSalesForm", () => {
     expect(screen.getByText(/substituirá a vitrine antiga de produtos de Robux/i)).toBeInTheDocument();
     const channel = screen.getByLabelText("Canal da mensagem de Robux");
     expect(channel).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "#robux" })).toBeInTheDocument();
     expect(screen.getByText("1.000 Robux = R$ 35,00")).toBeInTheDocument();
     const publish = screen.getByRole("button", { name: "Publicar mensagem" });
     expect(publish).toBeEnabled();
-    await user.clear(channel);
+    await user.selectOptions(channel, "");
     expect(publish).toBeDisabled();
-    await user.type(channel, "223456789012345678");
+    await user.selectOptions(channel, "223456789012345678");
     expect(publish).toBeEnabled();
   });
 });
