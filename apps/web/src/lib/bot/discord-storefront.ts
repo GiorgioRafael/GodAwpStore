@@ -366,6 +366,7 @@ export function createDiscordStorefrontPayloads(
           productOptionEmojis,
         ),
         customization,
+        catalog[0]?.storefrontBannerUrl,
       ),
       allowed_mentions: { parse: [] },
     };

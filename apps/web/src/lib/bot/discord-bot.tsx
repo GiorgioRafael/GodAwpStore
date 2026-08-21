@@ -484,6 +484,9 @@ export function catalogCards(
   }
   const products = flattenCatalog(catalog);
   const message = customization.storefront;
+  const storefrontBannerUrl =
+    discordImageUrl(catalog[0]?.storefrontBannerUrl) ??
+    discordStorefrontBannerUrl(customization);
 
   if (!products.length) {
     return [
@@ -494,7 +497,7 @@ export function catalogCards(
           {},
           256,
         )}
-        imageUrl={discordStorefrontBannerUrl(customization) ?? undefined}
+        imageUrl={storefrontBannerUrl ?? undefined}
       >
         {message.emptyText ? <CardText>{message.emptyText}</CardText> : null}
         {message.emptyHint ? <CardText>{message.emptyHint}</CardText> : null}
@@ -509,7 +512,7 @@ export function catalogCards(
   }
 
   const storefrontImageUrl =
-    discordStorefrontBannerUrl(customization) ??
+    storefrontBannerUrl ??
     discordImageUrl(catalog[0]?.substores[0]?.imageUrl);
   return [
     <Card
@@ -1041,11 +1044,13 @@ export function configureDiscordProductEntrySelect<T>(
 export function configureDiscordStorefrontBanner<T>(
   payload: T,
   customization?: BotMessageCustomization,
+  storeBannerUrl?: string | null,
 ): T {
   if (!isObject(payload) || !Array.isArray(payload.components)) {
     return payload;
   }
-  const bannerUrl = discordStorefrontBannerUrl(customization);
+  const bannerUrl =
+    discordImageUrl(storeBannerUrl) ?? discordStorefrontBannerUrl(customization);
 
   for (const container of payload.components) {
     if (!isObject(container) || !Array.isArray(container.components)) continue;

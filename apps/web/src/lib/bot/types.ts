@@ -34,6 +34,7 @@ export type BotCatalogGame = {
   catalogStoreId?: string;
   catalogStoreName?: string;
   isDefaultStore?: boolean;
+  storefrontBannerUrl?: string | null;
   substores: BotCatalogSubstore[];
 };
 

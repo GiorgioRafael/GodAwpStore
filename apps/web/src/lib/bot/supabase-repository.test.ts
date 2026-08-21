@@ -26,6 +26,57 @@ function queryReturningSequence(results: unknown[]) {
   return query;
 }
 
+function catalogQueryReturning(result: unknown) {
+  const query = {
+    select: vi.fn(() => query),
+    eq: vi.fn(() => query),
+    is: vi.fn(() => query),
+    order: vi.fn(() => query),
+    then: (resolve: (value: unknown) => void) => Promise.resolve(result).then(resolve),
+  };
+  return query;
+}
+
+describe("SupabaseBotCommerceRepository.listCatalog", () => {
+  it("carrega o banner específico da loja no catálogo do bot", async () => {
+    const bannerUrl = "https://project.supabase.co/storage/storefronts/world-2.webp";
+    const results = {
+      games: { data: [{ id: "game", name: "Game", sort_order: 0 }], error: null },
+      catalog_stores: {
+        data: [{
+          id: "store",
+          game_id: "game",
+          name: "World 2",
+          is_default: false,
+          banner_url: bannerUrl,
+          sort_order: 0,
+        }],
+        error: null,
+      },
+      substores: { data: [], error: null },
+      products: { data: [], error: null },
+      product_stock_summary: { data: [], error: null },
+    };
+    const queries = new Map(
+      Object.entries(results).map(([table, result]) => [table, catalogQueryReturning(result)]),
+    );
+    const client = { from: vi.fn((table: string) => queries.get(table)) };
+
+    const repository = new SupabaseBotCommerceRepository(client as never);
+
+    await expect(repository.listCatalog()).resolves.toEqual([
+      expect.objectContaining({
+        catalogStoreId: "store",
+        catalogStoreName: "World 2",
+        storefrontBannerUrl: bannerUrl,
+      }),
+    ]);
+    expect(queries.get("catalog_stores")?.select).toHaveBeenCalledWith(
+      "id,game_id,name,is_default,banner_url,sort_order",
+    );
+  });
+});
+
 describe("SupabaseBotCommerceRepository.ensureGuild", () => {
   it("reutiliza o cadastro ativo quando a identidade do servidor não mudou", async () => {
     const whitelistQuery = queryReturning({

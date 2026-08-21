@@ -381,6 +381,26 @@ describe("Discord catalog cards", () => {
     });
   });
 
+  it("prioriza o banner específico da loja, inclusive no catálogo vazio", () => {
+    const storeBannerUrl = "https://project.supabase.co/storage/storefronts/world-2.webp";
+    const globalBannerUrl = "https://example.com/global.webp";
+    vi.stubEnv("DISCORD_STOREFRONT_BANNER_URL", globalBannerUrl);
+
+    const [card] = catalogCards([
+      {
+        id: "game",
+        name: "Grow a Garden 2",
+        catalogStoreId: "world-2",
+        catalogStoreName: "Mundo 2",
+        storefrontBannerUrl: storeBannerUrl,
+        substores: [],
+      },
+    ]);
+
+    expect(toCardElement(card)).toMatchObject({ imageUrl: storeBannerUrl });
+    expect(JSON.stringify(toCardElement(card))).not.toContain(globalBannerUrl);
+  });
+
   it("mostra produto selecionado com texto visual e compra via Pix", () => {
     const card = selectedProductCard({
       game: { id: "game", name: "Grow a Garden 2", substores: [] },

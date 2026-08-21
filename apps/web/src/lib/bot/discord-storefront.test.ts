@@ -8,6 +8,7 @@ vi.mock("server-only", () => ({}));
 let listDiscordTextChannels: typeof import("./discord-storefront").listDiscordTextChannels;
 let createDiscordTextChannel: typeof import("./discord-storefront").createDiscordTextChannel;
 let publishDiscordStorefront: typeof import("./discord-storefront").publishDiscordStorefront;
+let deleteDiscordStorefrontMessages: typeof import("./discord-storefront").deleteDiscordStorefrontMessages;
 let readStorefrontConfiguration: typeof import("./discord-storefront").readStorefrontConfiguration;
 let readStorefrontConfigurations: typeof import("./discord-storefront").readStorefrontConfigurations;
 let withStorefrontConfiguration: typeof import("./discord-storefront").withStorefrontConfiguration;
@@ -21,11 +22,12 @@ beforeAll(async () => {
     listDiscordTextChannels,
     createDiscordTextChannel,
     publishDiscordStorefront,
+    deleteDiscordStorefrontMessages,
     readStorefrontConfiguration,
     readStorefrontConfigurations,
     withStorefrontConfiguration,
   } = await import("./discord-storefront"));
-});
+}, 60_000);
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -33,6 +35,22 @@ afterEach(() => {
 });
 
 describe("Discord storefront", () => {
+  it("remove apenas as mensagens da vitrine e nunca envia DELETE para o canal", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+
+    await deleteDiscordStorefrontMessages(storefrontConfiguration(), fetcher);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`,
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    expect(fetcher).not.toHaveBeenCalledWith(
+      `https://discord.com/api/v10/channels/${channelId}`,
+      expect.anything(),
+    );
+  });
+
   it("cria um canal de texto com nome seguro para a nova loja", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
@@ -190,6 +208,43 @@ describe("Discord storefront", () => {
       items: [{ media: { url: customBannerUrl } }],
     });
     expect(JSON.stringify(payload.components)).not.toContain(defaultBannerUrl);
+  });
+
+  it("prioriza o banner da loja sobre o fallback global na publicação inicial", async () => {
+    const storeBannerUrl =
+      "https://project.supabase.co/storage/v1/object/public/catalog-media/storefronts/world-2.png";
+    const customBannerUrl =
+      "https://project.supabase.co/storage/v1/object/public/catalog-media/storefronts/global.png";
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: messageId, channel_id: channelId }));
+    const storeCatalog = catalog();
+    storeCatalog[0] = {
+      ...storeCatalog[0]!,
+      storefrontBannerUrl: storeBannerUrl,
+    };
+
+    await publishDiscordStorefront({
+      channel: { id: channelId, name: "compras" },
+      catalog: storeCatalog,
+      customization: {
+        ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+        storefront: {
+          ...DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
+          bannerUrl: customBannerUrl,
+        },
+      },
+      previous: null,
+      fetcher,
+    });
+
+    const payload = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(payload.components[0]?.components[0]).toMatchObject({
+      type: 12,
+      items: [{ media: { url: storeBannerUrl } }],
+    });
+    expect(JSON.stringify(payload.components)).not.toContain(customBannerUrl);
   });
 
   it("aplica os textos personalizados sem liberar menções", async () => {

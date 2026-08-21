@@ -35,7 +35,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         .order("name"),
       this.client
         .from("catalog_stores")
-        .select("id,game_id,name,is_default,sort_order")
+        .select("id,game_id,name,is_default,banner_url,sort_order")
         .eq("status", "active")
         .is("archived_at", null)
         .order("sort_order")
@@ -117,6 +117,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         catalogStoreId: store.id,
         catalogStoreName: store.name,
         isDefaultStore: store.is_default,
+        storefrontBannerUrl: store.banner_url,
         substores,
       }];
     });
