@@ -3,6 +3,7 @@
 import { useActionState, useId, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  ChevronDown,
   Gem,
   LoaderCircle,
   MessageSquareText,
@@ -287,29 +288,36 @@ export function DiscordStorefrontForm({
                   hint="Escolha um canal de texto do servidor"
                   error={fieldError(state, "channelId")}
                 >
-                  <Select
-                    id={`${formId}-channel`}
-                    name="channelId"
-                    value={selectedChannelId}
-                    onChange={(event) => setSelectedChannelId(event.target.value)}
-                    disabled={!selectedGuild}
-                    required
-                  >
-                    <option value="">Selecione um canal</option>
-                    {selectedGuild?.channels.map((channel) => {
-                      const usedBy = selectedGuild.current.find(
-                        (storefront) =>
-                          Boolean(storefront.catalog_store_id) &&
-                          storefront.catalog_store_id !== selectedGameId &&
-                          storefront.channel_id === channel.id,
-                      );
-                      return (
-                        <option key={channel.id} value={channel.id}>
-                          {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}{usedBy ? ` · usado por ${usedBy.catalog_store_name}` : ""}
-                        </option>
-                      );
-                    })}
-                  </Select>
+                  <div className="relative">
+                    <Select
+                      id={`${formId}-channel`}
+                      name="channelId"
+                      value={selectedChannelId}
+                      onChange={(event) => setSelectedChannelId(event.target.value)}
+                      className="pr-10"
+                      disabled={!selectedGuild}
+                      required
+                    >
+                      <option value="">Selecione um canal</option>
+                      {selectedGuild?.channels.map((channel) => {
+                        const usedBy = selectedGuild.current.find(
+                          (storefront) =>
+                            Boolean(storefront.catalog_store_id) &&
+                            storefront.catalog_store_id !== selectedGameId &&
+                            storefront.channel_id === channel.id,
+                        );
+                        return (
+                          <option key={channel.id} value={channel.id}>
+                            {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}{usedBy ? ` · usado por ${usedBy.catalog_store_name}` : ""}
+                          </option>
+                        );
+                      })}
+                    </Select>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
+                    />
+                  </div>
                   {selectedChannel ? (
                     <p className="mt-2 text-xs text-muted">
                       Canal reconhecido: <strong className="text-muted-strong">#{selectedChannel.name}</strong>

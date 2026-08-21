@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
-import { CheckCircle2, Coins, LoaderCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, ChevronDown, Coins, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { publishDiscordRobuxStorefrontAction } from "@/app/actions/admin";
 import {
@@ -92,21 +92,28 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
                 hint="Pode ser diferente das vitrines de produtos"
                 error={fieldError(state, "channelId")}
               >
-                <Select
-                  id={`${formId}-channel`}
-                  name="channelId"
-                  value={channelId}
-                  onChange={(event) => setChannelId(event.target.value)}
-                  required
-                  disabled={!selectedGuild || Boolean(selectedGuild.channelLoadError)}
-                >
-                  <option value="">Selecione um canal</option>
-                  {selectedGuild?.channels.map((channel) => (
-                    <option key={channel.id} value={channel.id}>
-                      {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
-                    </option>
-                  ))}
-                </Select>
+                <div className="relative">
+                  <Select
+                    id={`${formId}-channel`}
+                    name="channelId"
+                    value={channelId}
+                    onChange={(event) => setChannelId(event.target.value)}
+                    className="pr-10"
+                    required
+                    disabled={!selectedGuild || Boolean(selectedGuild.channelLoadError)}
+                  >
+                    <option value="">Selecione um canal</option>
+                    {selectedGuild?.channels.map((channel) => (
+                      <option key={channel.id} value={channel.id}>
+                        {channel.categoryName ? `${channel.categoryName} / ` : ""}#{channel.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className="pointer-events-none absolute right-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
+                  />
+                </div>
                 {selectedChannel ? (
                   <p className="mt-2 text-xs text-muted">
                     Canal reconhecido: <strong className="text-muted-strong">#{selectedChannel.name}</strong>

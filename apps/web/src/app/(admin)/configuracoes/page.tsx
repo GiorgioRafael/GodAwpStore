@@ -65,7 +65,10 @@ export default async function SettingsPage() {
   const storefrontGames = catalogStoreRows
     .filter(
       (store) =>
-        store.status === "active" && !store.archived_at && activeGameIds.has(store.game_id),
+        store.status === "active" &&
+        !store.archived_at &&
+        activeGameIds.has(store.game_id) &&
+        (!IS_GWSTORE || !isRobuxStore(store.name)),
     )
     .map((store) => {
       const activeSubstores = substoreRows.filter(
@@ -123,6 +126,14 @@ export default async function SettingsPage() {
         }
       }),
   );
+  const storefrontGuilds = IS_GWSTORE
+    ? guilds.map((guild) => ({
+        ...guild,
+        current: guild.current.filter(
+          (storefront) => !isRobuxStore(storefront.catalog_store_name),
+        ),
+      }))
+    : guilds;
   const parsedCommission = Number(settings?.global_commission_bps ?? 200);
   const globalCommissionBps = Number.isInteger(parsedCommission) ? parsedCommission : 200;
   const parsedUpsellDiscount = Number(settings?.upsell_discount_bps ?? 500);
@@ -184,9 +195,9 @@ export default async function SettingsPage() {
           .map((guild) => ({ id: guild.id, name: guild.name }))}
       />
 
-      <DiscordStorefrontForm guilds={guilds} games={storefrontGames} />
-
       {IS_GWSTORE ? <RobuxSalesForm guilds={guilds} /> : null}
+
+      <DiscordStorefrontForm guilds={storefrontGuilds} games={storefrontGames} />
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,.95fr)]">
         <PlatformSettingsForm
@@ -237,4 +248,8 @@ export default async function SettingsPage() {
       </div>
     </div>
   );
+}
+
+function isRobuxStore(name: string | null | undefined) {
+  return name?.trim().toLocaleLowerCase("pt-BR") === "robux";
 }
