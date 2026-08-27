@@ -26,6 +26,7 @@ export type WheelSlot = WheelSlotDraft & {
   heldUnits: number;
   retiredUnits: number;
   archived: boolean;
+  available: boolean;
 };
 
 export type WheelCandidate = {
@@ -78,6 +79,10 @@ export function RouletteWheelEditor({
   // Arredondar cada fatia sozinha deixa a coluna somando 99,98%, e aí não dá
   // para saber se é o arredondamento ou um erro seu.
   const shares = useMemo(() => slotChanceShares(draft), [draft]);
+  const unavailableSlots = useMemo(
+    () => draft.filter((slot) => !slot.available),
+    [draft],
+  );
 
   function addSlot() {
     setDraft((current) => {
@@ -108,6 +113,7 @@ export function RouletteWheelEditor({
           heldUnits: 0,
           retiredUnits: 0,
           archived: false,
+          available: true,
         },
       ];
     });
@@ -129,6 +135,7 @@ export function RouletteWheelEditor({
               valueCents: product?.valueCents ?? 0,
               stockQuantity: product?.stockQuantity ?? 0,
               archived: false,
+              available: Boolean(product),
             }
           : slot,
       ),
@@ -162,11 +169,11 @@ export function RouletteWheelEditor({
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold tracking-tight">
-            Itens da roleta
+            1. Monte os prêmios da roleta
           </h2>
           <p className="mt-1 text-sm text-muted">
-            É aqui que se troca o prêmio de cada fatia e a frequência com que ele sai. Os números
-            recalculam enquanto você mexe — o que aparece é o que vale depois de salvar.
+            Escolha o item de cada fatia, informe quantas unidades o jogador recebe e ajuste o peso.
+            A chance e a margem são calculadas automaticamente antes de salvar.
           </p>
         </div>
         <Badge tone={verdict.tone === "success" ? "success" : verdict.tone === "warning" ? "warning" : "danger"}>
@@ -177,17 +184,33 @@ export function RouletteWheelEditor({
         <CardContent className="space-y-4 pt-5">
           <ActionFeedback state={state} />
 
+          {unavailableSlots.length > 0 ? (
+            <div className="rounded-xl border border-danger/30 bg-danger/[0.06] px-4 py-3 text-sm text-danger">
+              <p className="font-semibold">Troque {unavailableSlots.length} prêmio(s) antes de salvar</p>
+              <p className="mt-1 leading-5 text-muted-strong">
+                {unavailableSlots.map((slot) => slot.productName).join(", ")} não está à venda no catálogo.
+                Escolha outro item ativo em cada fatia marcada. A roda atual não muda até você salvar.
+              </p>
+            </div>
+          ) : null}
+
+          <div className="grid gap-2 rounded-xl border border-border bg-surface-muted px-4 py-3 text-xs leading-5 text-muted sm:grid-cols-3">
+            <p><strong className="text-foreground">1.</strong> Escolha o item entregue.</p>
+            <p><strong className="text-foreground">2.</strong> Informe a quantidade do prêmio.</p>
+            <p><strong className="text-foreground">3.</strong> Ajuste o peso; a chance sai sozinha.</p>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full min-w-[46rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-[0.12em] text-muted">
                   <th className="pb-2 pr-3 font-medium">Fatia</th>
-                  <th className="pb-2 pr-3 font-medium">Item sorteado</th>
-                  <th className="pb-2 pr-3 font-medium">Qtd.</th>
+                  <th className="pb-2 pr-3 font-medium">Item entregue</th>
+                  <th className="pb-2 pr-3 font-medium">Qtd. por prêmio</th>
                   <th className="pb-2 pr-3 font-medium">Valor do prêmio</th>
                   <th className="pb-2 pr-3 font-medium">Peso</th>
-                  <th className="pb-2 pr-3 font-medium">Chance</th>
-                  <th className="pb-2 pr-3 font-medium">Estoque</th>
+                  <th className="pb-2 pr-3 font-medium">Chance automática</th>
+                  <th className="pb-2 pr-3 font-medium">Estoque atual</th>
                   <th className="pb-2 font-medium">
                     <span className="sr-only">Remover</span>
                   </th>
@@ -222,8 +245,8 @@ export function RouletteWheelEditor({
                           value={slot.productId}
                           onChange={(event) => setProduct(slot.prizeKey, event.target.value)}
                         >
-                          {slot.archived ? (
-                            <option value={slot.productId}>{slot.productName} (arquivado)</option>
+                          {!slot.available ? (
+                            <option value={slot.productId}>{slot.productName} (substitua: inativo)</option>
                           ) : null}
                           {candidates.map((candidate) => (
                             <option key={candidate.id} value={candidate.id}>
@@ -240,6 +263,9 @@ export function RouletteWheelEditor({
                               : null}{" "}
                             já ganhas — cada uma vale o que valia quando saiu
                           </p>
+                        ) : null}
+                        {!slot.available ? (
+                          <p className="mt-1 text-xs font-medium text-danger">Este item não pode continuar na roda. Escolha outro item ativo.</p>
                         ) : null}
                       </td>
                       <td className="py-3 pr-3">
@@ -414,8 +440,8 @@ export function RouletteWheelEditor({
             Peso total {economics.totalWeight.toLocaleString("pt-BR")} · a chance é o peso da fatia
             dividido por ele
           </p>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Salvando..." : "Salvar roda"}
+          <Button type="submit" disabled={pending || unavailableSlots.length > 0}>
+            {pending ? "Salvando..." : unavailableSlots.length > 0 ? "Troque os itens indisponíveis" : "Salvar roda"}
           </Button>
         </CardFooter>
       </form>

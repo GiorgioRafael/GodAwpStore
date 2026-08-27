@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 
 import { ProductsManager } from "@/components/admin/products-manager";
-import { listProducts, listSubstores } from "@/lib/data/admin-repository";
+import { listCatalogStores, listProducts, listSubstores } from "@/lib/data/admin-repository";
 
 export const metadata: Metadata = { title: "Produtos" };
 
 export default async function ProductsPage() {
-  const [products, substores] = await Promise.all([listProducts(), listSubstores()]);
+  const [products, substores, stores] = await Promise.all([
+    listProducts(),
+    listSubstores(),
+    listCatalogStores(),
+  ]);
   const productsRevision = products
     .map((product) => `${product.id}:${product.updated_at}`)
     .join("|");
@@ -15,6 +19,7 @@ export default async function ProductsPage() {
       key={productsRevision}
       products={products}
       substores={substores}
+      stores={stores}
     />
   );
 }

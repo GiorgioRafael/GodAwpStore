@@ -16,18 +16,25 @@ import type { CatalogStoreRow, ProductRow } from "@/lib/data/admin-repository";
 export function InventoryStoresManager({
   stores,
   products,
+  initialStoreId,
 }: {
   stores: CatalogStoreRow[];
   products: ProductRow[];
+  initialStoreId?: string;
 }) {
   const activeStores = useMemo(
     () => stores.filter((store) => store.status === "active" && !store.archived_at),
     [stores],
   );
-  const initialStore = activeStores.find((store) => store.is_default) ?? activeStores[0] ?? null;
+  const initialStore =
+    activeStores.find((store) => store.id === initialStoreId) ??
+    activeStores.find((store) => store.is_default) ??
+    activeStores[0] ??
+    null;
   const [selectedStoreId, setSelectedStoreId] = useState(
     initialStore?.id ?? "",
   );
+  const [inventoryProducts, setInventoryProducts] = useState(products);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [targetStoreId, setTargetStoreId] = useState(
     activeStores.find(
@@ -37,7 +44,7 @@ export function InventoryStoresManager({
   const [state, setState] = useState(initialAdminActionState);
   const [pending, startTransition] = useTransition();
   const selectedStore = activeStores.find((store) => store.id === selectedStoreId) ?? null;
-  const visibleProducts = products.filter(
+  const visibleProducts = inventoryProducts.filter(
     (product) => product.catalog_store_id === selectedStoreId && !product.archived_at,
   );
   const targetStores = activeStores.filter(
@@ -64,14 +71,37 @@ export function InventoryStoresManager({
     );
   }
 
+  function toggleAllVisibleProducts() {
+    const visibleIds = visibleProducts.map((product) => product.id);
+    const everyVisibleProductIsSelected =
+      visibleIds.length > 0 && visibleIds.every((productId) => selectedProductIds.includes(productId));
+    setSelectedProductIds(everyVisibleProductIsSelected ? [] : visibleIds);
+  }
+
   function moveProducts() {
+    const productsToMove = [...selectedProductIds];
+    const targetStore = activeStores.find((store) => store.id === targetStoreId) ?? null;
+    if (productsToMove.length === 0 || !targetStore) return;
     const formData = new FormData();
-    formData.set("productIds", JSON.stringify(selectedProductIds));
+    formData.set("productIds", JSON.stringify(productsToMove));
     formData.set("targetStoreId", targetStoreId);
     startTransition(async () => {
       const result = await moveCatalogProductsAction(formData);
       setState(result);
-      if (result.ok) setSelectedProductIds([]);
+      if (result.ok) {
+        setInventoryProducts((current) =>
+          current.map((product) =>
+            productsToMove.includes(product.id)
+              ? {
+                  ...product,
+                  catalog_store_id: targetStore.id,
+                  catalog_stores: { name: targetStore.name, game_id: targetStore.game_id },
+                }
+              : product,
+          ),
+        );
+        setSelectedProductIds([]);
+      }
     });
   }
 
@@ -80,7 +110,7 @@ export function InventoryStoresManager({
       <PageHeader
         eyebrow="Operação"
         title="Estoque por loja"
-        description="Organize o catálogo em pastas independentes e mova produtos inteiros entre mundos do mesmo jogo."
+        description="Organize cada vitrine sem risco: escolha a loja de origem, marque os produtos e mova para outra loja do mesmo jogo."
       />
 
       <Card>
@@ -89,7 +119,7 @@ export function InventoryStoresManager({
             <div>
               <h2 className="text-base font-semibold tracking-tight">Pastas de estoque</h2>
               <p className="mt-1 text-sm leading-6 text-muted">
-                Cada pasta corresponde a uma vitrine e a um canal do Discord.
+                1. Escolha a loja de origem. 2. Marque os produtos. 3. Escolha a loja de destino e mova.
               </p>
             </div>
             <span className="grid size-10 place-items-center rounded-xl border border-gold/20 bg-gold/[0.06] text-gold">
@@ -100,7 +130,7 @@ export function InventoryStoresManager({
         <CardContent className="pt-5">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {activeStores.map((store) => {
-              const count = products.filter(
+              const count = inventoryProducts.filter(
                 (product) => product.catalog_store_id === store.id && !product.archived_at,
               ).length;
               const selected = store.id === selectedStoreId;
@@ -135,10 +165,17 @@ export function InventoryStoresManager({
             <div>
               <h2 className="text-base font-semibold tracking-tight">{selectedStore?.name ?? "Loja"}</h2>
               <p className="mt-1 text-sm text-muted">
-                Selecione um ou mais produtos para mover todo o estoque disponível desse SKU.
+                {visibleProducts.length} produto(s) nesta loja. O estoque, o preço e as vendas continuam no mesmo produto após mover.
               </p>
             </div>
             <div className="flex min-w-72 flex-wrap items-center gap-2">
+              {visibleProducts.length > 0 ? (
+                <Button type="button" variant="secondary" size="sm" onClick={toggleAllVisibleProducts} disabled={pending}>
+                  {visibleProducts.every((product) => selectedProductIds.includes(product.id))
+                    ? "Limpar seleção"
+                    : "Selecionar todos"}
+                </Button>
+              ) : null}
               <Select
                 value={targetStoreId}
                 onChange={(event) => setTargetStoreId(event.target.value)}
@@ -175,7 +212,7 @@ export function InventoryStoresManager({
               <table className="w-full min-w-[720px] text-left">
                 <thead className="bg-surface-muted text-xs uppercase tracking-[0.12em] text-muted">
                   <tr>
-                    <th className="w-12 px-4 py-3">Mover</th>
+                    <th className="w-12 px-4 py-3">Selecionar</th>
                     <th className="px-4 py-3">Produto</th>
                     <th className="px-4 py-3">Categoria</th>
                     <th className="px-4 py-3">Disponível</th>

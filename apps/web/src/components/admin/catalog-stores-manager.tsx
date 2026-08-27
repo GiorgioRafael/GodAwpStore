@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useId, useState, useTransition } from "react";
+import { LinkButton } from "@/components/ui/button";
 import { FolderPlus, Gamepad2, LoaderCircle, Save, Store, Trash2, TriangleAlert } from "lucide-react";
 
 import {
@@ -313,9 +314,14 @@ function DeleteCatalogStoreDialog({
         {hasProducts ? (
           <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">
             <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            <p className="text-sm leading-5">
-              Mova os {store.productCount} produto(s) para outra loja pela aba Estoque antes de excluir.
-            </p>
+            <div className="space-y-2">
+              <p className="text-sm leading-5">
+                Esta loja ainda tem {store.productCount} produto(s). Mova-os para outra loja antes de excluir.
+              </p>
+              <LinkButton href={`/estoque?loja=${store.id}`} variant="secondary" size="sm">
+                Organizar produtos desta loja
+              </LinkButton>
+            </div>
           </div>
         ) : null}
         <ActionFeedback state={state} />

@@ -87,7 +87,7 @@ export async function saveRouletteWheelAction(
 
     const { data, error } = await client.rpc("admin_save_roulette_wheel", { p_slots: slots });
     if (error?.code === "23503") {
-      return { ok: false, message: "Um dos produtos escolhidos não está mais à venda." };
+      return { ok: false, message: "Um dos produtos escolhidos foi arquivado ou removido." };
     }
     if (error) throw new Error(error.message);
 

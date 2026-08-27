@@ -87,5 +87,15 @@ describe("estoque por loja", () => {
     const formData = moveCatalogProductsAction.mock.calls[0]?.[0] as FormData;
     expect(formData.get("targetStoreId")).toBe(targetStoreId);
     expect(JSON.parse(String(formData.get("productIds")))).toEqual([product.id]);
+    expect(await screen.findByText("Esta loja ainda está vazia")).toBeInTheDocument();
+  });
+
+  it("seleciona todos os produtos da loja de uma vez", async () => {
+    const user = userEvent.setup();
+    render(<InventoryStoresManager stores={stores} products={[product]} />);
+
+    await user.click(screen.getByRole("button", { name: "Selecionar todos" }));
+    expect(screen.getByRole("checkbox", { name: /Selecionar Dragon's Breath/ })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Mover (1)" })).toBeEnabled();
   });
 });

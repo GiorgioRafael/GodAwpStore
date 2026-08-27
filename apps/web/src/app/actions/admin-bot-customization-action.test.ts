@@ -319,18 +319,21 @@ describe("action de produtos", () => {
     targetSubstoreQuery.select.mockReturnValue(targetSubstoreQuery);
     targetSubstoreQuery.eq.mockReturnValue(targetSubstoreQuery);
     targetSubstoreQuery.is.mockReturnValue(targetSubstoreQuery);
-    const defaultStoreQuery = {
+    const selectedStoreQuery = {
       select: vi.fn(),
       eq: vi.fn(),
       is: vi.fn(),
       maybeSingle: vi.fn(async () => ({
-        data: { id: "438e5b0d-90e3-48aa-8f8e-aa090d777c64" },
+        data: {
+          id: "438e5b0d-90e3-48aa-8f8e-aa090d777c64",
+          game_id: "02c90c5b-6ea7-4508-b9da-79f39c10f314",
+        },
         error: null,
       })),
     };
-    defaultStoreQuery.select.mockReturnValue(defaultStoreQuery);
-    defaultStoreQuery.eq.mockReturnValue(defaultStoreQuery);
-    defaultStoreQuery.is.mockReturnValue(defaultStoreQuery);
+    selectedStoreQuery.select.mockReturnValue(selectedStoreQuery);
+    selectedStoreQuery.eq.mockReturnValue(selectedStoreQuery);
+    selectedStoreQuery.is.mockReturnValue(selectedStoreQuery);
     const single = vi.fn(async () => ({
       data: { id: "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae" },
       error: null,
@@ -341,13 +344,14 @@ describe("action de produtos", () => {
       .fn()
       .mockReturnValueOnce(existingSlugsQuery)
       .mockReturnValueOnce(targetSubstoreQuery)
-      .mockReturnValueOnce(defaultStoreQuery)
+      .mockReturnValueOnce(selectedStoreQuery)
       .mockReturnValueOnce(activeProductsQuery)
       .mockReturnValueOnce({ insert });
     mocks.createServerSupabaseClient.mockResolvedValue({ from });
 
     const formData = new FormData();
     formData.set("substoreId", "338e5b0d-90e3-48aa-8f8e-aa090d777c64");
+    formData.set("catalogStoreId", "438e5b0d-90e3-48aa-8f8e-aa090d777c64");
     formData.set("name", "Poção D'Água");
     formData.set("minimumPrice", "10,00");
     formData.set("stockQuantity", "5");

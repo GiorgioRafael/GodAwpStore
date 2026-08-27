@@ -375,13 +375,18 @@ export async function saveProductAction(
     sortOrder: integer(formData, "sortOrder"),
     lowStockThreshold: integer(formData, "lowStockThreshold", 5),
   });
+  const parsedCatalogStoreId = uuidSchema.safeParse(text(formData, "catalogStoreId"));
   const parsedId = text(formData, "id") ? uuidSchema.safeParse(text(formData, "id")) : null;
   const parsedUpdatedAt = parsedId?.success
     ? isoDateTimeSchema.safeParse(text(formData, "updatedAt"))
     : null;
 
-  if (!parsed.success || (parsedId && !parsedId.success)) {
-    const fieldErrors = parsed.success ? { id: ["ID inválido."] } : errorsFromZod(parsed.error);
+  if (!parsed.success || !parsedCatalogStoreId.success || (parsedId && !parsedId.success)) {
+    const fieldErrors = parsed.success ? {} : errorsFromZod(parsed.error);
+    if (!parsedCatalogStoreId.success) {
+      fieldErrors.catalogStoreId = ["Escolha a loja/mundo onde este produto será vendido."];
+    }
+    if (parsedId && !parsedId.success) fieldErrors.id = ["ID inválido."];
     if (!Number.isFinite(minimumPriceCents)) fieldErrors.minimumPrice = ["Informe um valor como 10,00."];
     return { ok: false, message: "Revise os campos do produto.", fieldErrors };
   }
@@ -423,30 +428,21 @@ export async function saveProductAction(
     };
   }
 
-  let catalogStoreId: string | null = null;
-  if (id) {
-    const { data: existingProduct, error: existingProductError } = await supabase
-      .from("products")
-      .select("catalog_store_id,catalog_stores(game_id)")
-      .eq("id", id)
-      .maybeSingle();
-    if (existingProductError) return databaseFailure(existingProductError.code);
-    if (existingProduct?.catalog_stores?.game_id === selectedSubstore.game_id) {
-      catalogStoreId = existingProduct.catalog_store_id;
-    }
-  }
-  if (!catalogStoreId) {
-    const { data: defaultStore, error: defaultStoreError } = await supabase
-      .from("catalog_stores")
-      .select("id")
-      .eq("game_id", selectedSubstore.game_id)
-      .eq("is_default", true)
-      .eq("status", "active")
-      .is("archived_at", null)
-      .maybeSingle();
-    if (defaultStoreError) return databaseFailure(defaultStoreError.code);
-    if (!defaultStore) return { ok: false, message: "A loja principal deste jogo não existe." };
-    catalogStoreId = defaultStore.id;
+  const catalogStoreId = parsedCatalogStoreId.data;
+  const { data: selectedCatalogStore, error: selectedCatalogStoreError } = await supabase
+    .from("catalog_stores")
+    .select("id,game_id")
+    .eq("id", catalogStoreId)
+    .eq("status", "active")
+    .is("archived_at", null)
+    .maybeSingle();
+  if (selectedCatalogStoreError) return databaseFailure(selectedCatalogStoreError.code);
+  if (!selectedCatalogStore || selectedCatalogStore.game_id !== selectedSubstore.game_id) {
+    return {
+      ok: false,
+      message: "A loja/mundo selecionada não pertence à categoria escolhida.",
+      fieldErrors: { catalogStoreId: ["Escolha uma loja ativa do mesmo jogo da categoria."] },
+    };
   }
 
   if (parsed.data.status === "active") {

@@ -24,21 +24,24 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Field, Input, Select, Textarea } from "@/components/ui/form-field";
-import type { ProductRow, SubstoreRow } from "@/lib/data/admin-repository";
+import type { CatalogStoreRow, ProductRow, SubstoreRow } from "@/lib/data/admin-repository";
 
 interface ProductsManagerProps {
   products: ProductRow[];
   substores: SubstoreRow[];
+  stores: CatalogStoreRow[];
 }
 
 function ProductForm({
   product,
   substores,
+  stores,
   nextSortOrder,
   onClose,
 }: {
   product: ProductRow | null;
   substores: SubstoreRow[];
+  stores: CatalogStoreRow[];
   nextSortOrder: number;
   onClose: () => void;
 }) {
@@ -47,6 +50,33 @@ function ProductForm({
   const selectableSubstores = substores.filter(
     (substore) => substore.status !== "archived" || substore.id === product?.substore_id,
   );
+  const initialSubstoreId = product?.substore_id ?? selectableSubstores[0]?.id ?? "";
+  const [selectedSubstoreId, setSelectedSubstoreId] = useState(initialSubstoreId);
+  const selectedSubstore = selectableSubstores.find(
+    (substore) => substore.id === selectedSubstoreId,
+  ) ?? null;
+  const selectableStores = stores.filter(
+    (store) =>
+      store.game_id === selectedSubstore?.game_id &&
+      store.status === "active" &&
+      !store.archived_at,
+  );
+  const initialStoreId =
+    product?.catalog_store_id && selectableStores.some((store) => store.id === product.catalog_store_id)
+      ? product.catalog_store_id
+      : selectableStores.find((store) => store.is_default)?.id ?? selectableStores[0]?.id ?? "";
+  const [selectedCatalogStoreId, setSelectedCatalogStoreId] = useState(initialStoreId);
+
+  function selectSubstore(substoreId: string) {
+    const substore = selectableSubstores.find((candidate) => candidate.id === substoreId) ?? null;
+    const nextStores = stores.filter(
+      (store) => store.game_id === substore?.game_id && store.status === "active" && !store.archived_at,
+    );
+    setSelectedSubstoreId(substoreId);
+    setSelectedCatalogStoreId(
+      nextStores.find((store) => store.is_default)?.id ?? nextStores[0]?.id ?? "",
+    );
+  }
 
   return (
     <AdminDialog
@@ -54,7 +84,7 @@ function ProductForm({
       onClose={onClose}
       size="lg"
       title={product ? "Editar produto" : "Novo produto"}
-      description="Cadastre o item, a foto exibida no Discord, o preço e a quantidade disponível."
+      description="Escolha primeiro a categoria e a loja/mundo. Assim o item já aparece na vitrine certa do Discord."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={pending}>
@@ -73,11 +103,13 @@ function ProductForm({
         <input type="hidden" name="sortOrder" value={product?.sort_order ?? nextSortOrder} />
         <ActionFeedback state={state} />
 
-        <Field label="Categoria" htmlFor={`${formId}-substore`} error={fieldError(state, "substoreId")}>
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field label="1. Categoria" htmlFor={`${formId}-substore`} error={fieldError(state, "substoreId")}>
           <Select
             id={`${formId}-substore`}
             name="substoreId"
-            defaultValue={product?.substore_id ?? selectableSubstores[0]?.id ?? ""}
+            value={selectedSubstoreId}
+            onChange={(event) => selectSubstore(event.target.value)}
             required
           >
             <option value="" disabled>Selecione uma categoria</option>
@@ -88,7 +120,32 @@ function ProductForm({
               </option>
             ))}
           </Select>
-        </Field>
+          </Field>
+          <Field
+            label="2. Loja/mundo desta vitrine"
+            htmlFor={`${formId}-catalog-store`}
+            hint="O item só aparece nesta loja"
+            error={fieldError(state, "catalogStoreId")}
+          >
+            <Select
+              id={`${formId}-catalog-store`}
+              name="catalogStoreId"
+              value={selectedCatalogStoreId}
+              onChange={(event) => setSelectedCatalogStoreId(event.target.value)}
+              disabled={selectableStores.length === 0}
+              required
+            >
+              <option value="" disabled>
+                {selectedSubstore ? "Nenhuma loja disponível para esta categoria" : "Selecione uma categoria"}
+              </option>
+              {selectableStores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name}{store.is_default ? " (principal)" : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
 
         <Field label="Nome" htmlFor={`${formId}-name`} error={fieldError(state, "name")}>
           <Input
@@ -185,9 +242,10 @@ function ProductForm({
   );
 }
 
-export function ProductsManager({ products, substores }: ProductsManagerProps) {
+export function ProductsManager({ products, substores, stores }: ProductsManagerProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [storeFilter, setStoreFilter] = useState("all");
   const [orderedProducts, setOrderedProducts] = useState(products);
   const [orderDirty, setOrderDirty] = useState(false);
   const [orderState, setOrderState] = useState(initialAdminActionState);
@@ -208,19 +266,21 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
     const query = search.trim().toLocaleLowerCase("pt-BR");
     return orderedProducts.filter((product) => {
       const matchesFilter = filter === "all" || product.status === filter;
+      const matchesStore = storeFilter === "all" || product.catalog_store_id === storeFilter;
       const matchesSearch =
         !query ||
         product.name.toLocaleLowerCase("pt-BR").includes(query) ||
         product.slug.toLocaleLowerCase("pt-BR").includes(query) ||
         product.substores?.name.toLocaleLowerCase("pt-BR").includes(query) ||
         product.substores?.games?.name.toLocaleLowerCase("pt-BR").includes(query);
-      return matchesFilter && Boolean(matchesSearch);
+      return matchesFilter && matchesStore && Boolean(matchesSearch);
     });
-  }, [filter, orderedProducts, search]);
+  }, [filter, orderedProducts, search, storeFilter]);
 
   const editingProduct = editor?.mode === "edit" ? editor.product : null;
   const hasAvailableSubstore = substores.some((substore) => substore.status !== "archived");
-  const filtersActive = Boolean(search.trim()) || filter !== "all";
+  const hasAvailableStore = stores.some((store) => store.status === "active" && !store.archived_at);
+  const filtersActive = Boolean(search.trim()) || filter !== "all" || storeFilter !== "all";
   const canReorder = !filtersActive && orderedProducts.length > 1 && !orderPending;
   const nextSortOrder = orderedProducts.reduce(
     (highest, product) => Math.max(highest, product.sort_order),
@@ -285,7 +345,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
       <ResourceManagerShell
         eyebrow="Catálogo"
         title="Produtos"
-        description="Cadastre os produtos e organize a loja/mundo de cada um pela aba Estoque por loja."
+        description="Cada produto pertence a uma loja/mundo. Escolha a loja ao cadastrar ou mova vários itens juntos em Estoque por loja."
         actionLabel="Novo produto"
         onCreate={() => setEditor({ mode: "create" })}
         additionalActions={
@@ -302,14 +362,35 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
             {orderPending ? "Salvando ordem..." : "Salvar ordem"}
           </Button>
         }
-        createDisabled={!hasAvailableSubstore}
-        createDisabledReason="Crie ou reative uma categoria antes de cadastrar um produto."
+        createDisabled={!hasAvailableSubstore || !hasAvailableStore}
+        createDisabledReason={
+          !hasAvailableSubstore
+            ? "Crie ou reative uma categoria antes de cadastrar um produto."
+            : "Crie ou reative uma loja/mundo antes de cadastrar um produto."
+        }
         search={search}
         onSearchChange={setSearch}
         filter={filter}
         onFilterChange={setFilter}
         filterOptions={catalogStatusOptions}
-        columns={["Produto", "Subloja", "Preço mínimo", "Disponível", "Alerta", "Status", "Ações"]}
+        extraFilters={
+          <Select
+            aria-label="Filtrar produtos por loja ou mundo"
+            className="sm:w-56"
+            value={storeFilter}
+            onChange={(event) => setStoreFilter(event.target.value)}
+          >
+            <option value="all">Todas as lojas/mundos</option>
+            {stores
+              .filter((store) => store.status === "active" && !store.archived_at)
+              .map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.games?.name ? `${store.games.name} — ` : ""}{store.name}
+                </option>
+              ))}
+          </Select>
+        }
+        columns={["Produto", "Loja/mundo", "Categoria", "Preço mínimo", "Disponível", "Alerta", "Status", "Ações"]}
         totalCount={products.length}
         visibleCount={filteredProducts.length}
         emptyIcon={PackageOpen}
@@ -366,8 +447,11 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
                 </div>
               </td>
               <td className="px-5 py-4">
-                <p className="text-sm text-muted-strong">{product.substores?.name ?? "Subloja removida"}</p>
+                <p className="text-sm font-medium text-muted-strong">{product.catalog_stores?.name ?? "Loja não definida"}</p>
                 {product.substores?.games?.name ? <p className="mt-1 text-xs text-muted">{product.substores.games.name}</p> : null}
+              </td>
+              <td className="px-5 py-4">
+                <p className="text-sm text-muted-strong">{product.substores?.name ?? "Categoria removida"}</p>
               </td>
               <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-foreground">{formatMoney(product.minimum_price_cents)}</td>
               <td className="px-5 py-4 text-sm font-medium text-foreground">{available.toLocaleString("pt-BR")}</td>
@@ -378,26 +462,27 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
               </td>
               <td className="px-5 py-4"><CatalogStatusBadge status={product.status} /></td>
               <td className="px-5 py-4">
-                <div className="flex items-center gap-1">
+                <div className="flex flex-wrap items-center gap-1">
                   <Button variant="ghost" size="sm" onClick={() => setEditor({ mode: "edit", product })}>
                     <Pencil aria-hidden="true" className="size-3.5" />
                     Editar
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    className="size-9 text-danger"
+                    size="sm"
+                    className="text-danger"
                     aria-label={`Arquivar ${product.name}`}
                     title={product.status === "archived" ? "Produto já arquivado" : "Arquivar produto"}
                     disabled={product.status === "archived"}
                     onClick={() => setArchiveRecord({ id: product.id, label: product.name })}
                   >
                     <Archive aria-hidden="true" className="size-4" />
+                    Arquivar
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    className="size-9 text-danger"
+                    size="sm"
+                    className="text-danger"
                     aria-label={`Excluir definitivamente ${product.name}`}
                     title="Excluir produto definitivamente"
                     onClick={() => setDeleteRecord({
@@ -407,6 +492,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
                     })}
                   >
                     <Trash2 aria-hidden="true" className="size-4" />
+                    Excluir
                   </Button>
                   <Button
                     variant="ghost"
@@ -435,6 +521,7 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
           key={editingProduct?.id ?? "new-product"}
           product={editingProduct}
           substores={substores}
+          stores={stores}
           nextSortOrder={nextSortOrder}
           onClose={() => setEditor(null)}
         />
@@ -450,6 +537,10 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
         key={deleteRecord?.id ?? "delete-product"}
         record={deleteRecord}
         onClose={() => setDeleteRecord(null)}
+        onArchive={(record) => {
+          setDeleteRecord(null);
+          setArchiveRecord({ id: record.id, label: record.label });
+        }}
       />
     </>
   );
@@ -458,9 +549,11 @@ export function ProductsManager({ products, substores }: ProductsManagerProps) {
 function DeleteProductDialog({
   record,
   onClose,
+  onArchive,
 }: {
   record: { id: string; label: string; stockQuantity: number } | null;
   onClose: () => void;
+  onArchive: (record: { id: string; label: string; stockQuantity: number }) => void;
 }) {
   const [state, setState] = useState(initialAdminActionState);
   const [pending, startTransition] = useTransition();
@@ -487,6 +580,12 @@ function DeleteProductDialog({
             <Button variant="ghost" onClick={onClose} disabled={pending}>
               Cancelar
             </Button>
+            {hasStock && record ? (
+              <Button variant="secondary" onClick={() => onArchive(record)} disabled={pending}>
+                <Archive aria-hidden="true" className="size-4" />
+                Arquivar produto
+              </Button>
+            ) : null}
             <Button variant="danger" onClick={remove} disabled={pending || hasStock}>
               {pending ? (
                 <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
@@ -507,7 +606,7 @@ function DeleteProductDialog({
           <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">
             <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
             <p className="text-sm leading-5">
-              Zere o estoque atual de {record?.stockQuantity.toLocaleString("pt-BR")} unidade(s) antes de excluir.
+              Este produto tem {record?.stockQuantity.toLocaleString("pt-BR")} unidade(s) em estoque. Para tirá-lo da vitrine agora, use <strong>Arquivar produto</strong>. A exclusão definitiva só fica disponível depois de zerar o estoque.
             </p>
           </div>
         ) : (

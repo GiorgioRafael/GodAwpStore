@@ -8,6 +8,7 @@ import { SubstoresManager } from "./substores-manager";
 import { WhitelistManager } from "./whitelist-manager";
 import type {
   GameRow,
+  CatalogStoreRow,
   ProductRow,
   SubstoreRow,
   WhitelistRow,
@@ -105,6 +106,20 @@ const activeProduct: ProductRow = {
   substores: { name: activeSubstore.name, games: { name: activeGame.name } },
 };
 
+const activeStore: CatalogStoreRow = {
+  id: activeProduct.catalog_store_id,
+  game_id: activeGame.id,
+  name: "Loja principal",
+  slug: "loja-principal",
+  status: "active",
+  is_default: true,
+  sort_order: 1,
+  archived_at: null,
+  created_at: now,
+  updated_at: now,
+  games: { name: activeGame.name },
+};
+
 const secondProduct: ProductRow = {
   ...activeProduct,
   id: "0d5a282b-e86e-488a-907a-d1ce9e7cdd14",
@@ -178,7 +193,7 @@ describe("gestores do catálogo", () => {
     substoreView.unmount();
 
     const productView = render(
-      <ProductsManager products={[]} substores={[]} />,
+      <ProductsManager products={[]} substores={[]} stores={[]} />,
     );
     expect(screen.getByRole("button", { name: "Novo produto" })).toBeDisabled();
     productView.unmount();
@@ -199,11 +214,13 @@ describe("gestores do catálogo", () => {
       <ProductsManager
         products={[activeProduct]}
         substores={[activeSubstore]}
+        stores={[activeStore]}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Novo produto" }));
     expect(screen.getByRole("heading", { name: "Novo produto" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Categoria" })).toHaveValue(activeSubstore.id);
+    expect(screen.getByRole("combobox", { name: "1. Categoria" })).toHaveValue(activeSubstore.id);
+    expect(screen.getByRole("combobox", { name: "2. Loja/mundo desta vitrine" })).toHaveValue(activeStore.id);
     expect(screen.queryByRole("textbox", { name: "Slug" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Preço mínimo" })).toBeRequired();
     expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(0);
@@ -211,7 +228,7 @@ describe("gestores do catálogo", () => {
 
   it("edita o estoque agregado dentro do próprio produto", async () => {
     const user = userEvent.setup();
-    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} />);
+    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     expect(screen.getByRole("cell", { name: "100" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Editar" }));
@@ -226,7 +243,7 @@ describe("gestores do catálogo", () => {
   it("confirma a exclusão definitiva de produto sem estoque", async () => {
     const user = userEvent.setup();
     const unusedProduct = { ...activeProduct, stock_quantity: 0 };
-    render(<ProductsManager products={[unusedProduct]} substores={[activeSubstore]} />);
+    render(<ProductsManager products={[unusedProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     await user.click(
       screen.getByRole("button", { name: `Excluir definitivamente ${unusedProduct.name}` }),
@@ -245,13 +262,14 @@ describe("gestores do catálogo", () => {
 
   it("exige estoque zerado antes da exclusão definitiva", async () => {
     const user = userEvent.setup();
-    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} />);
+    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     await user.click(
       screen.getByRole("button", { name: `Excluir definitivamente ${activeProduct.name}` }),
     );
-    expect(screen.getByText(/Zere o estoque atual de 100 unidade/)).toBeInTheDocument();
+    expect(screen.getByText(/Este produto tem 100 unidade/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Arquivar produto" })).toBeEnabled();
   });
 
   it("reordena produtos pelo controle e só publica depois de salvar", async () => {
@@ -260,6 +278,7 @@ describe("gestores do catálogo", () => {
       <ProductsManager
         products={[activeProduct, secondProduct]}
         substores={[activeSubstore]}
+        stores={[activeStore]}
       />,
     );
 

@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   buildDeliveryMessage,
+  buildDeliveryLogMessage,
   buildDeliveredTicketChannelName,
   completeDiscordTicketDelivery,
   createNativeDiscordTicketDeliveryResponse,
@@ -22,6 +23,7 @@ const buyerId = "323456789012345678";
 const adminId = "423456789012345678";
 const botId = "523456789012345678";
 const feedbackChannelId = "623456789012345678";
+const deliveryLogChannelId = "723456789012345679";
 const interactionToken = "ticket_delivery_interaction_token";
 
 const settings: BotRuntimeSettings = {
@@ -65,6 +67,24 @@ describe("Discord paid-ticket delivery message", () => {
     expect(Array.from(buildDeliveredTicketChannelName("x".repeat(150)))).toHaveLength(
       100,
     );
+  });
+
+  it("monta um registro público de entrega sem mencionar ou expor o ticket", () => {
+    expect(
+      buildDeliveryLogMessage({
+        ...deliveryOrder(),
+        itemSummary: [{ name: "Dragon's Breath", quantity: 2 }],
+        totalCents: 390,
+      }),
+    ).toBe([
+      "✅ **Compra entregue**",
+      `Comprador: <@${buyerId}>`,
+      "",
+      "**Itens**",
+      "• 2× Dragon's Breath",
+      "",
+      "Total pago: R$ 3,90",
+    ].join("\n"));
   });
 
   it("registra no RPC a entrega e a janela exata de trinta minutos", async () => {
@@ -229,6 +249,30 @@ describe("Discord paid-ticket delivery message", () => {
       });
   });
 
+  it("publica um registro resumido no canal de entregas quando ele existe", async () => {
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+    const fetcher = deliveryFetcher(requests, { deliveryLogChannelId });
+
+    await completeDiscordTicketDelivery(interaction(), settings, {
+      repository: repository({
+        itemSummary: [{ name: "Dragon's Breath", quantity: 2 }],
+        totalCents: 390,
+      }),
+      fetcher,
+    });
+
+    const publishedLog = requests.find(
+      (request) =>
+        request.method === "POST" &&
+        request.url.endsWith(`/channels/${deliveryLogChannelId}/messages`),
+    );
+    expect(publishedLog?.body).toMatchObject({
+      content: expect.stringContaining("• 2× Dragon's Breath"),
+      allowed_mentions: { parse: [], replied_user: false },
+      enforce_nonce: true,
+    });
+  });
+
   it("recusa pedido que nao corresponde ao servidor e canal assinados", async () => {
     const requests: Array<{ url: string; method: string; body: unknown }> = [];
     const fetcher = deliveryFetcher(requests);
@@ -264,14 +308,7 @@ function repository(
 } {
   return {
     find: vi.fn(async () => ({
-      orderId,
-      guildId,
-      buyerDiscordId: buyerId,
-      channelId,
-      ticketStatus: "open",
-      orderStatus: "processing",
-      paymentStatus: "paid",
-      paidAt: "2026-07-22T12:00:00.000Z",
+      ...deliveryOrder(),
       ...overrides,
     })),
     complete: vi.fn(async () => ({
@@ -283,9 +320,24 @@ function repository(
   };
 }
 
+function deliveryOrder() {
+  return {
+    orderId,
+    guildId,
+    buyerDiscordId: buyerId,
+    channelId,
+    ticketStatus: "open",
+    orderStatus: "processing",
+    paymentStatus: "paid",
+    paidAt: "2026-07-22T12:00:00.000Z",
+    itemSummary: [],
+    totalCents: 0,
+  };
+}
+
 function deliveryFetcher(
   requests: Array<{ url: string; method: string; body: unknown }>,
-  options: { existingMessages?: unknown[] } = {},
+  options: { existingMessages?: unknown[]; deliveryLogChannelId?: string } = {},
 ) {
   return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
@@ -300,10 +352,14 @@ function deliveryFetcher(
       return Response.json({ id: guildId });
     }
     if (url.endsWith(`/guilds/${guildId}/channels`) && method === "GET") {
-      return Response.json([
+      const channels = [
         { id: "723456789012345678", type: 0, name: "geral" },
         { id: feedbackChannelId, type: 0, name: "✅┊feedbacks" },
-      ]);
+      ];
+      if (options.deliveryLogChannelId) {
+        channels.push({ id: options.deliveryLogChannelId, type: 0, name: "✅┊entregas" });
+      }
+      return Response.json(channels);
     }
     if (url.endsWith(`/channels/${channelId}`) && method === "GET") {
       return Response.json({
@@ -329,6 +385,9 @@ function deliveryFetcher(
     }
     if (url.endsWith(`/channels/${channelId}/messages`) && method === "POST") {
       return Response.json({ id: "823456789012345678" });
+    }
+    if (options.deliveryLogChannelId && url.endsWith(`/channels/${options.deliveryLogChannelId}/messages`) && method === "POST") {
+      return Response.json({ id: "823456789012345679" });
     }
     if (url.includes(`/webhooks/${botId}/${interactionToken}/messages/@original`)) {
       return Response.json({ id: "923456789012345678" });

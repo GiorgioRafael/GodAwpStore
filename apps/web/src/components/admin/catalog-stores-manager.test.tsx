@@ -66,8 +66,12 @@ describe("gerenciamento de lojas do catálogo", () => {
 
     await user.click(screen.getByRole("button", { name: "Excluir loja Mundo 2" }));
 
-    expect(screen.getByText(/Mova os 3 produto\(s\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Esta loja ainda tem 3 produto\(s\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "Organizar produtos desta loja" })).toHaveAttribute(
+      "href",
+      `/estoque?loja=${secondaryStore.id}`,
+    );
     expect(actionMocks.deleteCatalogStoreAction).not.toHaveBeenCalled();
   });
 

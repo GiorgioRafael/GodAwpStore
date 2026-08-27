@@ -30,6 +30,7 @@ interface ResourceManagerShellProps {
   filter: string;
   onFilterChange: (value: string) => void;
   filterOptions: FilterOption[];
+  extraFilters?: ReactNode;
   columns: string[];
   totalCount: number;
   visibleCount: number;
@@ -54,6 +55,7 @@ export function ResourceManagerShell({
   filter,
   onFilterChange,
   filterOptions,
+  extraFilters,
   columns,
   totalCount,
   visibleCount,
@@ -115,6 +117,7 @@ export function ResourceManagerShell({
               </option>
             ))}
           </Select>
+          {extraFilters}
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted">
           <span>
