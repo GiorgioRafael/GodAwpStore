@@ -97,7 +97,7 @@ export function createDiscordRobuxStorefrontPayload() {
         fields: [
           {
             name: "Preço",
-            value: "**1.000 Robux = R$ 35,00**",
+            value: "**1.000 Robux = R$ 42,00**",
             inline: false,
           },
           {

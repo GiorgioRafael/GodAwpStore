@@ -135,7 +135,7 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
             <div className="grid gap-3 rounded-xl border border-success/20 bg-success/[0.045] p-4 text-sm md:grid-cols-3">
               <div>
                 <p className="font-semibold text-foreground">Preço fixo</p>
-                <p className="mt-1 text-xs leading-5 text-muted">1.000 Robux = R$ 35,00</p>
+                <p className="mt-1 text-xs leading-5 text-muted">1.000 Robux = R$ 42,00</p>
               </div>
               <div>
                 <p className="font-semibold text-foreground">Pagamento seguro</p>
