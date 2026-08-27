@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Select } from "@/components/ui/form-field";
 import {
   BOT_MESSAGE_TOKEN_ALLOWLIST,
+  botMessageBannerUrl,
   interpolateBotMessage,
   type BotMessageCustomization,
 } from "@/lib/bot/message-customization";
@@ -154,14 +155,15 @@ function CardMessagePreview({
   scenario: Exclude<DiscordPreviewScenario, "quantity" | "ticket">;
 }) {
   const message = previewCard(config, scenario);
+  const bannerUrl = previewBannerUrl(config, scenario);
 
   return (
     <div className="overflow-hidden rounded-lg border border-[#3f4147] bg-[#2b2d31] shadow-sm">
       <div className="border-l-4 border-[#5865f2] px-4 py-3.5">
-        {scenario === "storefront" && config.storefront.bannerUrl ? (
+        {bannerUrl ? (
           <img
-            src={config.storefront.bannerUrl}
-            alt="Banner da vitrine"
+            src={bannerUrl}
+            alt={scenario === "storefront" ? "Banner da vitrine" : "Banner da mensagem"}
             className="mb-3 aspect-video w-full rounded-md bg-[#1e1f22] object-cover"
           />
         ) : null}
@@ -223,6 +225,17 @@ function QuantityPreview({ config }: { config: BotMessageCustomization }) {
   );
 }
 
+function previewBannerUrl(
+  config: BotMessageCustomization,
+  scenario: Exclude<DiscordPreviewScenario, "quantity" | "ticket">,
+) {
+  if (scenario === "storefront") return config.storefront.bannerUrl || botMessageBannerUrl(config, "orderUrl");
+  if (scenario === "product") return botMessageBannerUrl(config, "productUrl");
+  if (scenario === "order") return botMessageBannerUrl(config, "orderUrl");
+  if (scenario === "help") return botMessageBannerUrl(config, "helpUrl");
+  return botMessageBannerUrl(config, "errorUrl");
+}
+
 function TicketPreview({
   config,
   notificationDiscordUserIds,
@@ -252,6 +265,11 @@ function TicketPreview({
         <DiscordText>{renderText(ticket.nicknamePromptText)}</DiscordText>
       </div>
       <div className="rounded border-l-4 border-[#a855f7] bg-[#2b2d31] px-4 py-3.5">
+        <img
+          src={botMessageBannerUrl(config, "ticketUrl")}
+          alt="Banner do ticket"
+          className="mb-3 aspect-video w-full rounded-md bg-[#1e1f22] object-cover"
+        />
         <DiscordText className="font-semibold text-[#f2f3f5]">
           {renderText(ticket.title)}
         </DiscordText>

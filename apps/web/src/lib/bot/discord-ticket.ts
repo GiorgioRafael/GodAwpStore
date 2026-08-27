@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  botMessageBannerUrl,
   interpolateBotMessageLimited,
   type BotMessageCustomization,
 } from "./message-customization";
@@ -292,6 +293,7 @@ export function paidTicketWelcomeMessage(
             inline: false,
           },
         ],
+        image: { url: botMessageBannerUrl(customization, "ticketUrl") },
         footer: { text: orderMarker },
       },
     ],

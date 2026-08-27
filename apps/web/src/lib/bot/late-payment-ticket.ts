@@ -11,6 +11,7 @@ import {
   type DiscordPermissionOverwrite,
 } from "./discord-ticket-controls";
 import { loadBotRuntimeSettings } from "./message-customization-server";
+import { botMessageBannerUrl } from "./message-customization";
 import { STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { formatBrl } from "@godawp/domain";
@@ -170,6 +171,7 @@ export async function ensureLatePaymentTicket(
                   inline: true,
                 },
               ],
+              image: { url: botMessageBannerUrl(settings.customization, "ticketUrl") },
               footer: { text: `Pedido ${input.orderId}` },
             },
           ],

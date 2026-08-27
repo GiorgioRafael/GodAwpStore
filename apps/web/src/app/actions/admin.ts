@@ -162,6 +162,13 @@ async function synchronizeAllPublishedDiscordStorefronts() {
   return synchronizePublishedDiscordStorefronts();
 }
 
+async function synchronizeAllPublishedDiscordRobuxStorefronts() {
+  const { synchronizePublishedDiscordRobuxStorefronts } = await import(
+    "@/lib/bot/discord-robux-storefront-sync"
+  );
+  return synchronizePublishedDiscordRobuxStorefronts();
+}
+
 async function synchronizeCatalogStorefront(savedMessage: string): Promise<AdminActionState> {
   try {
     const storefronts = await synchronizeAllPublishedDiscordStorefronts();
@@ -768,8 +775,9 @@ export async function saveBotMessageCustomizationAction(
 
   revalidatePath("/customizacao-bot");
 
-  const [storefrontSync, ticketControlsSync] = await Promise.allSettled([
+  const [storefrontSync, robuxStorefrontSync, ticketControlsSync] = await Promise.allSettled([
     synchronizeAllPublishedDiscordStorefronts(),
+    synchronizeAllPublishedDiscordRobuxStorefronts(),
     synchronizeAllOpenDiscordTicketControls(),
   ]);
   const warnings: string[] = [];
@@ -795,6 +803,17 @@ export async function saveBotMessageCustomizationAction(
     );
   }
 
+  if (robuxStorefrontSync.status === "rejected") {
+    const message =
+      robuxStorefrontSync.reason instanceof Error
+        ? robuxStorefrontSync.reason.message
+        : "erro desconhecido";
+    console.error(`[admin:bot-customization-robux-sync] ${message}`);
+    warnings.push("A mensagem de Robux não pôde ser atualizada agora.");
+  } else if (robuxStorefrontSync.value.failed > 0) {
+    warnings.push("A mensagem de Robux não pôde ser atualizada agora.");
+  }
+
   if (ticketControlsSync.status === "rejected") {
     const message =
       ticketControlsSync.reason instanceof Error
@@ -812,10 +831,13 @@ export async function saveBotMessageCustomizationAction(
     return { ok: true, message: `Personalização salva. ${warnings.join(" ")}` };
   }
 
-  if (storefrontSync.status === "fulfilled" && storefrontSync.value.published > 0) {
+  if (
+    (storefrontSync.status === "fulfilled" && storefrontSync.value.published > 0) ||
+    (robuxStorefrontSync.status === "fulfilled" && robuxStorefrontSync.value.published > 0)
+  ) {
     return {
       ok: true,
-      message: "Personalização salva e vitrines publicadas atualizadas.",
+      message: "Personalização salva e mensagens publicadas atualizadas.",
     };
   }
 
@@ -1140,9 +1162,11 @@ export async function publishDiscordRobuxStorefrontAction(
         storefront.catalog_store_name?.trim().toLocaleLowerCase("pt-BR") === "robux",
     );
     const existingRobuxStorefront = readRobuxStorefrontConfiguration(guild.configuration);
+    const customization = await loadBotMessageCustomization(supabase);
     const published = await publishDiscordRobuxStorefront({
       guildId: guild.discord_guild_id,
       channel,
+      customization,
       previous:
         existingRobuxStorefront ??
         (catalogRobuxStorefront

@@ -3,12 +3,27 @@ import {
   STORE_CATALOG_LABEL,
   STORE_NAME,
   STORE_NAME_UPPER,
+  STORE_SLUG,
 } from "@/lib/brand";
 
 export const BOT_MESSAGE_CONFIG_VERSION = 1 as const;
 
 export type BotMessageCustomization = {
   version: typeof BOT_MESSAGE_CONFIG_VERSION;
+  /**
+   * Each value is optional in storage, but the bot always falls back to this
+   * store's own storefront banner. Keeping these independent lets an owner
+   * give payment, ticket and Robux messages their own artwork without ever
+   * borrowing the other store's brand.
+   */
+  banners: {
+    productUrl: string;
+    orderUrl: string;
+    helpUrl: string;
+    errorUrl: string;
+    ticketUrl: string;
+    robuxUrl: string;
+  };
   storefront: {
     bannerUrl: string;
     title: string;
@@ -122,6 +137,14 @@ export type BotMessageCustomization = {
 
 export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
   version: BOT_MESSAGE_CONFIG_VERSION,
+  banners: {
+    productUrl: "",
+    orderUrl: "",
+    helpUrl: "",
+    errorUrl: "",
+    ticketUrl: "",
+    robuxUrl: "",
+  },
   storefront: {
     bannerUrl: "",
     title: `🛍️✨ ${STORE_NAME_UPPER} • LOJA OFICIAL ✨🛍️`,
@@ -272,6 +295,12 @@ export const DEFAULT_BOT_MESSAGE_CUSTOMIZATION: BotMessageCustomization = {
 };
 
 export const BOT_MESSAGE_FIELD_LIMITS = {
+  "banners.productUrl": 2_048,
+  "banners.orderUrl": 2_048,
+  "banners.helpUrl": 2_048,
+  "banners.errorUrl": 2_048,
+  "banners.ticketUrl": 2_048,
+  "banners.robuxUrl": 2_048,
   "storefront.bannerUrl": 2_048,
   "storefront.title": 256,
   "storefront.paginatedTitle": 256,
@@ -390,6 +419,7 @@ export const BOT_MESSAGE_TOKEN_ALLOWLIST: Record<string, readonly string[]> = {
 
 export function normalizeBotMessageCustomization(value: Json | unknown): BotMessageCustomization {
   const root = asRecord(value);
+  const banners = normalizeSection(root.banners, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.banners);
   const storefront = normalizeSection(
     root.storefront,
     DEFAULT_BOT_MESSAGE_CUSTOMIZATION.storefront,
@@ -401,6 +431,9 @@ export function normalizeBotMessageCustomization(value: Json | unknown): BotMess
   );
   return {
     version: BOT_MESSAGE_CONFIG_VERSION,
+    banners: Object.fromEntries(
+      Object.entries(banners).map(([key, url]) => [key, normalizeBotMessageImageUrl(url)]),
+    ) as BotMessageCustomization["banners"],
     storefront: {
       ...storefront,
       bannerUrl: normalizeBotMessageImageUrl(storefront.bannerUrl),
@@ -443,6 +476,31 @@ export function normalizeBotMessageImageUrl(value: unknown): string {
   } catch {
     return "";
   }
+}
+
+export type BotMessageBanner = keyof BotMessageCustomization["banners"];
+
+/**
+ * A brand fallback is deliberately selected from the deployment identity, not
+ * from a shared environment value. This prevents THStore messages from ever
+ * silently rendering the GWStore artwork (and vice versa) when a variable was
+ * copied between deployments.
+ */
+export function defaultStorefrontBannerUrl(storeSlug = STORE_SLUG): string {
+  return storeSlug === "thstore"
+    ? "https://thstoreadm.vercel.app/brands/thstore-storefront-banner.png"
+    : "https://gwstore.vercel.app/brands/gwstore-storefront-banner.png";
+}
+
+export function botMessageBannerUrl(
+  customization: BotMessageCustomization | null | undefined,
+  banner: BotMessageBanner,
+): string {
+  return (
+    normalizeBotMessageImageUrl(customization?.banners?.[banner]) ||
+    normalizeBotMessageImageUrl(customization?.storefront?.bannerUrl) ||
+    defaultStorefrontBannerUrl()
+  );
 }
 
 export function interpolateBotMessage(

@@ -40,6 +40,7 @@ export type RoulettePromotionCopy = {
   title: string;
   description: string;
   buttonLabel: string;
+  bannerUrl?: string;
 };
 
 export type RoulettePromotionPublication = {
@@ -102,10 +103,10 @@ export function roulettePromotionPayload(
   branding = ROULETTE_BRANDING,
 ) {
   const rouletteUrl = new URL("/roleta", normalizeSiteUrl(siteUrl)).toString();
-  const bannerUrl = new URL(
-    branding.bannerPath,
-    normalizeSiteUrl(siteUrl),
-  ).toString();
+  const bannerUrl = normalizePromotionBannerUrl(
+    copy.bannerUrl,
+    new URL(branding.bannerPath, normalizeSiteUrl(siteUrl)).toString(),
+  );
 
   return {
     allowed_mentions: { parse: [] as string[] },
@@ -310,6 +311,23 @@ function validatePromotionInput(
   }
   if (!input.buttonLabel.trim() || input.buttonLabel.length > 80) {
     throw new Error("Texto do botão inválido.");
+  }
+  if (input.bannerUrl && !isSecureImageUrl(input.bannerUrl)) {
+    throw new Error("Banner da divulgação inválido.");
+  }
+}
+
+function normalizePromotionBannerUrl(value: string | undefined, fallback: string) {
+  return isSecureImageUrl(value) ? new URL(value!).toString() : fallback;
+}
+
+function isSecureImageUrl(value: string | undefined) {
+  if (!value?.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
   }
 }
 

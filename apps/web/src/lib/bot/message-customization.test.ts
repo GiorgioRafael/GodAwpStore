@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  botMessageBannerUrl,
+  defaultStorefrontBannerUrl,
   interpolateBotMessage,
   normalizeBotMessageCustomization,
 } from "./message-customization";
@@ -114,6 +116,28 @@ describe("personalização das mensagens do bot", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("usa sempre o banner da própria loja quando não há uma imagem específica", () => {
+    const thstore = normalizeBotMessageCustomization({ version: 1 });
+    expect(defaultStorefrontBannerUrl("thstore")).toBe(
+      "https://thstoreadm.vercel.app/brands/thstore-storefront-banner.png",
+    );
+    expect(botMessageBannerUrl(thstore, "ticketUrl")).toContain(
+      "gwstore-storefront-banner.png",
+    );
+
+    const custom = normalizeBotMessageCustomization({
+      version: 1,
+      storefront: { bannerUrl: "https://cdn.example.com/loja.png" },
+      banners: { ticketUrl: "https://cdn.example.com/ticket.png" },
+    });
+    expect(botMessageBannerUrl(custom, "ticketUrl")).toBe(
+      "https://cdn.example.com/ticket.png",
+    );
+    expect(botMessageBannerUrl(custom, "orderUrl")).toBe(
+      "https://cdn.example.com/loja.png",
+    );
   });
 
   it("rejeita campos extras, tokens desconhecidos e limites do Discord", () => {

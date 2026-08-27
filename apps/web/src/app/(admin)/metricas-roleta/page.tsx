@@ -18,6 +18,7 @@ import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
 import { getRoulettePromotionSettings } from "@/lib/roulette/promotion-admin";
 import { getRouletteWheelAdmin } from "@/lib/roulette/wheel-admin";
 import { wheelEconomics } from "@/lib/roulette/wheel-economics";
+import { ROULETTE_BRANDING } from "@/lib/roulette/branding";
 
 export const metadata: Metadata = { title: "Roleta" };
 export const dynamic = "force-dynamic";
@@ -85,6 +86,7 @@ export default async function RouletteMetricsPage() {
       <RoulettePromotionEditor
         settings={promotion.settings}
         rouletteUrl={new URL("/roleta", getSiteUrl()).toString()}
+        defaultBannerUrl={new URL(ROULETTE_BRANDING.bannerPath, getSiteUrl()).toString()}
       />
 
       {overlay.status === "ready" ? (

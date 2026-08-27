@@ -51,6 +51,7 @@ import {
 import {
   botMessageLines,
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  botMessageBannerUrl,
   interpolateBotMessage,
   interpolateBotMessageLimited,
   normalizeBotMessageImageUrl,
@@ -439,7 +440,7 @@ export async function completeDiscordQuantityPurchase(
         logBotError("upsell", error);
       }
       if (upsell.kind === "offered") {
-        await updateDiscordEphemeralResponse(raw, upsellOfferCard(upsell.offer));
+        await updateDiscordEphemeralResponse(raw, upsellOfferCard(upsell.offer, customization));
         return false;
       }
 
@@ -494,7 +495,11 @@ export function catalogCards(
           {},
           256,
         )}
-        imageUrl={discordStorefrontBannerUrl(customization) ?? undefined}
+        imageUrl={
+          discordStorefrontBannerUrl(customization) ??
+          discordBotBannerUrl(customization, "orderUrl") ??
+          undefined
+        }
       >
         {message.emptyText ? <CardText>{message.emptyText}</CardText> : null}
         {message.emptyHint ? <CardText>{message.emptyHint}</CardText> : null}
@@ -510,7 +515,8 @@ export function catalogCards(
 
   const storefrontImageUrl =
     discordStorefrontBannerUrl(customization) ??
-    discordImageUrl(catalog[0]?.substores[0]?.imageUrl);
+    discordImageUrl(catalog[0]?.substores[0]?.imageUrl) ??
+    discordBotBannerUrl(customization, "orderUrl");
   return [
     <Card
       key="catalog"
@@ -563,6 +569,7 @@ function helpCard(
           ? interpolateBotMessageLimited(message.subtitle, {}, 256)
           : undefined
       }
+      imageUrl={discordBotBannerUrl(customization, "helpUrl") ?? undefined}
     >
       {botMessageLines(message.body).map((line, index) =>
         line === "---" ? (
@@ -608,7 +615,12 @@ export function selectedProductCard(
         { game_name: game.name, substore_title: substore.title },
         256,
       )}
-      imageUrl={substore.imageUrl ?? undefined}
+      imageUrl={
+        discordConfiguredBannerUrl(customization, "productUrl") ??
+        discordImageUrl(substore.imageUrl) ??
+        discordBotBannerUrl(customization, "productUrl") ??
+        undefined
+      }
     >
       {message.selectedText ? <CardText>{message.selectedText}</CardText> : null}
       {product.description ? (
@@ -777,6 +789,7 @@ export function purchaseResultCard(
             : interpolateBotMessageLimited(message.duplicateTitle, {}, 256)
         }
         subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+        imageUrl={discordBotBannerUrl(customization, "orderUrl") ?? undefined}
       >
         {message.productLabel ? <CardText>{message.productLabel}</CardText> : null}
         <CardText>
@@ -866,6 +879,7 @@ export function cartPurchaseResultCard(
             : interpolateBotMessageLimited(message.duplicateTitle, {}, 256)
         }
         subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+        imageUrl={discordBotBannerUrl(customization, "orderUrl") ?? undefined}
       >
         {message.productLabel ? <CardText>{message.productLabel}</CardText> : null}
         {result.items.map((item) => (
@@ -949,12 +963,16 @@ export function cartPurchaseResultCard(
   return errorCard(errorMessage, customization);
 }
 
-export function upsellOfferCard(offer: UpsellOffer): ChatElement {
+export function upsellOfferCard(
+  offer: UpsellOffer,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+): ChatElement {
   const savingsCents = offer.unitPriceCents - offer.discountedUnitPriceCents;
   return (
     <Card
       title="✨ Oferta rápida antes do Pix"
       subtitle="Válida por 5 minutos e limitada a uma unidade extra."
+      imageUrl={discordBotBannerUrl(customization, "orderUrl") ?? undefined}
     >
       <CardText>
         Leve mais **1x {offer.productName}** com **{formatPercentage(offer.discountBps)} de desconto**.
@@ -1120,6 +1138,7 @@ function errorCard(
           ? interpolateBotMessageLimited(customization.error.subtitle, {}, 256)
           : undefined
       }
+      imageUrl={discordBotBannerUrl(customization, "errorUrl") ?? undefined}
     >
       <CardText>{message}</CardText>
       {customization.error.retryText ? (
@@ -1170,11 +1189,25 @@ function discordImageUrl(value: string | null | undefined) {
 }
 
 function discordStorefrontBannerUrl(customization?: BotMessageCustomization) {
-  return (
-    discordImageUrl(
-      normalizeBotMessageImageUrl(customization?.storefront.bannerUrl),
-    ) ?? discordImageUrl(process.env.DISCORD_STOREFRONT_BANNER_URL?.trim())
+  return discordImageUrl(
+    normalizeBotMessageImageUrl(customization?.storefront.bannerUrl),
+  ) ?? discordImageUrl(process.env.DISCORD_STOREFRONT_BANNER_URL?.trim());
+}
+
+function discordConfiguredBannerUrl(
+  customization: BotMessageCustomization | undefined,
+  banner: Parameters<typeof botMessageBannerUrl>[1],
+) {
+  return discordImageUrl(
+    normalizeBotMessageImageUrl(customization?.banners?.[banner]),
   );
+}
+
+function discordBotBannerUrl(
+  customization: BotMessageCustomization | undefined,
+  banner: Parameters<typeof botMessageBannerUrl>[1],
+) {
+  return discordImageUrl(botMessageBannerUrl(customization, banner));
 }
 
 function isDiscordMediaGalleryForUrl(value: unknown, expectedUrl: string) {

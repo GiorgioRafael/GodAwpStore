@@ -40,6 +40,7 @@ import {
   BOT_MESSAGE_FIELD_LIMITS,
   BOT_MESSAGE_TOKEN_ALLOWLIST,
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  type BotMessageBanner,
   type BotMessageCustomization,
 } from "@/lib/bot/message-customization";
 import {
@@ -54,6 +55,7 @@ import {
 
 type ConfigSection = Exclude<keyof BotMessageCustomization, "version">;
 type EditorSectionId =
+  | "banners"
   | "storefront"
   | "product"
   | "quantity"
@@ -109,7 +111,52 @@ const f = (
   };
 };
 
+const BANNER_FIELDS: Array<{
+  key: BotMessageBanner;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "productUrl",
+    label: "Produto selecionado",
+    description: "Aparece depois que o cliente escolhe um produto. Sem imagem própria, usa o banner principal.",
+  },
+  {
+    key: "orderUrl",
+    label: "Pedido e Pix",
+    description: "Aparece no resumo do carrinho, no Pix e nas ofertas extras.",
+  },
+  {
+    key: "helpUrl",
+    label: "Ajuda",
+    description: "Aparece quando alguém usa o comando de ajuda.",
+  },
+  {
+    key: "errorUrl",
+    label: "Avisos e erros",
+    description: "Aparece nas mensagens privadas de orientação quando algo não pode continuar.",
+  },
+  {
+    key: "ticketUrl",
+    label: "Ticket e entrega",
+    description: "Aparece no ticket aberto após o pagamento, inclusive em resgates da roleta.",
+  },
+  {
+    key: "robuxUrl",
+    label: "Robux",
+    description: "Aparece na mensagem pública de Robux. Só é usada pela GWStore.",
+  },
+];
+
 const EDITOR_SECTIONS: EditorSection[] = [
+  {
+    id: "banners",
+    label: "Imagens",
+    description: "Banners próprios para cada mensagem. Cada loja usa apenas a própria identidade visual.",
+    icon: Palette,
+    preview: "storefront",
+    groups: [],
+  },
   {
     id: "storefront",
     label: "Vitrine",
@@ -438,7 +485,7 @@ export function BotCustomizationEditor({
   updatedAt,
 }: BotCustomizationEditorProps) {
   const [config, setConfig] = useState<BotMessageCustomization>(() =>
-    withDefaultStorefrontBanner(cloneConfig(initialConfig), defaultStorefrontBannerUrl),
+    withDefaultBotBanners(cloneConfig(initialConfig), defaultStorefrontBannerUrl),
   );
   const [notificationDiscordUserIds, setNotificationDiscordUserIds] = useState<string[]>(() => [
     ...initialNotificationDiscordUserIds,
@@ -500,7 +547,7 @@ export function BotCustomizationEditor({
 
   function restoreDefaults() {
     setConfig(
-      withDefaultStorefrontBanner(
+      withDefaultBotBanners(
         cloneConfig(DEFAULT_BOT_MESSAGE_CUSTOMIZATION),
         defaultStorefrontBannerUrl,
       ),
@@ -911,18 +958,19 @@ export function BotCustomizationEditor({
                     </div>
                   ) : (
                     <>
-                      {activeSection.id === "storefront" ? (
+                      {activeSection.id === "banners" ? (
                         <fieldset className="space-y-4">
                           <legend className="text-sm font-semibold text-foreground">
-                            Imagem da vitrine
+                            Banners das mensagens
                           </legend>
                           <p className="-mt-2 text-xs leading-5 text-muted">
-                            Banner exibido no topo da mensagem pública da loja no Discord.
+                            O banner principal aparece na vitrine e é o padrão automático das outras
+                            mensagens. Troque somente os tipos que precisarem de uma arte diferente.
                           </p>
-                          <div className="rounded-xl border border-border bg-surface-muted p-4">
+                          <div className="space-y-5 rounded-xl border border-border bg-surface-muted p-4">
                             <MediaUploadField
                               name="storefrontBannerUrl"
-                              label="Banner da vitrine"
+                              label="Banner principal da vitrine"
                               folder="storefronts"
                               value={config.storefront.bannerUrl}
                               onValueChange={(bannerUrl) => {
@@ -934,9 +982,31 @@ export function BotCustomizationEditor({
                               }}
                               clearValue={defaultStorefrontBannerUrl}
                               clearLabel="Restaurar banner padrão"
-                              clearMessage="O banner padrão será usado depois que a personalização for salva."
+                              clearMessage="O banner padrão desta loja será usado depois que a personalização for salva."
                               hint="Imagem horizontal em JPG, PNG ou WebP de até 5 MB."
                             />
+                            <div className="grid gap-4 xl:grid-cols-2">
+                              {BANNER_FIELDS.map((banner) => (
+                                <MediaUploadField
+                                  key={banner.key}
+                                  name={`banner-${banner.key}`}
+                                  label={banner.label}
+                                  folder="storefronts"
+                                  value={config.banners[banner.key]}
+                                  onValueChange={(bannerUrl) => {
+                                    setConfig((current) => ({
+                                      ...current,
+                                      banners: { ...current.banners, [banner.key]: bannerUrl },
+                                    }));
+                                    setRestoredLocally(false);
+                                  }}
+                                  clearValue={defaultStorefrontBannerUrl}
+                                  clearLabel="Usar banner principal"
+                                  clearMessage="Este tipo de mensagem voltará a usar o banner principal depois que a personalização for salva."
+                                  hint={banner.description}
+                                />
+                              ))}
+                            </div>
                           </div>
                         </fieldset>
                       ) : null}
@@ -1056,16 +1126,19 @@ function cloneConfig(config: BotMessageCustomization): BotMessageCustomization {
   return JSON.parse(JSON.stringify(config)) as BotMessageCustomization;
 }
 
-function withDefaultStorefrontBanner(
+function withDefaultBotBanners(
   config: BotMessageCustomization,
   defaultStorefrontBannerUrl: string,
 ): BotMessageCustomization {
-  if (config.storefront.bannerUrl || !defaultStorefrontBannerUrl) return config;
+  if (!defaultStorefrontBannerUrl) return config;
   return {
     ...config,
     storefront: {
       ...config.storefront,
-      bannerUrl: defaultStorefrontBannerUrl,
+      bannerUrl: config.storefront.bannerUrl || defaultStorefrontBannerUrl,
     },
+    banners: Object.fromEntries(
+      BANNER_FIELDS.map(({ key }) => [key, config.banners[key] || defaultStorefrontBannerUrl]),
+    ) as BotMessageCustomization["banners"],
   };
 }

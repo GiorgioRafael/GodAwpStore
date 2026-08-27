@@ -5,7 +5,7 @@ import { Notice } from "@/components/admin/notice";
 import { PageHeader } from "@/components/admin/page-header";
 import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
-  normalizeBotMessageImageUrl,
+  defaultStorefrontBannerUrl,
   normalizeBotMessageCustomization,
 } from "@/lib/bot/message-customization";
 import { normalizeTicketCloseAdminDiscordUserIds } from "@/lib/bot/ticket-close-admins";
@@ -43,9 +43,7 @@ export default async function BotCustomizationPage() {
         initialConfig={customization}
         initialNotificationDiscordUserIds={notificationDiscordUserIds}
         initialTicketCloseAdminDiscordUserIds={ticketCloseAdminDiscordUserIds}
-        defaultStorefrontBannerUrl={normalizeBotMessageImageUrl(
-          process.env.DISCORD_STOREFRONT_BANNER_URL,
-        )}
+        defaultStorefrontBannerUrl={defaultStorefrontBannerUrl()}
         updatedAt={settings?.updated_at ?? null}
       />
     </div>

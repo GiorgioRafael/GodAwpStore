@@ -57,6 +57,20 @@ describe("roulette Discord promotion", () => {
     );
   });
 
+  it("prioriza a arte personalizada da divulgação sem alterar o link da roleta", () => {
+    const payload = roulettePromotionPayload(
+      { ...copy, bannerUrl: "https://cdn.example.com/gw-roleta.png" },
+      "https://gwstore.vercel.app",
+    );
+
+    expect(payload.embeds[0]?.image).toEqual({
+      url: "https://cdn.example.com/gw-roleta.png",
+    });
+    expect(payload.components[0]?.components[0]?.url).toBe(
+      "https://gwstore.vercel.app/roleta",
+    );
+  });
+
   it("publica a identidade completa da THStore sem herdar domínio ou cor da GWStore", () => {
     const branding = rouletteBrandingFor(
       "thstore",
