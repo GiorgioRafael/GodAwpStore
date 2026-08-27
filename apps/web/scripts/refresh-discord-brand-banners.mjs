@@ -23,6 +23,9 @@ try {
   const storefrontBannerUrl = readHttpsUrl(
     settings.bot_message_config?.storefront?.bannerUrl,
   );
+  const robuxBannerUrl = readHttpsUrl(
+    settings.bot_message_config?.banners?.robuxUrl,
+  ) ?? storefrontBannerUrl;
   const rouletteBannerUrl = readHttpsUrl(settings.roulette_promotion_banner_url);
   const guilds = await supabaseSelect(
     "guilds?status=eq.active&archived_at=is.null&select=configuration",
@@ -35,7 +38,10 @@ try {
     if (storefrontBannerUrl) {
       for (const storefront of storefrontConfigurations(configuration)) {
         for (const messageId of storefront.message_ids) {
-          if (await replaceStorefrontBanner(storefront.channel_id, messageId, storefrontBannerUrl)) {
+          if (await refreshBanner(
+            "vitrine",
+            () => replaceStorefrontBanner(storefront.channel_id, messageId, storefrontBannerUrl),
+          )) {
             storefronts += 1;
           }
         }
@@ -45,8 +51,11 @@ try {
     const robuxStorefront = asObject(configuration.robux_storefront);
     const channelId = snowflake(robuxStorefront.channel_id);
     const messageId = snowflake(robuxStorefront.message_id);
-    if (channelId && messageId && storefrontBannerUrl) {
-      if (await replaceEmbedBanner(channelId, messageId, storefrontBannerUrl)) robux += 1;
+    if (channelId && messageId && robuxBannerUrl) {
+      if (await refreshBanner(
+        "Robux",
+        () => replaceEmbedBanner(channelId, messageId, robuxBannerUrl),
+      )) robux += 1;
     }
   }
 
@@ -54,7 +63,10 @@ try {
   const rouletteChannelId = snowflake(settings.roulette_promotion_channel_id);
   const rouletteMessageId = snowflake(settings.roulette_promotion_message_id);
   if (rouletteChannelId && rouletteMessageId && rouletteBannerUrl) {
-    roulette = (await replaceEmbedBanner(rouletteChannelId, rouletteMessageId, rouletteBannerUrl))
+    roulette = (await refreshBanner(
+      "roleta",
+      () => replaceEmbedBanner(rouletteChannelId, rouletteMessageId, rouletteBannerUrl),
+    ))
       ? 1
       : 0;
   }
@@ -135,6 +147,16 @@ async function patchDiscordMessage(channelId, messageId, payload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(`Discord recusou a atualização da mensagem (${response.status}).`);
+}
+
+async function refreshBanner(label, update) {
+  try {
+    return await update();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "erro desconhecido";
+    console.warn(`[discord-brand-banners] ${label} ignorado: ${message}`);
+    return false;
+  }
 }
 
 function replaceFirstMediaGallery(value, bannerUrl) {
