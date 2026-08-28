@@ -320,9 +320,25 @@ export async function publishDiscordStorefront({
 
   for (let index = 0; index < payloads.length; index += 1) {
     const existingId = reusableMessageIds[index];
-    const message = existingId
-      ? await editOrCreateMessage(channel.id, existingId, payloads[index], fetcher)
-      : await createMessage(channel.id, payloads[index], fetcher);
+    const send = (payload: unknown) =>
+      existingId
+        ? editOrCreateMessage(channel.id, existingId, payload as never, fetcher)
+        : createMessage(channel.id, payload as never, fetcher);
+    let message;
+    try {
+      message = await send(payloads[index]);
+    } catch (error) {
+      // Um id de emoji que não existe mais no aplicativo faz o Discord recusar
+      // a mensagem inteira com 400, e a vitrine toda deixa de publicar por causa
+      // de um ícone. Vale mais publicar sem os ícones do que não publicar.
+      if (!isDiscordBadRequest(error)) throw error;
+      const withoutEmojis = stripOptionEmojis(payloads[index]);
+      if (!withoutEmojis) throw error;
+      console.error(
+        `[discord-storefront] emoji recusado no canal ${channel.id}; publicando sem ícones`,
+      );
+      message = await send(withoutEmojis);
+    }
     messageIds.push(message.id);
   }
 
@@ -370,6 +386,38 @@ export function createDiscordStorefrontPayloads(
       allowed_mentions: { parse: [] },
     };
   });
+}
+
+function isDiscordBadRequest(error: unknown) {
+  return typeof error === "object" && error !== null && "status" in error
+    && (error as { status: unknown }).status === 400;
+}
+
+/**
+ * O mesmo payload sem nenhum `emoji` nas opções, ou null se não havia nenhum.
+ *
+ * Devolver null importa: sem emoji para tirar, o 400 tem outra causa e repetir
+ * a chamada idêntica só gastaria a segunda tentativa.
+ */
+export function stripOptionEmojis(payload: unknown): unknown | null {
+  let removed = false;
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (node && typeof node === "object") {
+      const copy: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+        if (key === "emoji") {
+          removed = true;
+          continue;
+        }
+        copy[key] = walk(value);
+      }
+      return copy;
+    }
+    return node;
+  };
+  const stripped = walk(payload);
+  return removed ? stripped : null;
 }
 
 async function editOrCreateMessage(

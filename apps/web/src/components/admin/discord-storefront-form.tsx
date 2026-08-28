@@ -396,7 +396,9 @@ export function DiscordStorefrontForm({
                         value={boosterDiscountPercent}
                         onChange={(event) => setBoosterDiscountPercent(event.target.value)}
                         className="pr-10"
-                        required
+                        // Sem `required`: dentro de um <details> fechado o browser recusa o
+                        // envio inteiro sem mostrar nada ("invalid form control is not
+                        // focusable"). O servidor valida.
                       />
                       <span aria-hidden="true" className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-sm text-muted">%</span>
                     </div>
@@ -419,7 +421,9 @@ export function DiscordStorefrontForm({
                         value={boosterMinimumSubtotal}
                         onChange={(event) => setBoosterMinimumSubtotal(event.target.value)}
                         className="pl-10"
-                        required
+                        // Sem `required`: dentro de um <details> fechado o browser recusa o
+                        // envio inteiro sem mostrar nada ("invalid form control is not
+                        // focusable"). O servidor valida.
                       />
                     </div>
                   </Field>

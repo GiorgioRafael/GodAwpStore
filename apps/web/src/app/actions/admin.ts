@@ -74,9 +74,28 @@ const discordStorefrontSchema = z.object({
   storeId: uuidSchema,
   channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
   boosterDiscountEnabled: z.boolean(),
-  boosterDiscountBps: z.number().int().min(1, "Informe um desconto maior que zero.").max(9_000, "O desconto máximo é 90%."),
-  boosterMinimumSubtotalCents: z.number().int().min(100, "A compra mínima deve ser de pelo menos R$ 1,00."),
+  // Sem o desconto ligado, esses dois campos não descrevem nada: exigi-los
+  // recusava o formulário por causa de uma seção que o operador nem abriu.
+  boosterDiscountBps: z.number().int().min(0).max(9_000, "O desconto máximo é 90%."),
+  boosterMinimumSubtotalCents: z.number().int().min(0),
 }).superRefine((value, context) => {
+  if (!value.boosterDiscountEnabled) return;
+  if (value.boosterDiscountBps < 1) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["boosterDiscountBps"],
+      message: "Informe um desconto maior que zero.",
+    });
+    return;
+  }
+  if (value.boosterMinimumSubtotalCents < 100) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["boosterMinimumSubtotalCents"],
+      message: "A compra mínima deve ser de pelo menos R$ 1,00.",
+    });
+    return;
+  }
   const discountedMinimum = Number(
     BigInt(value.boosterMinimumSubtotalCents) * BigInt(10_000 - value.boosterDiscountBps) / 10_000n,
   );

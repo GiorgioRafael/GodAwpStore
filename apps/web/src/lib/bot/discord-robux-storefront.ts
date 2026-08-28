@@ -147,7 +147,12 @@ async function editOrCreateMessage(
       fetcher,
     ).then((message) => readMessage(message, channelId));
   } catch (error) {
-    if (isDiscordNotFound(error)) return createMessage(channelId, payload, fetcher);
+    // Qualquer recusa 4xx da edição vira mensagem nova. Só 404 era tratado, e a
+    // mensagem antiga da vitrine de catálogo foi criada com a flag de
+    // componentes v2 — o Discord não deixa trocar essa flag numa edição e
+    // responde 400, então a publicação de Robux morria em cima de uma vitrine
+    // que o painel tinha acabado de prometer substituir.
+    if (isDiscordEditRefusal(error)) return createMessage(channelId, payload, fetcher);
     throw error;
   }
 }
@@ -185,8 +190,17 @@ function readMessage(message: DiscordMessage, expectedChannelId: string) {
   return { id };
 }
 
-function isDiscordNotFound(error: unknown) {
-  return typeof error === "object" && error !== null && "status" in error && error.status === 404;
+/**
+ * A edição foi recusada por algo que criar de novo resolve.
+ *
+ * 404 é a mensagem apagada; 400 é o Discord recusando o formato — tipicamente a
+ * flag de componentes, que não pode ser adicionada nem removida editando. Um
+ * 5xx ou 429 NÃO entra aqui: repetir como criação duplicaria a vitrine.
+ */
+function isDiscordEditRefusal(error: unknown) {
+  if (typeof error !== "object" || error === null || !("status" in error)) return false;
+  const status = (error as { status: unknown }).status;
+  return status === 404 || status === 400;
 }
 
 function assertSnowflake(value: string, label: string) {

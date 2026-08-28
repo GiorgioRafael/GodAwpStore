@@ -133,7 +133,10 @@ function ProductForm({
               name="catalogStoreId"
               value={selectedCatalogStoreId}
               onChange={(event) => setSelectedCatalogStoreId(event.target.value)}
-              disabled={selectableStores.length === 0}
+              // Sem `disabled`: um campo desabilitado não entra no FormData, e o
+              // servidor recebia string vazia e reprovava o uuid — enquanto o
+              // browser, que ignora `required` em campo desabilitado, deixava
+              // enviar. O bloqueio agora é no botão, que diz o motivo.
               required
             >
               <option value="" disabled>
