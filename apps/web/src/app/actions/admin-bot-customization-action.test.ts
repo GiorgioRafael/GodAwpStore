@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createServerSupabaseClient: vi.fn(),
   createAdminSupabaseClient: vi.fn(),
   synchronizePublishedDiscordStorefronts: vi.fn(),
+  synchronizePublishedDiscordRobuxStorefronts: vi.fn(),
   synchronizeDiscordProductEmojis: vi.fn(),
   synchronizeAllOpenDiscordTicketControls: vi.fn(),
   revalidatePath: vi.fn(),
@@ -25,6 +26,10 @@ vi.mock("@/lib/supabase/admin", () => ({
 }));
 vi.mock("@/lib/bot/discord-storefront-sync", () => ({
   synchronizePublishedDiscordStorefronts: mocks.synchronizePublishedDiscordStorefronts,
+}));
+vi.mock("@/lib/bot/discord-robux-storefront-sync", () => ({
+  synchronizePublishedDiscordRobuxStorefronts:
+    mocks.synchronizePublishedDiscordRobuxStorefronts,
 }));
 vi.mock("@/lib/bot/discord-product-emojis", () => ({
   synchronizeDiscordProductEmojis: mocks.synchronizeDiscordProductEmojis,
@@ -73,6 +78,10 @@ describe("action de personalização do bot", () => {
       published: 1,
       failed: 0,
       productEmojiFailures: 0,
+    });
+    mocks.synchronizePublishedDiscordRobuxStorefronts.mockResolvedValue({
+      published: 1,
+      failed: 0,
     });
     mocks.synchronizeDiscordProductEmojis.mockResolvedValue({ failed: 0 });
     mocks.synchronizeAllOpenDiscordTicketControls.mockResolvedValue({
@@ -166,7 +175,7 @@ describe("action de personalização do bot", () => {
 
     expect(result).toEqual({
       ok: true,
-      message: "Personalização salva e vitrines publicadas atualizadas.",
+      message: "Personalização salva e mensagens publicadas atualizadas.",
     });
     expect(client.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -180,6 +189,7 @@ describe("action de personalização do bot", () => {
     expect(client.eq).toHaveBeenNthCalledWith(2, "updated_at", updatedAt);
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/customizacao-bot");
     expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
+    expect(mocks.synchronizePublishedDiscordRobuxStorefronts).toHaveBeenCalledOnce();
     expect(mocks.synchronizeAllOpenDiscordTicketControls).toHaveBeenCalledOnce();
   });
 

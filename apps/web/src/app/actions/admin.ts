@@ -1274,8 +1274,7 @@ export async function publishDiscordStorefrontAction(
       };
     }
 
-    const { synchronizeDiscordProductEmojis } = await import("@/lib/bot/discord-product-emojis");
-    const emojiSync = await synchronizeDiscordProductEmojis(supabase);
+    const emojiSync = await synchronizeDiscordProductEmojisForStorefront(supabase);
     const [catalog, customization] = await Promise.all([
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
       loadBotMessageCustomization(supabase),
@@ -1396,6 +1395,26 @@ function storefrontActionError(message: string) {
     return "Não foi possível carregar o catálogo para publicar a vitrine.";
   }
   return "Não foi possível publicar a vitrine agora. Tente novamente.";
+}
+
+async function synchronizeDiscordProductEmojisForStorefront(
+  supabase: NonNullable<ReturnType<typeof createAdminSupabaseClient>>,
+) {
+  if (process.env.DISCORD_PRODUCT_EMOJI_SYNC_ENABLED?.trim().toLowerCase() !== "true") {
+    return { failed: 0 };
+  }
+
+  try {
+    // Product application emojis are a visual enhancement only. Publishing a
+    // storefront must still work when the optional native image processor is
+    // unavailable in the server runtime.
+    const { synchronizeDiscordProductEmojis } = await import("@/lib/bot/discord-product-emojis");
+    return await synchronizeDiscordProductEmojis(supabase);
+  } catch (emojiError) {
+    const message = emojiError instanceof Error ? emojiError.message : "erro desconhecido";
+    console.error(`[admin:discord-product-emojis] ${message}`);
+    return { failed: 1 };
+  }
 }
 
 export async function archiveRecordAction(
