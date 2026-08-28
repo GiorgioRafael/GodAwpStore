@@ -233,6 +233,46 @@ begin
 end
 $$;
 
+-- Um jogo criado inativo não pode prender a loja principal dele: reativar o
+-- jogo tem que devolver a loja, senão nenhum produto pode ser cadastrado nela e
+-- o painel não oferece nenhum caminho de volta.
+do $$
+declare
+  v_game_id uuid;
+  v_status text;
+begin
+  insert into public.games (name, slug, status)
+  values ('Jogo Preso', 'jogo-preso-verificacao', 'inactive')
+  returning id into v_game_id;
+
+  select store.status into v_status
+  from public.catalog_stores as store
+  where store.game_id = v_game_id and store.is_default;
+
+  if v_status <> 'inactive' then
+    raise exception 'A loja principal nasceu como %, esperado inactive', v_status;
+  end if;
+
+  update public.games set status = 'active' where id = v_game_id;
+
+  select store.status into v_status
+  from public.catalog_stores as store
+  where store.game_id = v_game_id and store.is_default;
+
+  if v_status <> 'active' then
+    raise exception 'Reativar o jogo deixou a loja principal em %', v_status;
+  end if;
+
+  -- E arquivar o jogo leva a loja junto, senão ela fica à venda sozinha.
+  update public.games set status = 'archived', archived_at = now() where id = v_game_id;
+
+  if (select store.archived_at from public.catalog_stores as store
+      where store.game_id = v_game_id and store.is_default) is null then
+    raise exception 'Arquivar o jogo deixou a loja principal ativa';
+  end if;
+end
+$$;
+
 rollback;
 
 select 'Catalog stores verification passed' as result;
