@@ -1131,8 +1131,16 @@ export async function publishDiscordRobuxStorefrontAction(
     };
   }
 
+  // Fora do try: um erro de autorização aqui dentro cai no catch da publicação
+  // e sai como falha do Discord. O operador com a sessão vencida lia que o bot
+  // não conseguiu publicar, quando bastava entrar de novo.
   try {
     await requireAdmin();
+  } catch {
+    return { ok: false, message: "Sua sessão de administrador expirou. Entre novamente e repita." };
+  }
+
+  try {
     const supabase = createAdminSupabaseClient();
     if (!supabase) throw new Error("Supabase server-only não configurado.");
     const { data: guild, error: guildError } = await supabase
@@ -1250,8 +1258,16 @@ export async function publishDiscordStorefrontAction(
     };
   }
 
+  // Fora do try: um erro de autorização aqui dentro cai no catch da publicação
+  // e sai como falha do Discord. O operador com a sessão vencida lia que o bot
+  // não conseguiu publicar, quando bastava entrar de novo.
   try {
     await requireAdmin();
+  } catch {
+    return { ok: false, message: "Sua sessão de administrador expirou. Entre novamente e repita." };
+  }
+
+  try {
     const supabase = createAdminSupabaseClient();
     if (!supabase) throw new Error("Supabase server-only não configurado.");
     const { data: guild, error: guildError } = await supabase
@@ -1417,6 +1433,14 @@ async function synchronizeDiscordProductEmojisForStorefront(
   }
 }
 
+/** "Registro" não diz ao operador o que ele acabou de arquivar. */
+const ARCHIVE_NOUN: Record<string, string> = {
+  game: "Jogo",
+  substore: "Categoria",
+  product: "Produto",
+  whitelist: "Acesso da whitelist",
+};
+
 export async function archiveRecordAction(
   target: string,
   id: string,
@@ -1473,9 +1497,9 @@ export async function archiveRecordAction(
               .maybeSingle();
     if (existing.error) return databaseFailure(existing.error.code);
     if (existing.data?.archived_at) {
-      return { ok: true, message: "Registro já estava arquivado." };
+      return { ok: true, message: `${ARCHIVE_NOUN[parsed.data.target]} já estava arquivado.` };
     }
-    return { ok: false, message: "Registro não encontrado." };
+    return { ok: false, message: `${ARCHIVE_NOUN[parsed.data.target]} não encontrado.` };
   }
   revalidatePath("/catalogo/jogos");
   revalidatePath("/catalogo/sublojas");
@@ -1483,8 +1507,8 @@ export async function archiveRecordAction(
   revalidatePath("/whitelist");
   revalidatePath("/dashboard");
   return parsed.data.target === "whitelist"
-    ? { ok: true, message: "Registro arquivado." }
-    : synchronizeCatalogStorefront("Registro arquivado.");
+    ? { ok: true, message: `${ARCHIVE_NOUN[parsed.data.target]} arquivado.` }
+    : synchronizeCatalogStorefront(`${ARCHIVE_NOUN[parsed.data.target]} arquivado.`);
 }
 
 export async function changeInventoryStatusAction(

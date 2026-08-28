@@ -1,5 +1,6 @@
 "use client";
 
+import { runDestructiveAction } from "./destructive-action";
 import type { DragEvent, KeyboardEvent } from "react";
 import { useActionState, useId, useMemo, useRef, useState, useTransition } from "react";
 import { Archive, LoaderCircle, Menu, PackageOpen, Pencil, Save, Trash2, TriangleAlert } from "lucide-react";
@@ -242,6 +243,11 @@ function ProductForm({
   );
 }
 
+/** Muda quando o conjunto, a ordem ou o conteúdo de algum produto muda. */
+function productsRevision(products: ProductRow[]) {
+  return products.map((product) => `${product.id}:${product.updated_at}`).join("|");
+}
+
 export function ProductsManager({ products, substores, stores }: ProductsManagerProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
@@ -251,6 +257,17 @@ export function ProductsManager({ products, substores, stores }: ProductsManager
   const [orderState, setOrderState] = useState(initialAdminActionState);
   const [orderPending, startOrderTransition] = useTransition();
   const [draggingProductId, setDraggingProductId] = useState<string | null>(null);
+  // A lista se atualiza quando o servidor manda outra, em vez de a página
+  // remontar o componente para conseguir o mesmo efeito. Remontar levava junto
+  // o diálogo aberto e a mensagem de sucesso.
+  const [syncedRevision, setSyncedRevision] = useState(() => productsRevision(products));
+  const revision = productsRevision(products);
+  if (revision !== syncedRevision && !orderDirty && draggingProductId === null) {
+    // Uma ordenação ainda não salva, ou um arrasto em curso, é trabalho do
+    // operador: a atualização espera em vez de apagá-lo.
+    setSyncedRevision(revision);
+    setOrderedProducts(products);
+  }
   const draggingProductIdRef = useRef<string | null>(null);
   const [editor, setEditor] = useState<
     { mode: "create" } | { mode: "edit"; product: ProductRow } | null
@@ -562,7 +579,7 @@ function DeleteProductDialog({
   function remove() {
     if (!record || hasStock) return;
     startTransition(async () => {
-      setState(await deleteProductAction(record.id));
+      setState(await runDestructiveAction(() => deleteProductAction(record.id)));
     });
   }
 

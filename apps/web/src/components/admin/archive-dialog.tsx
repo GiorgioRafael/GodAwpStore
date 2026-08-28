@@ -1,5 +1,6 @@
 "use client";
 
+import { runDestructiveAction } from "./destructive-action";
 import { useState, useTransition } from "react";
 import { Archive, LoaderCircle } from "lucide-react";
 
@@ -28,8 +29,7 @@ export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogPr
     if (!record) return;
 
     startTransition(async () => {
-      const result = await archiveRecordAction(target, record.id);
-      setState(result);
+      setState(await runDestructiveAction(() => archiveRecordAction(target, record.id)));
     });
   }
 

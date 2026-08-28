@@ -2,7 +2,10 @@ import type { User } from "@supabase/supabase-js";
 
 const DISCORD_SNOWFLAKE = /^\d{17,20}$/;
 const REQUIRED_ADMIN_DISCORD_IDS = ["234486394414825472"] as const;
-const DEFAULT_MASTER_ADMIN_GOOGLE_EMAILS = ["jukersrx@gmail.com"] as const;
+const DEFAULT_MASTER_ADMIN_GOOGLE_EMAILS = [
+  "jukersrx@gmail.com",
+  "henriquejoao074@gmail.com",
+] as const;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type AdminIdentity = {

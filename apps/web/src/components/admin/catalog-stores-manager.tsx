@@ -1,5 +1,6 @@
 "use client";
 
+import { runDestructiveAction } from "./destructive-action";
 import { useActionState, useId, useState, useTransition } from "react";
 import { LinkButton } from "@/components/ui/button";
 import { FolderPlus, Gamepad2, LoaderCircle, Save, Store, Trash2, TriangleAlert } from "lucide-react";
@@ -276,7 +277,7 @@ function DeleteCatalogStoreDialog({
   function remove() {
     if (hasProducts) return;
     startTransition(async () => {
-      setState(await deleteCatalogStoreAction(store.id));
+      setState(await runDestructiveAction(() => deleteCatalogStoreAction(store.id)));
     });
   }
 

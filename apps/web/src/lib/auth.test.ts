@@ -126,6 +126,12 @@ describe("identidade Google do painel mestre", () => {
     });
   });
 
+  it("mantém os administradores padrão autorizados", () => {
+    expect(parseMasterAdminGoogleEmails()).toEqual(
+      new Set(["jukersrx@gmail.com", "henriquejoao074@gmail.com"]),
+    );
+  });
+
   it("rejeita e-mail não confirmado e metadata sem identidade Google", () => {
     const baseUser = {
       id: "auth-user",

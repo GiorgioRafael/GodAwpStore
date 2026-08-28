@@ -11,12 +11,13 @@ export default async function ProductsPage() {
     listSubstores(),
     listCatalogStores(),
   ]);
-  const productsRevision = products
-    .map((product) => `${product.id}:${product.updated_at}`)
-    .join("|");
+  // Sem key: ela era a impressão digital de TODOS os produtos, então qualquer
+  // alteração — inclusive a venda de outro produto — descartava a instância
+  // inteira do gerenciador. O diálogo de excluir/arquivar fechava sozinho antes
+  // de mostrar o resultado, e o operador via o botão "não fazer nada". A lista
+  // volta a sincronizar dentro do componente, sem remontar.
   return (
     <ProductsManager
-      key={productsRevision}
       products={products}
       substores={substores}
       stores={stores}

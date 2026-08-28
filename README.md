@@ -97,8 +97,9 @@ desenvolvedor do Discord e use **Copiar ID do usuário** para obter o seu snowfl
 
 O painel mestre da 101Devs fica em `/admin` e usa Google OAuth separadamente. A
 variável `MASTER_ADMIN_GOOGLE_EMAILS` recebe a lista de e-mails Google confirmados
-que podem acessar essa área; por padrão, somente `jukersrx@gmail.com` está
-autorizado. A URL anterior, `/admin/discordbots`, continua abrindo o painel.
+que podem acessar essa área; por padrão, `jukersrx@gmail.com` e
+`henriquejoao074@gmail.com` estão autorizados. A URL anterior,
+`/admin/discordbots`, continua abrindo o painel.
 
 O painel tem uma aba por produto: visão geral, GWStore, Loja TH e Sobremesas Fit.
 A visão geral soma **a comissão** das lojas de bots com a **receita** do e-book —
