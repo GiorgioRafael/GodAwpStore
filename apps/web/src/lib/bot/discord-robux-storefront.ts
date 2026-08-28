@@ -2,6 +2,10 @@ import "server-only";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
 import {
+  botMessageBannerUrl,
+  type BotMessageCustomization,
+} from "./message-customization";
+import {
   assertConfiguredDiscordBotIdentity,
   assertDiscordBotGuildAccess,
   discordBotJson,
@@ -50,11 +54,13 @@ export async function publishDiscordRobuxStorefront({
   guildId,
   channel,
   previous,
+  customization,
   fetcher = fetch,
 }: {
   guildId: string;
   channel: { id: string; name: string };
   previous: DiscordRobuxStorefrontConfiguration | null;
+  customization?: BotMessageCustomization;
   fetcher?: typeof fetch;
 }): Promise<DiscordRobuxStorefrontConfiguration> {
   assertSnowflake(guildId, "servidor");
@@ -67,7 +73,7 @@ export async function publishDiscordRobuxStorefront({
     assertDiscordBotGuildAccess(guildId, fetcher),
   ]);
 
-  const payload = createDiscordRobuxStorefrontPayload();
+  const payload = createDiscordRobuxStorefrontPayload(customization);
   const message =
     previous?.channel_id === channel.id
       ? await editOrCreateMessage(channel.id, previous.message_id, payload, fetcher)
@@ -85,7 +91,9 @@ export async function publishDiscordRobuxStorefront({
   };
 }
 
-export function createDiscordRobuxStorefrontPayload() {
+export function createDiscordRobuxStorefrontPayload(
+  customization?: BotMessageCustomization,
+) {
   return {
     allowed_mentions: { parse: [] },
     embeds: [
@@ -97,7 +105,7 @@ export function createDiscordRobuxStorefrontPayload() {
         fields: [
           {
             name: "Preço",
-            value: "**1.000 Robux = R$ 35,00**",
+            value: "**1.000 Robux = R$ 42,00**",
             inline: false,
           },
           {
@@ -106,6 +114,7 @@ export function createDiscordRobuxStorefrontPayload() {
             inline: false,
           },
         ],
+        image: { url: botMessageBannerUrl(customization, "robuxUrl") },
         footer: { text: "GWStore · Pagamento via LivePix" },
       },
     ],

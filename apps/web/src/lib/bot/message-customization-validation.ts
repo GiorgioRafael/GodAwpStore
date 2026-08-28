@@ -32,6 +32,12 @@ const TOKEN_LENGTH_BUDGETS: Record<string, number> = {
 };
 
 const optionalFields = new Set([
+  "banners.productUrl",
+  "banners.orderUrl",
+  "banners.helpUrl",
+  "banners.errorUrl",
+  "banners.ticketUrl",
+  "banners.robuxUrl",
   "storefront.bannerUrl",
   "storefront.welcome",
   "storefront.catalogText",
@@ -78,18 +84,28 @@ function textField(path: keyof typeof BOT_MESSAGE_FIELD_LIMITS) {
   );
 }
 
-const storefrontBannerUrlSchema = z
+const bannerUrlSchema = (path: keyof typeof BOT_MESSAGE_FIELD_LIMITS) =>
+  z
   .string()
   .transform(cleanDiscordText)
-  .pipe(z.string().trim().max(BOT_MESSAGE_FIELD_LIMITS["storefront.bannerUrl"]))
+  .pipe(z.string().trim().max(BOT_MESSAGE_FIELD_LIMITS[path]))
   .refine(
     (value) => value === "" || normalizeBotMessageImageUrl(value) !== "",
     "Use uma URL HTTPS válida para o banner.",
   )
   .transform(normalizeBotMessageImageUrl);
 
+const bannersSchema = z.object({
+  productUrl: bannerUrlSchema("banners.productUrl"),
+  orderUrl: bannerUrlSchema("banners.orderUrl"),
+  helpUrl: bannerUrlSchema("banners.helpUrl"),
+  errorUrl: bannerUrlSchema("banners.errorUrl"),
+  ticketUrl: bannerUrlSchema("banners.ticketUrl"),
+  robuxUrl: bannerUrlSchema("banners.robuxUrl"),
+}).strict();
+
 const storefrontSchema = z.object({
-  bannerUrl: storefrontBannerUrlSchema,
+  bannerUrl: bannerUrlSchema("storefront.bannerUrl"),
   title: textField("storefront.title"),
   paginatedTitle: textField("storefront.paginatedTitle"),
   subtitle: textField("storefront.subtitle"),
@@ -206,6 +222,7 @@ const ticketSchema = z.object({
 
 export const botMessageCustomizationSchema = z.object({
   version: z.literal(1),
+  banners: bannersSchema,
   storefront: storefrontSchema,
   product: productSchema,
   quantity: quantitySchema,

@@ -75,6 +75,7 @@ type PlatformSettingsRow = {
   roulette_promotion_title: string;
   roulette_promotion_description: string;
   roulette_promotion_button_label: string;
+  roulette_promotion_banner_url: string | null;
   roulette_promotion_channel_id: string | null;
   roulette_promotion_message_id: string | null;
   updated_by: string | null;

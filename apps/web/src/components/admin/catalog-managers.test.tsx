@@ -8,6 +8,7 @@ import { SubstoresManager } from "./substores-manager";
 import { WhitelistManager } from "./whitelist-manager";
 import type {
   GameRow,
+  CatalogStoreRow,
   ProductRow,
   SubstoreRow,
   WhitelistRow,
@@ -34,9 +35,13 @@ const actionMocks = vi.hoisted(() => ({
   saveProductAction: vi.fn(async () => ({ ok: true, message: "Produto salvo." })),
   saveSubstoreAction: vi.fn(async () => ({ ok: true, message: "Subloja salva." })),
   saveWhitelistAction: vi.fn(async () => ({ ok: true, message: "Whitelist salva." })),
+  routerReplace: vi.fn(),
 }));
 
 vi.mock("@/app/actions/admin", () => actionMocks);
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: actionMocks.routerReplace }),
+}));
 
 const now = "2026-07-16T12:00:00.000Z";
 
@@ -107,6 +112,21 @@ const activeProduct: ProductRow = {
     game_id: activeGame.id,
   },
   substores: { name: activeSubstore.name, games: { name: activeGame.name } },
+};
+
+const activeStore: CatalogStoreRow = {
+  id: activeProduct.catalog_store_id,
+  game_id: activeGame.id,
+  name: "Loja principal",
+  slug: "loja-principal",
+  banner_url: null,
+  status: "active",
+  is_default: true,
+  sort_order: 1,
+  archived_at: null,
+  created_at: now,
+  updated_at: now,
+  games: { name: activeGame.name },
 };
 
 const secondProduct: ProductRow = {
@@ -182,7 +202,7 @@ describe("gestores do catálogo", () => {
     substoreView.unmount();
 
     const productView = render(
-      <ProductsManager products={[]} substores={[]} />,
+      <ProductsManager products={[]} substores={[]} stores={[]} />,
     );
     expect(screen.getByRole("button", { name: "Novo produto" })).toBeDisabled();
     productView.unmount();
@@ -208,19 +228,68 @@ describe("gestores do catálogo", () => {
       <ProductsManager
         products={[activeProduct]}
         substores={[activeSubstore]}
+        stores={[activeStore]}
       />,
     );
     await user.click(screen.getByRole("button", { name: "Novo produto" }));
     expect(screen.getByRole("heading", { name: "Novo produto" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Categoria" })).toHaveValue(activeSubstore.id);
+    expect(screen.getByRole("combobox", { name: "1. Categoria" })).toHaveValue(activeSubstore.id);
+    expect(screen.getByRole("combobox", { name: "2. Loja/mundo desta vitrine" })).toHaveValue(activeStore.id);
     expect(screen.queryByRole("textbox", { name: "Slug" })).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Preço mínimo" })).toBeRequired();
     expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(0);
   });
 
+  it("preserva a loja filtrada e abre o novo produto no mesmo jogo", async () => {
+    const user = userEvent.setup();
+    const secondGameId = "66db4c6d-0107-49db-8996-b95b1d509ca4";
+    const secondSubstore: SubstoreRow = {
+      ...activeSubstore,
+      id: "89a9930b-e6ba-4a2e-ae58-fd0450d8bb0e",
+      game_id: secondGameId,
+      name: "Itens do jogo 2",
+      games: { name: "Jogo 2" },
+    };
+    const secondStore: CatalogStoreRow = {
+      ...activeStore,
+      id: "af5f0e56-dd25-46e2-b7e6-8495ce890e4c",
+      game_id: secondGameId,
+      name: "Mundo 2",
+      games: { name: "Jogo 2" },
+    };
+    const secondGameProduct: ProductRow = {
+      ...secondProduct,
+      substore_id: secondSubstore.id,
+      catalog_store_id: secondStore.id,
+      catalog_stores: { name: secondStore.name, game_id: secondGameId },
+      substores: { name: secondSubstore.name, games: { name: "Jogo 2" } },
+    };
+
+    render(
+      <ProductsManager
+        products={[activeProduct, secondGameProduct]}
+        substores={[activeSubstore, secondSubstore]}
+        stores={[activeStore, secondStore]}
+        initialStoreId={secondStore.id}
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Filtrar produtos por loja ou mundo" })).toHaveValue(
+      secondStore.id,
+    );
+    expect(screen.getByText(secondGameProduct.name)).toBeInTheDocument();
+    expect(screen.queryByText(activeProduct.name)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Novo produto" }));
+    expect(screen.getByRole("combobox", { name: "1. Categoria" })).toHaveValue(secondSubstore.id);
+    expect(screen.getByRole("combobox", { name: "2. Loja/mundo desta vitrine" })).toHaveValue(
+      secondStore.id,
+    );
+  });
+
   it("edita o estoque agregado dentro do próprio produto", async () => {
     const user = userEvent.setup();
-    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} />);
+    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     expect(screen.getByRole("cell", { name: "100" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Editar" }));
@@ -235,7 +304,7 @@ describe("gestores do catálogo", () => {
   it("confirma a exclusão definitiva de produto sem estoque", async () => {
     const user = userEvent.setup();
     const unusedProduct = { ...activeProduct, stock_quantity: 0 };
-    render(<ProductsManager products={[unusedProduct]} substores={[activeSubstore]} />);
+    render(<ProductsManager products={[unusedProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     await user.click(
       screen.getByRole("button", { name: `Excluir definitivamente ${unusedProduct.name}` }),
@@ -254,13 +323,14 @@ describe("gestores do catálogo", () => {
 
   it("exige estoque zerado antes da exclusão definitiva", async () => {
     const user = userEvent.setup();
-    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} />);
+    render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     await user.click(
       screen.getByRole("button", { name: `Excluir definitivamente ${activeProduct.name}` }),
     );
     expect(screen.getByText(/Zere o estoque atual de 100 unidade/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Arquivar produto" })).toBeEnabled();
   });
 
   it("reordena produtos pelo controle e só publica depois de salvar", async () => {
@@ -269,6 +339,7 @@ describe("gestores do catálogo", () => {
       <ProductsManager
         products={[activeProduct, secondProduct]}
         substores={[activeSubstore]}
+        stores={[activeStore]}
       />,
     );
 
@@ -342,5 +413,32 @@ describe("gestores do catálogo", () => {
       expect(actionMocks.archiveRecordAction).toHaveBeenCalledWith("game", activeGame.id);
     });
     expect(await screen.findByText("Registro arquivado.")).toBeInTheDocument();
+  });
+
+  it("exclui definitivamente um jogo sem categorias nem produtos", async () => {
+    const user = userEvent.setup();
+    render(
+      <GamesManager
+        games={[activeGame]}
+        relatedCounts={{
+          [activeGame.id]: {
+            substores: 0,
+            products: 0,
+            totalSubstores: 0,
+            totalProducts: 0,
+          },
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: `Excluir definitivamente ${activeGame.name}` }),
+    );
+    expect(screen.getByRole("heading", { name: "Excluir jogo definitivamente" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
+
+    await waitFor(() => {
+      expect(actionMocks.deleteRecordPermanentlyAction).toHaveBeenCalledWith("game", activeGame.id);
+    });
   });
 });

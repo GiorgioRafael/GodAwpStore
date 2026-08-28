@@ -30,6 +30,8 @@ interface ResourceManagerShellProps {
   filter: string;
   onFilterChange: (value: string) => void;
   filterOptions: FilterOption[];
+  extraFilters?: ReactNode;
+  extraFiltersActive?: boolean;
   columns: string[];
   totalCount: number;
   visibleCount: number;
@@ -54,6 +56,8 @@ export function ResourceManagerShell({
   filter,
   onFilterChange,
   filterOptions,
+  extraFilters,
+  extraFiltersActive = false,
   columns,
   totalCount,
   visibleCount,
@@ -63,7 +67,7 @@ export function ResourceManagerShell({
   contextualContent,
   children,
 }: ResourceManagerShellProps) {
-  const hasQuery = Boolean(search.trim()) || filter !== "all";
+  const hasQuery = Boolean(search.trim()) || filter !== "all" || extraFiltersActive;
   const countLabel = totalCount === 1 ? "1 registro" : `${totalCount} registros`;
 
   return (
@@ -115,6 +119,7 @@ export function ResourceManagerShell({
               </option>
             ))}
           </Select>
+          {extraFilters}
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted">
           <span>
@@ -136,7 +141,7 @@ export function ResourceManagerShell({
               title={hasQuery ? "Nenhum resultado encontrado" : emptyTitle}
               description={
                 hasQuery
-                  ? "Ajuste a busca ou o filtro de estado para ver outros registros."
+                  ? "Ajuste a busca ou os filtros para ver outros registros."
                   : emptyDescription
               }
               compact

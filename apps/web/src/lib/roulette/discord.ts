@@ -11,6 +11,7 @@ import {
   type DiscordPermissionOverwrite,
 } from "@/lib/bot/discord-ticket-controls";
 import { loadBotRuntimeSettings } from "@/lib/bot/message-customization-server";
+import { botMessageBannerUrl, type BotMessageCustomization } from "@/lib/bot/message-customization";
 import { STORE_NAME } from "@/lib/brand";
 import { formatCoins } from "@/lib/roulette/demo";
 import { buildRouletteTicketControlComponents } from "@/lib/roulette/discord-controls";
@@ -192,7 +193,7 @@ export async function ensureRouletteRedemptionTicket(
         method: "POST",
         body: JSON.stringify({
           content: [`<@${input.playerDiscordId}>`, staffLine].filter(Boolean).join("\n"),
-          embeds: [buildWelcomeEmbed(input)],
+          embeds: [buildWelcomeEmbed(input, settings.customization)],
           components,
           allowed_mentions: {
             parse: [],
@@ -211,6 +212,7 @@ export async function ensureRouletteRedemptionTicket(
       input,
       components,
       botUserId,
+      settings.customization,
       fetcher,
     );
     if (!patched) {
@@ -223,7 +225,10 @@ export async function ensureRouletteRedemptionTicket(
   return { synchronized: true as const, channelId: channel.id, created };
 }
 
-function buildWelcomeEmbed(input: RouletteRedemptionTicketInput) {
+function buildWelcomeEmbed(
+  input: RouletteRedemptionTicketInput,
+  customization: BotMessageCustomization,
+) {
   return {
     title: "Resgate da roleta",
     description: `O prêmio saiu do seu inventário e a equipe da ${STORE_NAME} entrega por aqui.`,
@@ -236,6 +241,7 @@ function buildWelcomeEmbed(input: RouletteRedemptionTicketInput) {
         inline: true,
       },
     ],
+    image: { url: botMessageBannerUrl(customization, "ticketUrl") },
     footer: { text: rouletteWelcomeMessageMarker(input.redemptionId) },
   };
 }
@@ -250,6 +256,7 @@ async function synchronizeControls(
   input: RouletteRedemptionTicketInput,
   components: ReturnType<typeof buildRouletteTicketControlComponents>,
   botUserId: string,
+  customization: BotMessageCustomization,
   fetcher: typeof fetch,
 ): Promise<boolean> {
   const marker = rouletteWelcomeMessageMarker(input.redemptionId);
@@ -279,7 +286,10 @@ async function synchronizeControls(
         `/channels/${channelId}/messages/${welcome.id}`,
         {
           method: "PATCH",
-          body: JSON.stringify({ embeds: [buildWelcomeEmbed(input)], components }),
+          body: JSON.stringify({
+            embeds: [buildWelcomeEmbed(input, customization)],
+            components,
+          }),
         },
         fetcher,
       );

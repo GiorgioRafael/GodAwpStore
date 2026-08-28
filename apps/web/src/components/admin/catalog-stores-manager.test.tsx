@@ -82,7 +82,7 @@ describe("gerenciamento de lojas do catálogo", () => {
     await user.click(screen.getByRole("button", { name: "Concluir" }));
 
     await user.click(screen.getByRole("button", { name: "Excluir definitivamente loja Mundo 2" }));
-    expect(screen.getByText(/incluindo arquivados/i)).toBeInTheDocument();
+    expect(screen.getByText(/Esta loja ainda possui 3 produto\(s\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
     expect(actionMocks.deleteRecordPermanentlyAction).not.toHaveBeenCalled();
   });

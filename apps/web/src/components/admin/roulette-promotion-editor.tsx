@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useId, useState } from "react";
 import { ExternalLink, Megaphone } from "lucide-react";
 
 import { saveRoulettePromotionAction } from "@/app/actions/roulette-promotion";
@@ -17,20 +17,24 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { Field, Input, Textarea } from "@/components/ui/form-field";
+import { MediaUploadField } from "@/components/admin/media-upload-field";
 import type { RoulettePromotionSettings } from "@/lib/roulette/promotion-admin";
 
 export function RoulettePromotionEditor({
   settings,
   rouletteUrl,
+  defaultBannerUrl,
 }: {
   settings: RoulettePromotionSettings;
   rouletteUrl: string;
+  defaultBannerUrl: string;
 }) {
   const formId = useId();
   const [state, action, pending] = useActionState(
     saveRoulettePromotionAction,
     initialAdminActionState,
   );
+  const [bannerUrl, setBannerUrl] = useState(settings.bannerUrl);
 
   return (
     <Card>
@@ -79,6 +83,18 @@ export function RoulettePromotionEditor({
               required
             />
           </Field>
+          <MediaUploadField
+            name="bannerUrl"
+            label="Banner da divulgação"
+            folder="storefronts"
+            value={bannerUrl}
+            onValueChange={setBannerUrl}
+            clearValue={defaultBannerUrl}
+            clearLabel="Restaurar banner padrão da roleta"
+            clearMessage="O banner padrão desta roleta será usado depois que a divulgação for salva."
+            error={fieldError(state, "bannerUrl")}
+            hint="Imagem horizontal em JPG, PNG ou WebP de até 5 MB."
+          />
           <Field
             label="Mensagem"
             htmlFor={`${formId}-description`}

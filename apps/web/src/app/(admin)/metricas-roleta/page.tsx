@@ -18,12 +18,12 @@ import { getRouletteOverlayLink } from "@/lib/roulette/overlay-link";
 import { getRoulettePromotionSettings } from "@/lib/roulette/promotion-admin";
 import { getRouletteWheelAdmin } from "@/lib/roulette/wheel-admin";
 import { wheelEconomics } from "@/lib/roulette/wheel-economics";
+import { ROULETTE_BRANDING } from "@/lib/roulette/branding";
 
 export const metadata: Metadata = { title: "Roleta" };
 export const dynamic = "force-dynamic";
 
 export default async function RouletteMetricsPage() {
-  // A roleta existe só na GWStore; nas outras lojas a rota não deve nem existir.
   if (!ROULETTE_AVAILABLE) notFound();
 
   const [overlay, metrics, wheel, promotion] = await Promise.all([
@@ -48,13 +48,13 @@ export default async function RouletteMetricsPage() {
       <PageHeader
         eyebrow="Gestão"
         title="Roleta"
-        description="A roda, as taxas, o overlay e o resultado — tudo o que a roleta tem, em um lugar só. Os números ficam separados dos pedidos da loja."
+        description="Edite a roda em três passos: confira se está ligada, escolha os prêmios e atualize a divulgação. Nada é publicado até você salvar."
       />
       <Notice>
-        Mudanças aqui valem na hora, sem deploy. Os números contam apenas moedas
-        e prêmios de contas de jogador — os giros de teste da equipe ficam de
-        fora, e a receita dos pedidos pagos continua na visão geral, sem soma
-        nem sobreposição.
+        Mudanças aqui valem na hora, sem deploy. Primeiro confira avisos em vermelho na lista
+        de prêmios; depois salve a roda; por fim, atualize a divulgação no Discord. Os números
+        abaixo contam apenas moedas e prêmios de jogadores — pedidos normais da loja ficam
+        separados.
       </Notice>
 
       {wheel.ok ? (
@@ -86,6 +86,7 @@ export default async function RouletteMetricsPage() {
       <RoulettePromotionEditor
         settings={promotion.settings}
         rouletteUrl={new URL("/roleta", getSiteUrl()).toString()}
+        defaultBannerUrl={new URL(ROULETTE_BRANDING.bannerPath, getSiteUrl()).toString()}
       />
 
       {overlay.status === "ready" ? (

@@ -455,6 +455,7 @@ begin
     raise exception using errcode = '23514', constraint = 'product_has_offers', message = 'product_has_offers';
   end if;
   if exists (select 1 from public.roulette_prize_products where product_id = p_product_id)
+    or exists (select 1 from public.roulette_redemptions where product_id = p_product_id)
     or exists (select 1 from public.roulette_redemption_items where product_id = p_product_id)
     or exists (select 1 from public.roulette_demo_inventory where product_id = p_product_id)
   then

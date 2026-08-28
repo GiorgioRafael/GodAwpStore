@@ -182,6 +182,13 @@ async function synchronizeAllPublishedDiscordStorefronts() {
   return synchronizePublishedDiscordStorefronts();
 }
 
+async function synchronizeAllPublishedDiscordRobuxStorefronts() {
+  const { synchronizePublishedDiscordRobuxStorefronts } = await import(
+    "@/lib/bot/discord-robux-storefront-sync"
+  );
+  return synchronizePublishedDiscordRobuxStorefronts();
+}
+
 async function synchronizeCatalogStorefront(savedMessage: string): Promise<AdminActionState> {
   try {
     const storefronts = await synchronizeAllPublishedDiscordStorefronts();
@@ -395,13 +402,18 @@ export async function saveProductAction(
     sortOrder: integer(formData, "sortOrder"),
     lowStockThreshold: integer(formData, "lowStockThreshold", 5),
   });
+  const parsedCatalogStoreId = uuidSchema.safeParse(text(formData, "catalogStoreId"));
   const parsedId = text(formData, "id") ? uuidSchema.safeParse(text(formData, "id")) : null;
   const parsedUpdatedAt = parsedId?.success
     ? isoDateTimeSchema.safeParse(text(formData, "updatedAt"))
     : null;
 
-  if (!parsed.success || (parsedId && !parsedId.success)) {
-    const fieldErrors = parsed.success ? { id: ["ID inválido."] } : errorsFromZod(parsed.error);
+  if (!parsed.success || !parsedCatalogStoreId.success || (parsedId && !parsedId.success)) {
+    const fieldErrors = parsed.success ? {} : errorsFromZod(parsed.error);
+    if (!parsedCatalogStoreId.success) {
+      fieldErrors.catalogStoreId = ["Escolha a loja/mundo onde este produto será vendido."];
+    }
+    if (parsedId && !parsedId.success) fieldErrors.id = ["ID inválido."];
     if (!Number.isFinite(minimumPriceCents)) fieldErrors.minimumPrice = ["Informe um valor como 10,00."];
     return { ok: false, message: "Revise os campos do produto.", fieldErrors };
   }
@@ -443,30 +455,21 @@ export async function saveProductAction(
     };
   }
 
-  let catalogStoreId: string | null = null;
-  if (id) {
-    const { data: existingProduct, error: existingProductError } = await supabase
-      .from("products")
-      .select("catalog_store_id,catalog_stores(game_id)")
-      .eq("id", id)
-      .maybeSingle();
-    if (existingProductError) return databaseFailure(existingProductError.code);
-    if (existingProduct?.catalog_stores?.game_id === selectedSubstore.game_id) {
-      catalogStoreId = existingProduct.catalog_store_id;
-    }
-  }
-  if (!catalogStoreId) {
-    const { data: defaultStore, error: defaultStoreError } = await supabase
-      .from("catalog_stores")
-      .select("id")
-      .eq("game_id", selectedSubstore.game_id)
-      .eq("is_default", true)
-      .eq("status", "active")
-      .is("archived_at", null)
-      .maybeSingle();
-    if (defaultStoreError) return databaseFailure(defaultStoreError.code);
-    if (!defaultStore) return { ok: false, message: "A loja principal deste jogo não existe." };
-    catalogStoreId = defaultStore.id;
+  const catalogStoreId = parsedCatalogStoreId.data;
+  const { data: selectedCatalogStore, error: selectedCatalogStoreError } = await supabase
+    .from("catalog_stores")
+    .select("id,game_id")
+    .eq("id", catalogStoreId)
+    .eq("status", "active")
+    .is("archived_at", null)
+    .maybeSingle();
+  if (selectedCatalogStoreError) return databaseFailure(selectedCatalogStoreError.code);
+  if (!selectedCatalogStore || selectedCatalogStore.game_id !== selectedSubstore.game_id) {
+    return {
+      ok: false,
+      message: "A loja/mundo selecionada não pertence à categoria escolhida.",
+      fieldErrors: { catalogStoreId: ["Escolha uma loja ativa do mesmo jogo da categoria."] },
+    };
   }
 
   if (parsed.data.status === "active") {
@@ -792,8 +795,9 @@ export async function saveBotMessageCustomizationAction(
 
   revalidatePath("/customizacao-bot");
 
-  const [storefrontSync, ticketControlsSync] = await Promise.allSettled([
+  const [storefrontSync, robuxStorefrontSync, ticketControlsSync] = await Promise.allSettled([
     synchronizeAllPublishedDiscordStorefronts(),
+    synchronizeAllPublishedDiscordRobuxStorefronts(),
     synchronizeAllOpenDiscordTicketControls(),
   ]);
   const warnings: string[] = [];
@@ -819,6 +823,17 @@ export async function saveBotMessageCustomizationAction(
     );
   }
 
+  if (robuxStorefrontSync.status === "rejected") {
+    const message =
+      robuxStorefrontSync.reason instanceof Error
+        ? robuxStorefrontSync.reason.message
+        : "erro desconhecido";
+    console.error(`[admin:bot-customization-robux-sync] ${message}`);
+    warnings.push("A mensagem de Robux não pôde ser atualizada agora.");
+  } else if (robuxStorefrontSync.value.failed > 0) {
+    warnings.push("A mensagem de Robux não pôde ser atualizada agora.");
+  }
+
   if (ticketControlsSync.status === "rejected") {
     const message =
       ticketControlsSync.reason instanceof Error
@@ -836,10 +851,13 @@ export async function saveBotMessageCustomizationAction(
     return { ok: true, message: `Personalização salva. ${warnings.join(" ")}` };
   }
 
-  if (storefrontSync.status === "fulfilled" && storefrontSync.value.published > 0) {
+  if (
+    (storefrontSync.status === "fulfilled" && storefrontSync.value.published > 0) ||
+    (robuxStorefrontSync.status === "fulfilled" && robuxStorefrontSync.value.published > 0)
+  ) {
     return {
       ok: true,
-      message: "Personalização salva e vitrines publicadas atualizadas.",
+      message: "Personalização salva e mensagens publicadas atualizadas.",
     };
   }
 
@@ -1029,6 +1047,184 @@ export async function archiveCatalogStoreAction(
   );
 }
 
+type PermanentDeleteTarget = z.infer<typeof permanentDeleteTargetSchema>;
+
+async function deleteUnusedRecordWithoutRpc(
+  target: PermanentDeleteTarget,
+  id: string,
+  actorAuthUserId: string,
+): Promise<AdminActionState | null> {
+  const admin = createAdminSupabaseClient();
+  if (!admin) {
+    return {
+      ok: false,
+      message: "O banco ainda não recebeu a atualização necessária para excluir este registro.",
+    };
+  }
+
+  console.warn(`[admin:permanent-delete:${target}] RPC ausente; usando exclusão compatível.`);
+
+  if (target === "game") {
+    const [gameResult, substoresResult, storesResult] = await Promise.all([
+      admin.from("games").select("id,name,slug").eq("id", id).maybeSingle(),
+      admin.from("substores").select("id", { count: "exact", head: true }).eq("game_id", id),
+      admin.from("catalog_stores").select("id").eq("game_id", id),
+    ]);
+    if (gameResult.error || substoresResult.error || storesResult.error) {
+      return databaseFailure(
+        gameResult.error?.code ?? substoresResult.error?.code ?? storesResult.error?.code,
+      );
+    }
+    if (!gameResult.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+    if ((substoresResult.count ?? 0) > 0) {
+      return {
+        ok: false,
+        message: "Exclua definitivamente todas as categorias deste jogo antes de excluí-lo.",
+      };
+    }
+
+    const storeIds = (storesResult.data ?? []).map((store) => store.id);
+    if (storeIds.length > 0) {
+      const productsResult = await admin
+        .from("products")
+        .select("id", { count: "exact", head: true })
+        .in("catalog_store_id", storeIds);
+      if (productsResult.error) return databaseFailure(productsResult.error.code);
+      if ((productsResult.count ?? 0) > 0) {
+        return { ok: false, message: "Este jogo ainda possui produtos e só pode ser arquivado." };
+      }
+      const storesDelete = await admin.from("catalog_stores").delete().eq("game_id", id);
+      if (storesDelete.error) return databaseFailure(storesDelete.error.code);
+    }
+
+    const gameDelete = await admin.from("games").delete().eq("id", id).select("id").maybeSingle();
+    if (gameDelete.error) {
+      return gameDelete.error.code === "23503"
+        ? { ok: false, message: "Este jogo ganhou novas dependências e só pode ser arquivado." }
+        : databaseFailure(gameDelete.error.code);
+    }
+    if (!gameDelete.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+    await auditPermanentDeleteFallback(admin, actorAuthUserId, target, id, {
+      name: gameResult.data.name,
+      slug: gameResult.data.slug,
+    });
+    return null;
+  }
+
+  if (target === "substore") {
+    const record = await admin
+      .from("substores")
+      .select("id,name,game_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (record.error) return databaseFailure(record.error.code);
+    if (!record.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+    const deletion = await admin.from("substores").delete().eq("id", id).select("id").maybeSingle();
+    if (deletion.error) {
+      return deletion.error.code === "23503"
+        ? {
+            ok: false,
+            message: "Esta categoria possui produtos, inclusive arquivados, e só pode ser arquivada.",
+          }
+        : databaseFailure(deletion.error.code);
+    }
+    if (!deletion.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+    await auditPermanentDeleteFallback(admin, actorAuthUserId, target, id, {
+      name: record.data.name,
+      game_id: record.data.game_id,
+    });
+    return null;
+  }
+
+  if (target === "catalogStore") {
+    const record = await admin
+      .from("catalog_stores")
+      .select("id,name,game_id,is_default")
+      .eq("id", id)
+      .maybeSingle();
+    if (record.error) return databaseFailure(record.error.code);
+    if (!record.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+    if (record.data.is_default) {
+      return {
+        ok: false,
+        message: "A loja principal é protegida. Exclua definitivamente o jogo quando ele estiver vazio.",
+      };
+    }
+    const deletion = await admin
+      .from("catalog_stores")
+      .delete()
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+    if (deletion.error) {
+      return deletion.error.code === "23503"
+        ? {
+            ok: false,
+            message: "Esta loja possui produtos, inclusive arquivados, e só pode ser arquivada.",
+          }
+        : databaseFailure(deletion.error.code);
+    }
+    if (!deletion.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+    await auditPermanentDeleteFallback(admin, actorAuthUserId, target, id, {
+      name: record.data.name,
+      game_id: record.data.game_id,
+    });
+    return null;
+  }
+
+  const record = await admin
+    .from("whitelist_entries")
+    .select("id,label,discord_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (record.error) return databaseFailure(record.error.code);
+  if (!record.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+  const deletion = await admin
+    .from("whitelist_entries")
+    .delete()
+    .eq("id", id)
+    .select("id")
+    .maybeSingle();
+  if (deletion.error) {
+    return deletion.error.code === "23503"
+      ? { ok: false, message: "Este cadastro possui histórico relacionado e só pode ser arquivado." }
+      : databaseFailure(deletion.error.code);
+  }
+  if (!deletion.data) return { ok: false, message: "Registro não encontrado ou já excluído." };
+  await auditPermanentDeleteFallback(admin, actorAuthUserId, target, id, {
+    label: record.data.label,
+    discord_id: record.data.discord_id,
+  });
+  return null;
+}
+
+async function auditPermanentDeleteFallback(
+  admin: NonNullable<ReturnType<typeof createAdminSupabaseClient>>,
+  actorAuthUserId: string,
+  target: PermanentDeleteTarget,
+  entityId: string,
+  metadata: Record<string, string | null>,
+) {
+  const profile = await admin
+    .from("admin_profiles")
+    .select("discord_user_id")
+    .eq("auth_user_id", actorAuthUserId)
+    .maybeSingle();
+  const audit = await admin.from("audit_events").insert({
+    actor_auth_user_id: actorAuthUserId,
+    actor_discord_user_id: profile.data?.discord_user_id ?? null,
+    action: target === "catalogStore" ? "catalog.store.delete" : `${target}.delete`,
+    entity_type: target === "catalogStore" ? "catalog_store" : target,
+    entity_id: entityId,
+    metadata,
+  });
+  if (profile.error || audit.error) {
+    console.error(
+      `[admin:permanent-delete:${target}:audit] ${profile.error?.message ?? audit.error?.message ?? "erro desconhecido"}`,
+    );
+  }
+}
+
 export async function deleteRecordPermanentlyAction(
   target: string,
   id: string,
@@ -1038,7 +1234,7 @@ export async function deleteRecordPermanentlyAction(
     .safeParse({ target, id });
   if (!parsed.success) return { ok: false, message: "Registro inválido." };
 
-  const { supabase } = await actionContext();
+  const { identity, supabase } = await actionContext();
   const result = parsed.data.target === "game"
     ? await supabase.rpc("admin_delete_unused_game", { p_game_id: parsed.data.id })
     : parsed.data.target === "substore"
@@ -1049,7 +1245,14 @@ export async function deleteRecordPermanentlyAction(
             p_whitelist_entry_id: parsed.data.id,
           });
 
-  if (result.error) {
+  if (result.error?.code === "PGRST202") {
+    const fallbackError = await deleteUnusedRecordWithoutRpc(
+      parsed.data.target,
+      parsed.data.id,
+      identity.authUserId,
+    );
+    if (fallbackError) return fallbackError;
+  } else if (result.error) {
     const message = result.error.message;
     if (message.includes("game_has_substores")) {
       return {
@@ -1124,7 +1327,9 @@ export async function deleteRecordPermanentlyAction(
     }
     return databaseFailure(result.error.code);
   }
-  if (!result.data) return { ok: false, message: "O registro não pôde ser excluído." };
+  if (!result.error && !result.data) {
+    return { ok: false, message: "O registro não pôde ser excluído." };
+  }
 
   revalidatePath("/catalogo/jogos");
   revalidatePath("/catalogo/sublojas");
@@ -1312,9 +1517,11 @@ export async function publishDiscordRobuxStorefrontAction(
         storefront.catalog_store_name?.trim().toLocaleLowerCase("pt-BR") === "robux",
     );
     const existingRobuxStorefront = readRobuxStorefrontConfiguration(guild.configuration);
+    const customization = await loadBotMessageCustomization(supabase);
     const published = await publishDiscordRobuxStorefront({
       guildId: guild.discord_guild_id,
       channel,
+      customization,
       previous:
         existingRobuxStorefront ??
         (catalogRobuxStorefront
@@ -1354,7 +1561,7 @@ export async function publishDiscordRobuxStorefrontAction(
     revalidatePath("/configuracoes");
     return {
       ok: true,
-      message: `Mensagem de Robux publicada em #${published.channel_name}. O comprador verá o preço de R$ 35,00 por 1.000 Robux antes de pagar.`,
+      message: `Mensagem de Robux publicada em #${published.channel_name}. O comprador verá o preço de R$ 42,00 por 1.000 Robux antes de pagar.`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido.";
@@ -1422,8 +1629,7 @@ export async function publishDiscordStorefrontAction(
       };
     }
 
-    const { synchronizeDiscordProductEmojis } = await import("@/lib/bot/discord-product-emojis");
-    const emojiSync = await synchronizeDiscordProductEmojis(supabase);
+    const emojiSync = await synchronizeDiscordProductEmojisForStorefront(supabase);
     const [catalog, customization] = await Promise.all([
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
       loadBotMessageCustomization(supabase),
@@ -1544,6 +1750,26 @@ function storefrontActionError(message: string) {
     return "Não foi possível carregar o catálogo para publicar a vitrine.";
   }
   return "Não foi possível publicar a vitrine agora. Tente novamente.";
+}
+
+async function synchronizeDiscordProductEmojisForStorefront(
+  supabase: NonNullable<ReturnType<typeof createAdminSupabaseClient>>,
+) {
+  if (process.env.DISCORD_PRODUCT_EMOJI_SYNC_ENABLED?.trim().toLowerCase() !== "true") {
+    return { failed: 0 };
+  }
+
+  try {
+    // Product application emojis are a visual enhancement only. Publishing a
+    // storefront must still work when the optional native image processor is
+    // unavailable in the server runtime.
+    const { synchronizeDiscordProductEmojis } = await import("@/lib/bot/discord-product-emojis");
+    return await synchronizeDiscordProductEmojis(supabase);
+  } catch (emojiError) {
+    const message = emojiError instanceof Error ? emojiError.message : "erro desconhecido";
+    console.error(`[admin:discord-product-emojis] ${message}`);
+    return { failed: 1 };
+  }
 }
 
 export async function archiveRecordAction(

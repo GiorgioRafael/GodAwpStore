@@ -351,7 +351,7 @@ export async function completeDiscordCartPurchase(
       console.error(`[discord-cart:upsell] ${message}`);
     }
     if (upsell.kind === "offered") {
-      await updateDiscordEphemeralResponse(raw, upsellOfferCard(upsell.offer));
+      await updateDiscordEphemeralResponse(raw, upsellOfferCard(upsell.offer, customization));
       return false;
     }
 

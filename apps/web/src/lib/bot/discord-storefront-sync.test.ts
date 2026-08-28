@@ -79,6 +79,7 @@ describe("sincronização automática da vitrine Discord", () => {
       failed: 0,
       productEmojiFailures: 0,
     });
+    expect(mocks.synchronizeDiscordProductEmojis).not.toHaveBeenCalled();
     expect(mocks.publishDiscordStorefront).toHaveBeenCalledWith({
       channel: { id: storefront.channel_id, name: storefront.channel_name },
       catalog: [
@@ -102,6 +103,19 @@ describe("sincronização automática da vitrine Discord", () => {
     expect(client.update).toHaveBeenCalledWith({
       configuration: { storefronts: [storefront] },
     });
+  });
+
+  it("só sincroniza ícones de produto quando a instalação opcional foi ativada", async () => {
+    vi.stubEnv("DISCORD_PRODUCT_EMOJI_SYNC_ENABLED", "true");
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
+      published: 1,
+      failed: 0,
+      productEmojiFailures: 0,
+    });
+    expect(mocks.synchronizeDiscordProductEmojis).toHaveBeenCalledWith(client);
   });
 
   it("sincroniza duas vitrines do mesmo servidor e salva sem corrida de atualização", async () => {

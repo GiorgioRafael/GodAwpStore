@@ -1,7 +1,7 @@
 import { LIVEPIX_MINIMUM_BRL_CENTS } from "@/lib/livepix/limits";
 
-/** R$ 35,00 para cada 1.000 Robux. Valores são sempre calculados em centavos. */
-export const ROBUX_PRICE_PER_THOUSAND_CENTS = 3_500;
+/** R$ 42,00 para cada 1.000 Robux. Valores são sempre calculados em centavos. */
+export const ROBUX_PRICE_PER_THOUSAND_CENTS = 4_200;
 export const ROBUX_QUANTITY_PER_PRICE_UNIT = 1_000;
 export const MINIMUM_ROBUX_QUANTITY = 100;
 export const MAXIMUM_ROBUX_QUANTITY = 500_000;
@@ -16,7 +16,7 @@ export function calculateRobuxPriceCents(quantity: number): number | null {
   }
 
   // LivePix accepts whole centavos only. Rounding up avoids ever charging
-  // less than the configured R$ 35,00 / 1.000 Robux rate.
+  // less than the configured R$ 42,00 / 1.000 Robux rate.
   const cents = Math.ceil(
     (quantity * ROBUX_PRICE_PER_THOUSAND_CENTS) / ROBUX_QUANTITY_PER_PRICE_UNIT,
   );

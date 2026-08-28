@@ -42,16 +42,18 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
   }
 
   let productEmojiFailures = 0;
-  try {
-    // This import brings in the native image processor. Loading it only when
-    // the optional emoji refresh runs keeps normal Discord interactions alive
-    // if that processor is temporarily unavailable in the server runtime.
-    const { synchronizeDiscordProductEmojis } = await import("./discord-product-emojis");
-    productEmojiFailures = (await synchronizeDiscordProductEmojis(client)).failed;
-  } catch (emojiError) {
-    const message = emojiError instanceof Error ? emojiError.message : "erro desconhecido";
-    console.error(`[discord-product-emojis:sync] ${message}`);
-    productEmojiFailures = 1;
+  if (isDiscordProductEmojiSynchronizationEnabled()) {
+    try {
+      // This feature uses a native image processor. It is deliberately opt-in:
+      // a missing optional binary must never block catalog, storefront, or
+      // checkout operations. Existing application emojis remain usable.
+      const { synchronizeDiscordProductEmojis } = await import("./discord-product-emojis");
+      productEmojiFailures = (await synchronizeDiscordProductEmojis(client)).failed;
+    } catch (emojiError) {
+      const message = emojiError instanceof Error ? emojiError.message : "erro desconhecido";
+      console.error(`[discord-product-emojis:sync] ${message}`);
+      productEmojiFailures = 1;
+    }
   }
 
   const [catalog, customization] = await Promise.all([
@@ -143,4 +145,8 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
     failed: results.reduce((sum, result) => sum + result.failed, 0),
     productEmojiFailures,
   };
+}
+
+function isDiscordProductEmojiSynchronizationEnabled() {
+  return process.env.DISCORD_PRODUCT_EMOJI_SYNC_ENABLED?.trim().toLowerCase() === "true";
 }

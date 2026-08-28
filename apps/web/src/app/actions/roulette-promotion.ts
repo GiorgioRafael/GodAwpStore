@@ -9,6 +9,7 @@ import {
   ROULETTE_UNAVAILABLE_MESSAGE,
 } from "@/lib/roulette/availability";
 import { getSiteUrl } from "@/lib/env";
+import { normalizeBotMessageImageUrl } from "@/lib/bot/message-customization";
 import { publishRoulettePromotion } from "@/lib/roulette/promotion";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -18,6 +19,8 @@ const COPY_LIMITS = {
   description: 1_000,
   buttonLabel: 80,
 } as const;
+
+const BANNER_LIMIT = 2_048;
 
 export async function saveRoulettePromotionAction(
   _previousState: AdminActionState,
@@ -30,6 +33,7 @@ export async function saveRoulettePromotionAction(
   const title = text(formData, "title");
   const description = text(formData, "description");
   const buttonLabel = text(formData, "buttonLabel");
+  const bannerUrl = text(formData, "bannerUrl");
   const fieldErrors: Record<string, string[]> = {};
   validateText(fieldErrors, "title", title, COPY_LIMITS.title, "Informe o título.");
   validateText(
@@ -39,6 +43,9 @@ export async function saveRoulettePromotionAction(
     COPY_LIMITS.description,
     "Informe o texto da divulgação.",
   );
+  if (!normalizeBotMessageImageUrl(bannerUrl) || bannerUrl.length > BANNER_LIMIT) {
+    fieldErrors.bannerUrl = ["Envie ou informe uma imagem HTTPS válida de até 2.048 caracteres."];
+  }
   validateText(
     fieldErrors,
     "buttonLabel",
@@ -87,6 +94,7 @@ export async function saveRoulettePromotionAction(
         title,
         description,
         buttonLabel,
+        bannerUrl: normalizeBotMessageImageUrl(bannerUrl),
       },
       { siteUrl: getSiteUrl() },
     );
@@ -97,6 +105,7 @@ export async function saveRoulettePromotionAction(
         roulette_promotion_title: title,
         roulette_promotion_description: description,
         roulette_promotion_button_label: buttonLabel,
+        roulette_promotion_banner_url: normalizeBotMessageImageUrl(bannerUrl),
         roulette_promotion_channel_id: publication.channelId,
         roulette_promotion_message_id: publication.messageId,
         updated_by: identity.authUserId,

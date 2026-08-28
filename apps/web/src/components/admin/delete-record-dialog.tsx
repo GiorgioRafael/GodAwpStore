@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { LoaderCircle, Trash2, TriangleAlert } from "lucide-react";
+import { Archive, LoaderCircle, Trash2, TriangleAlert } from "lucide-react";
 
 import {
   deleteProductAction,
@@ -20,6 +20,7 @@ interface DeleteRecordDialogProps {
   onClose: () => void;
   noun: string;
   description?: string;
+  onArchive?: (record: { id: string; label: string }) => void;
 }
 
 export function DeleteRecordDialog({
@@ -28,6 +29,7 @@ export function DeleteRecordDialog({
   onClose,
   noun,
   description = "A exclusão definitiva só é permitida para registros sem dependências nem histórico.",
+  onArchive,
 }: DeleteRecordDialogProps) {
   const [state, setState] = useState<AdminActionState>(initialAdminActionState);
   const [pending, startTransition] = useTransition();
@@ -63,6 +65,16 @@ export function DeleteRecordDialog({
             <Button variant="ghost" onClick={close} disabled={pending}>
               Cancelar
             </Button>
+            {record && onArchive ? (
+              <Button
+                variant="secondary"
+                onClick={() => onArchive(record)}
+                disabled={pending}
+              >
+                <Archive aria-hidden="true" className="size-4" />
+                Arquivar {noun}
+              </Button>
+            ) : null}
             <Button
               variant="danger"
               onClick={remove}

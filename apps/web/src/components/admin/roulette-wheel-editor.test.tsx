@@ -2,63 +2,67 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-const saveRouletteWheelAction = vi.hoisted(() =>
-  vi.fn(async () => ({ ok: true, message: "Roda salva." })),
-);
+import { RouletteWheelEditor } from "./roulette-wheel-editor";
 
-vi.mock("@/app/actions/roulette-wheel", () => ({ saveRouletteWheelAction }));
+vi.mock("@/app/actions/roulette-wheel", () => ({
+  saveRouletteWheelAction: vi.fn(async () => ({ ok: true, message: "Roda salva." })),
+}));
 
-import { RouletteWheelEditor, type WheelSlot } from "./roulette-wheel-editor";
+const inactiveProductId = "10000000-0000-4000-8000-000000000001";
+const activeProductId = "10000000-0000-4000-8000-000000000002";
 
-const slots: WheelSlot[] = [
-  {
-    prizeKey: "slot-a",
-    productId: "11111111-1111-4111-8111-111111111111",
-    productName: "Item A",
-    valueCents: 100,
-    quantity: 1,
-    drawWeight: 10,
-    stockQuantity: 10,
-    heldUnits: 0,
-    retiredUnits: 0,
-    archived: false,
-  },
-  {
-    prizeKey: "slot-b",
-    productId: "22222222-2222-4222-8222-222222222222",
-    productName: "Item B",
-    valueCents: 200,
-    quantity: 1,
-    drawWeight: 5,
-    stockQuantity: 10,
-    heldUnits: 0,
-    retiredUnits: 0,
-    archived: false,
-  },
-];
-
-describe("RouletteWheelEditor", () => {
-  it("remove a fatia somente do rascunho e explica quando a alteração persiste", async () => {
+describe("editor da roleta", () => {
+  it("mostra claramente o prêmio que precisa ser substituído antes de salvar", async () => {
     const user = userEvent.setup();
     render(
       <RouletteWheelEditor
-        slots={slots}
-        candidates={slots.map((slot) => ({
-          id: slot.productId,
-          name: slot.productName,
-          valueCents: slot.valueCents,
-          stockQuantity: slot.stockQuantity,
-        }))}
-        markupBps={3_000}
+        slots={[
+          {
+            prizeKey: "premio_1",
+            productId: inactiveProductId,
+            productName: "Prêmio oculto",
+            valueCents: 500,
+            quantity: 1,
+            drawWeight: 100,
+            stockQuantity: 10,
+            heldUnits: 0,
+            retiredUnits: 0,
+            archived: false,
+            available: false,
+          },
+        ]}
+        candidates={[
+          {
+            id: activeProductId,
+            name: "Prêmio ativo",
+            valueCents: 700,
+            stockQuantity: 20,
+          },
+        ]}
+        markupBps={7000}
         feeBps={500}
-        saleRateBps={5_000}
+        saleRateBps={5000}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Remover a fatia slot-b" }));
+    expect(
+      screen.getByText(
+        (_content, element) => element?.textContent === "Troque 1 prêmio(s) antes de salvar",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Troque os itens indisponíveis" })).toBeDisabled();
+    expect(screen.getByText(/Este item não pode continuar na roda/)).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: "Remover a fatia slot-b" })).not.toBeInTheDocument();
-    expect(screen.getByText(/só são persistidas ao salvar/i)).toBeInTheDocument();
-    expect(saveRouletteWheelAction).not.toHaveBeenCalled();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Produto da fatia premio_1" }),
+      activeProductId,
+    );
+
+    expect(
+      screen.queryByText(
+        (_content, element) => element?.textContent === "Troque 1 prêmio(s) antes de salvar",
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Salvar roda" })).toBeEnabled();
   });
 });

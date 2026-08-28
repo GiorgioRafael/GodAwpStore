@@ -55,6 +55,13 @@ export async function getRouletteWheelAdmin(): Promise<RouletteWheelAdmin> {
       // item that does not exist.
       retiredUnits: Number(slot.slot_retired_units) || 0,
       archived: Boolean(slot.slot_archived),
+      // A product may remain in an old saved slot after it was deactivated in
+      // the catalogue. It is intentionally absent from candidates, so expose
+      // that state to the editor instead of rendering an empty select and only
+      // explaining the rejection after the admin presses Save.
+      available: (candidates.data ?? []).some(
+        (candidate) => candidate.candidate_id === slot.slot_product_id,
+      ),
     })),
     candidates: (candidates.data ?? []).map((candidate) => ({
       id: candidate.candidate_id,

@@ -51,6 +51,8 @@ export type PaidTicketDeliveryOrder = {
   orderStatus: string;
   paymentStatus: string;
   paidAt: string | null;
+  itemSummary: Array<{ name: string; quantity: number }>;
+  totalCents: number;
 };
 
 export interface DiscordTicketDeliveryRepository {
@@ -79,7 +81,7 @@ export class SupabaseDiscordTicketDeliveryRepository
     const { data: order, error: orderError } = await this.client
       .from("orders")
       .select(
-        "id,guild_id,buyer_discord_id,status,payment_status,paid_at,discord_ticket_status,discord_ticket_channel_id",
+        "id,guild_id,buyer_discord_id,status,payment_status,paid_at,sale_price_cents,discord_ticket_status,discord_ticket_channel_id",
       )
       .eq("id", orderId)
       .maybeSingle();
@@ -94,6 +96,13 @@ export class SupabaseDiscordTicketDeliveryRepository
     if (guildError) throw new Error(guildError.message);
     if (!guild) return null;
 
+    const { data: items, error: itemsError } = await this.client
+      .from("order_items")
+      .select("quantity,products(name)")
+      .eq("order_id", order.id)
+      .order("position");
+    if (itemsError) throw new Error(itemsError.message);
+
     return {
       orderId: order.id,
       guildId: guild.discord_guild_id,
@@ -103,6 +112,11 @@ export class SupabaseDiscordTicketDeliveryRepository
       orderStatus: order.status,
       paymentStatus: order.payment_status,
       paidAt: order.paid_at,
+      itemSummary: (items ?? []).map((item) => ({
+        name: item.products?.name ?? "Produto",
+        quantity: Math.max(Number(item.quantity) || 1, 1),
+      })),
+      totalCents: Math.max(Number(order.sale_price_cents) || 0, 0),
     };
   }
 
@@ -224,7 +238,9 @@ export async function completeDiscordTicketDelivery(
 
     const botUserId = await assertConfiguredDiscordBotIdentity(fetcher);
     await assertDiscordBotGuildAccess(context.guildId, fetcher);
-    const feedbackChannelId = await findFeedbackChannelId(context.guildId, fetcher);
+    const channels = await listTextChannels(context.guildId, fetcher);
+    const feedbackChannelId = findFeedbackChannelId(channels);
+    const deliveryLogChannelId = findDeliveryLogChannelId(channels);
     const content = buildDeliveryMessage(
       order.buyerDiscordId,
       message.deliveryMessageText,
@@ -267,12 +283,27 @@ export async function completeDiscordTicketDelivery(
       order.orderId,
       fetcher,
     );
-    await repository.complete({
+    const completed = await repository.complete({
       orderId: order.orderId,
       discordGuildId: context.guildId,
       ticketChannelId: context.channelId,
       deliveredByDiscordUserId: context.userId,
     });
+
+    if (completed.wasCompleted && deliveryLogChannelId) {
+      try {
+        await publishDeliveryLog(
+          deliveryLogChannelId,
+          order,
+          fetcher,
+        );
+      } catch (logError) {
+        const logMessage = logError instanceof Error ? logError.message : "erro desconhecido";
+        // A entrega foi concluída no banco. O registro público é adicional e
+        // nunca pode transformar uma entrega válida em um erro para o admin.
+        console.error(`[discord-ticket-delivery:log] ${logMessage}`);
+      }
+    }
 
     await updateOriginalInteractionSafely(
       raw,
@@ -306,6 +337,24 @@ export function buildDeliveryMessage(
     ? `<#${feedbackChannelId}>`
     : "Procure o canal de feedbacks no servidor.";
   return `<@${buyerDiscordId}>\n${body}\n${feedbackLine}`;
+}
+
+export function buildDeliveryLogMessage(order: PaidTicketDeliveryOrder) {
+  const itemLines = order.itemSummary.length
+    ? order.itemSummary
+        .slice(0, 10)
+        .map((item) => `• ${item.quantity}× ${item.name}`)
+        .join("\n")
+    : "• Itens registrados no ticket privado";
+  const totalLine = order.totalCents > 0 ? `\nTotal pago: ${formatBrl(order.totalCents)}` : "";
+  return [
+    "✅ **Compra entregue**",
+    `Comprador: <@${order.buyerDiscordId}>`,
+    "",
+    "**Itens**",
+    itemLines,
+    totalLine,
+  ].join("\n").trim();
 }
 
 export function buildDeliveredTicketChannelName(currentName: string) {
@@ -360,19 +409,22 @@ async function renameDeliveredTicketChannel(
   }
 }
 
-async function findFeedbackChannelId(guildId: string, fetcher: typeof fetch) {
+async function listTextChannels(guildId: string, fetcher: typeof fetch) {
   const channels = await discordBotJson<DiscordChannel[]>(
     `/guilds/${guildId}/channels`,
     {},
     fetcher,
   );
-  const candidates = channels.filter(
+  return channels.filter(
     (channel): channel is DiscordChannel & { id: string; name: string } =>
       typeof channel.id === "string" &&
       SNOWFLAKE_PATTERN.test(channel.id) &&
       channel.type === 0 &&
       typeof channel.name === "string",
   );
+}
+
+function findFeedbackChannelId(candidates: Array<DiscordChannel & { id: string; name: string }>) {
   const exact = candidates.find((channel) => {
     const name = canonicalChannelName(channel.name);
     return name === "feedback" || name === "feedbacks";
@@ -383,6 +435,45 @@ async function findFeedbackChannelId(guildId: string, fetcher: typeof fetch) {
     canonicalChannelName(channel.name).includes("feedback"),
   );
   return partial.length === 1 ? partial[0].id : null;
+}
+
+function findDeliveryLogChannelId(
+  candidates: Array<DiscordChannel & { id: string; name: string }>,
+) {
+  const exact = candidates.find((channel) => {
+    const name = canonicalChannelName(channel.name);
+    return name === "entregas" || name === "entrega" || name === "delivery";
+  });
+  if (exact) return exact.id;
+
+  const partial = candidates.filter((channel) => {
+    const name = canonicalChannelName(channel.name);
+    return name.includes("entrega") || name.includes("delivery");
+  });
+  return partial.length === 1 ? partial[0].id : null;
+}
+
+async function publishDeliveryLog(
+  channelId: string,
+  order: PaidTicketDeliveryOrder,
+  fetcher: typeof fetch,
+) {
+  const sent = await discordBotJson<DiscordMessage>(
+    `/channels/${channelId}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        content: buildDeliveryLogMessage(order),
+        allowed_mentions: { parse: [], replied_user: false },
+        nonce: deliveryLogNonce(order.orderId),
+        enforce_nonce: true,
+      }),
+    },
+    fetcher,
+  );
+  if (typeof sent.id !== "string" || !SNOWFLAKE_PATTERN.test(sent.id)) {
+    throw new Error("Discord retornou um registro de entrega inválido.");
+  }
 }
 
 async function channelHasDeliveryMessage(
@@ -516,6 +607,20 @@ function deliveryMessageNonce(orderId: string) {
     .update(`gwstore:delivery-feedback:${orderId}`)
     .digest("hex")
     .slice(0, 25);
+}
+
+function deliveryLogNonce(orderId: string) {
+  return createHash("sha256")
+    .update(`gwstore:delivery-log:${orderId}`)
+    .digest("hex")
+    .slice(0, 25);
+}
+
+function formatBrl(cents: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(cents / 100);
 }
 
 function canonicalChannelName(value: string) {
