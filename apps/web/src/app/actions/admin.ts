@@ -48,6 +48,12 @@ export type AdminActionState = {
   ok: boolean;
   message: string;
   fieldErrors?: Record<string, string[]>;
+  /**
+   * O que foi salvo deu certo, mas algo depois disso não. Uma caixa verde com
+   * um texto de falha no meio fazia o operador concluir que a vitrine tinha
+   * sido publicada — e o Discord continuava com a versão antiga.
+   */
+  warning?: string;
 };
 
 const archiveTargetSchema = z.enum(["game", "substore", "product", "whitelist"]);
@@ -142,6 +148,13 @@ function databaseFailure(code?: string): AdminActionState {
   if (code === "23503") {
     return { ok: false, message: "O registro relacionado não existe ou foi arquivado." };
   }
+  if (code === "42501") {
+    // "Tente novamente" era mentira: repetir sem entrar de novo nunca funciona.
+    return {
+      ok: false,
+      message: "Sua sessão de administrador não tem permissão para isso. Saia e entre de novo pelo Discord.",
+    };
+  }
   return { ok: false, message: "Não foi possível salvar. Tente novamente." };
 }
 
@@ -195,7 +208,9 @@ async function synchronizeCatalogStorefront(savedMessage: string): Promise<Admin
     console.error(`[admin:catalog-storefront-sync] ${message}`);
     return {
       ok: true,
-      message: `${savedMessage} A vitrine do Discord não pôde ser atualizada agora.`,
+      message: savedMessage,
+      warning:
+        "A vitrine do Discord não pôde ser atualizada agora — ela ainda mostra a versão anterior. Publique de novo em Configurações.",
     };
   }
   return { ok: true, message: savedMessage };
@@ -420,14 +435,26 @@ export async function saveProductAction(
     (existingProducts ?? []).map((product) => product.slug),
   );
 
+  // A categoria que o produto JÁ usa vale mesmo arquivada. Exigir categoria viva
+  // aqui congelava todo produto de uma categoria arquivada: abrir, não mudar
+  // nada e salvar era recusado, sem caminho de saída.
   const { data: selectedSubstore, error: selectedSubstoreError } = await supabase
     .from("substores")
-    .select("game_id")
+    .select("game_id,archived_at")
     .eq("id", parsed.data.substoreId)
-    .is("archived_at", null)
     .maybeSingle();
   if (selectedSubstoreError) return databaseFailure(selectedSubstoreError.code);
-  if (!selectedSubstore) {
+  // Só o produto que já estava naquela categoria pode continuar nela.
+  const keepsArchivedSubstore = id
+    ? (
+        await supabase
+          .from("products")
+          .select("substore_id")
+          .eq("id", id)
+          .maybeSingle()
+      ).data?.substore_id === parsed.data.substoreId
+    : false;
+  if (!selectedSubstore || (selectedSubstore.archived_at && !keepsArchivedSubstore)) {
     return {
       ok: false,
       message: "A categoria selecionada não está mais disponível.",
@@ -595,6 +622,10 @@ export async function saveWhitelistAction(
     notes: parsed.data.notes,
     is_active: parsed.data.active,
     commission_override_bps: parsed.data.commissionOverrideBps,
+    // Arquivar preenchia archived_at e nada aqui o limpava, então reativar pelo
+    // painel marcava is_active mas a linha continuava arquivada — o acesso
+    // ficava perdido sem nenhum caminho de volta.
+    archived_at: parsed.data.active ? null : undefined,
   };
   const id = parsedId?.success ? parsedId.data : null;
   const operation = id
@@ -1404,6 +1435,23 @@ function storefrontActionError(message: string) {
   if (message.includes("DISCORD_BOT_TOKEN")) {
     return "O bot Discord ainda não está configurado no servidor.";
   }
+  // O operador não é técnico: "Discord recusou a criação do canal (403)" não
+  // diz o que ele tem que fazer. Cada código vira a ação correspondente.
+  if (message.includes("(403)") || message.includes("Missing Permissions")) {
+    return "O bot não tem permissão nesse canal. Nas configurações do canal no Discord, dê ao bot as permissões de Ver canal, Enviar mensagens e Inserir links.";
+  }
+  if (message.includes("(404)") || message.includes("Unknown Channel")) {
+    return "O canal escolhido não existe mais no Discord. Escolha outro canal e publique de novo.";
+  }
+  if (message.includes("(429)")) {
+    return "O Discord pediu para esperar (limite de envios). Aguarde um minuto e publique de novo.";
+  }
+  if (message.includes("(401)")) {
+    return "O token do bot foi recusado pelo Discord. Ele precisa ser atualizado nas variáveis do servidor.";
+  }
+  if (message.includes("(50035)") || message.includes("(400)")) {
+    return "O Discord recusou o conteúdo da vitrine. Isso costuma ser um produto com nome muito longo ou um ícone inválido; revise os produtos dessa loja.";
+  }
   if (message.startsWith("Discord recusou") || message.startsWith("Resposta")) {
     return message;
   }
@@ -1508,7 +1556,11 @@ export async function archiveRecordAction(
   revalidatePath("/dashboard");
   return parsed.data.target === "whitelist"
     ? { ok: true, message: `${ARCHIVE_NOUN[parsed.data.target]} arquivado.` }
-    : synchronizeCatalogStorefront(`${ARCHIVE_NOUN[parsed.data.target]} arquivado.`);
+    : synchronizeCatalogStorefront(
+        parsed.data.target === "game"
+          ? `${ARCHIVE_NOUN[parsed.data.target]} arquivado e suas vitrines foram removidas do Discord.`
+          : `${ARCHIVE_NOUN[parsed.data.target]} arquivado.`,
+      );
 }
 
 export async function changeInventoryStatusAction(

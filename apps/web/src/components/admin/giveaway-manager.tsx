@@ -398,7 +398,27 @@ function GiveawayCard({ giveaway }: { giveaway: GiveawayListItem }) {
       <CardFooter className="flex flex-wrap justify-end gap-2">
         <LinkButton href={`/sorteios/${giveaway.publicSlug}`} target="_blank" variant="secondary" size="sm">Abrir página</LinkButton>
         <form action={publishAction}><input type="hidden" name="giveawayId" value={giveaway.id} /><Button type="submit" variant="secondary" size="sm" disabled={publishing}>{publishing ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <RefreshCw aria-hidden="true" className="size-4" />} Atualizar anúncio</Button></form>
-        {canCancel ? <form action={cancelAction}><input type="hidden" name="giveawayId" value={giveaway.id} /><Button type="submit" variant="danger" size="sm" disabled={cancelling}>{cancelling ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <CircleX aria-hidden="true" className="size-4" />} Cancelar</Button></form> : null}
+        {canCancel ? (
+          // Um clique encerrava o sorteio publicado, sem volta e sem perguntar,
+          // ao lado do botão de atualizar anúncio.
+          <form
+            action={cancelAction}
+            onSubmit={(event) => {
+              if (
+                !window.confirm(
+                  `Encerrar "${giveaway.title}" agora? O sorteio sai do ar, ninguém mais participa e não há como reabrir.`,
+                )
+              ) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="giveawayId" value={giveaway.id} />
+            <Button type="submit" variant="danger" size="sm" disabled={cancelling}>
+              {cancelling ? <LoaderCircle aria-hidden="true" className="size-4 animate-spin" /> : <CircleX aria-hidden="true" className="size-4" />} Encerrar sorteio
+            </Button>
+          </form>
+        ) : null}
       </CardFooter>
     </Card>
   );

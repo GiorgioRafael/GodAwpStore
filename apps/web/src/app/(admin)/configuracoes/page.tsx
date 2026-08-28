@@ -185,7 +185,13 @@ export default async function SettingsPage() {
             gameName: store.games?.name ?? "Jogo",
             name: store.name,
             isDefault: store.is_default,
-            productCount: productRows.filter((product) => product.catalog_store_id === store.id).length,
+            // Sem o filtro de arquivado, uma loja cujos produtos foram todos
+            // arquivados continuava contando N produtos: o botão de excluir a
+            // loja ficava travado para sempre, dizendo para mover produtos que
+            // já não existem.
+            productCount: productRows.filter(
+              (product) => product.catalog_store_id === store.id && !product.archived_at,
+            ).length,
           }))}
         games={gameRows
           .filter((game) => game.status === "active" && !game.archived_at)
@@ -197,7 +203,10 @@ export default async function SettingsPage() {
 
       {IS_GWSTORE ? <RobuxSalesForm guilds={guilds} /> : null}
 
-      <DiscordStorefrontForm guilds={storefrontGuilds} games={storefrontGames} />
+      {/* Alvo do item "Vitrines do Discord" no menu. */}
+      <div id="vitrines" className="scroll-mt-24">
+        <DiscordStorefrontForm guilds={storefrontGuilds} games={storefrontGames} />
+      </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,.95fr)]">
         <PlatformSettingsForm

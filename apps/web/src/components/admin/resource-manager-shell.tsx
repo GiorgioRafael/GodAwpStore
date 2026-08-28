@@ -123,7 +123,7 @@ export function ResourceManagerShell({
           <span>
             {hasQuery
               ? `${visibleCount} de ${totalCount} encontrados`
-              : "Dados carregados diretamente do banco"}
+              : `${totalCount} no total`}
           </span>
           <span>{countLabel}</span>
         </div>

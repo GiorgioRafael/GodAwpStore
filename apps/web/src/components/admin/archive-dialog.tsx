@@ -21,6 +21,24 @@ interface ArchiveDialogProps {
   noun: string;
 }
 
+/**
+ * O que arquivar faz de verdade, por tipo.
+ *
+ * O texto era o mesmo para tudo e não mencionava o efeito mais visível:
+ * arquivar um jogo tira as vitrines dele do Discord na mesma hora. O operador
+ * lia "o histórico é preservado", confirmava, e o canal esvaziava.
+ */
+const ARCHIVE_EFFECT: Record<string, string> = {
+  game:
+    "O jogo sai do catálogo e as vitrines dele são REMOVIDAS do Discord agora. Os produtos continuam salvos, e o histórico é preservado.",
+  substore:
+    "A categoria sai do catálogo e os produtos dela deixam de aparecer na vitrine do Discord. Nada é apagado.",
+  product:
+    "O produto deixa de ser vendido e sai da vitrine do Discord. O histórico de pedidos é preservado.",
+  whitelist:
+    "O acesso é revogado. Você pode reativá-lo depois pela própria lista.",
+};
+
 export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogProps) {
   const [state, setState] = useState<AdminActionState>(initialAdminActionState);
   const [pending, startTransition] = useTransition();
@@ -38,7 +56,7 @@ export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogPr
       open={Boolean(record)}
       onClose={onClose}
       title={`Arquivar ${noun}`}
-      description="O registro deixa de ficar disponível para novas operações, mas seu histórico é preservado."
+      description={ARCHIVE_EFFECT[target] ?? "O registro deixa de ficar disponível para novas operações, mas seu histórico é preservado."}
       footer={
         state.ok ? (
           <Button onClick={onClose}>Concluir</Button>

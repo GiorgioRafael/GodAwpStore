@@ -185,9 +185,9 @@ function ProductForm({
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           <Field
-            label="Preço mínimo"
+            label="Preço de venda"
             htmlFor={`${formId}-price`}
-            hint="BRL"
+            hint="em reais, ex.: 10,50"
             error={fieldError(state, "minimumPrice") ?? fieldError(state, "minimumPriceCents")}
           >
             <Input
@@ -218,7 +218,7 @@ function ProductForm({
               required
             />
           </Field>
-          <Field label="Alerta baixo" htmlFor={`${formId}-low-stock`} error={fieldError(state, "lowStockThreshold")}>
+          <Field label="Avisar quando o estoque chegar em" hint="unidades" htmlFor={`${formId}-low-stock`} error={fieldError(state, "lowStockThreshold")}>
             <Input
               id={`${formId}-low-stock`}
               name="lowStockThreshold"
@@ -407,7 +407,7 @@ export function ProductsManager({ products, substores, stores }: ProductsManager
               ))}
           </Select>
         }
-        columns={["Produto", "Loja/mundo", "Categoria", "Preço mínimo", "Disponível", "Alerta", "Status", "Ações"]}
+        columns={["Produto", "Loja/mundo", "Categoria", "Preço de venda", "Disponível", "Avisar em", "Status", "Ações"]}
         totalCount={products.length}
         visibleCount={filteredProducts.length}
         emptyIcon={PackageOpen}

@@ -21,9 +21,12 @@ export function ActionFeedback({
   state: AdminActionState;
   className?: string;
 }) {
-  if (!state.message) return null;
+  if (!state.message && !state.warning) return null;
 
-  const Icon = state.ok ? CheckCircle2 : CircleAlert;
+  // Um aviso não é sucesso. A vitrine que falhou saía dentro da caixa verde e o
+  // operador ia embora achando que tinha publicado.
+  const tone = !state.ok ? "danger" : state.warning ? "warning" : "success";
+  const Icon = tone === "success" ? CheckCircle2 : CircleAlert;
 
   return (
     <div
@@ -31,14 +34,21 @@ export function ActionFeedback({
       aria-live="polite"
       className={cn(
         "flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-sm leading-5",
-        state.ok
+        tone === "success"
           ? "border-success/25 bg-success/[0.07] text-[#a7ebc0]"
-          : "border-danger/25 bg-danger/[0.07] text-[#ffc0bd]",
+          : tone === "warning"
+            ? "border-warning/30 bg-warning/[0.08] text-[#f0d49a]"
+            : "border-danger/25 bg-danger/[0.07] text-[#ffc0bd]",
         className,
       )}
     >
       <Icon aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-      <span>{state.message}</span>
+      <span>
+        {state.message}
+        {state.warning ? (
+          <span className="mt-1 block">{state.warning}</span>
+        ) : null}
+      </span>
     </div>
   );
 }

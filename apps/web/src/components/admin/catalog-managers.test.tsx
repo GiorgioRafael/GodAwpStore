@@ -222,7 +222,7 @@ describe("gestores do catálogo", () => {
     expect(screen.getByRole("combobox", { name: "1. Categoria" })).toHaveValue(activeSubstore.id);
     expect(screen.getByRole("combobox", { name: "2. Loja/mundo desta vitrine" })).toHaveValue(activeStore.id);
     expect(screen.queryByRole("textbox", { name: "Slug" })).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Preço mínimo" })).toBeRequired();
+    expect(screen.getByRole("textbox", { name: "Preço de venda" })).toBeRequired();
     expect(screen.getByRole("spinbutton", { name: "Estoque disponível" })).toHaveValue(0);
   });
 

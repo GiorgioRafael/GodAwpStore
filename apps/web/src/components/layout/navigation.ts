@@ -1,4 +1,5 @@
 import {
+  Megaphone,
   Bot,
   Boxes,
   ChartNoAxesCombined,
@@ -69,6 +70,9 @@ export const navigationGroups: NavigationGroup[] = [
       { label: "Whitelist", href: "/whitelist", icon: ShieldCheck },
       { label: "Servidores", href: "/servidores", icon: UsersRound },
       { label: "Customização do bot", href: "/customizacao-bot", icon: Bot },
+      // A função que o lojista chama de "anunciar as vitrines" não existia como
+      // palavra em lugar nenhum do menu: quem procurava não achava.
+      { label: "Vitrines do Discord", href: "/configuracoes#vitrines", icon: Megaphone },
     ],
   },
   {

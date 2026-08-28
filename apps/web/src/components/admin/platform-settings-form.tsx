@@ -147,7 +147,7 @@ export function PlatformSettingsForm({
             </p>
           </div>
           <p id={`${formId}-commission-help`} className="rounded-xl border border-border bg-surface-muted p-3 text-xs leading-5 text-muted">
-            Uma exceção definida na whitelist prevalece sobre esta taxa. O valor é armazenado em pontos-base para evitar arredondamento.
+            Se um parceiro tiver comissão própria cadastrada na Whitelist, a dele vale no lugar desta.
           </p>
           <div className="space-y-4 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
