@@ -153,7 +153,6 @@ begin
     or exists (select 1 from public.upsell_offers where offered_product_id = p_product_id)
     or exists (select 1 from public.lead_recovery_offers where original_upsell_product_id = p_product_id)
     or exists (select 1 from public.roulette_prize_products where product_id = p_product_id)
-    or exists (select 1 from public.roulette_redemptions where product_id = p_product_id)
     or exists (select 1 from public.roulette_redemption_items where product_id = p_product_id)
     or exists (select 1 from public.roulette_demo_inventory where product_id = p_product_id)
   then

@@ -1590,12 +1590,6 @@ export type Database = {
             "guilds",
             ["id"]
           >,
-          Relationship<
-            "roulette_redemptions_product_id_fkey",
-            ["product_id"],
-            "products",
-            ["id"]
-          >,
         ];
       };
       roulette_redemption_items: {
