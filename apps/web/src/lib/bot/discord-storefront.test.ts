@@ -8,9 +8,12 @@ vi.mock("server-only", () => ({}));
 let listDiscordTextChannels: typeof import("./discord-storefront").listDiscordTextChannels;
 let createDiscordTextChannel: typeof import("./discord-storefront").createDiscordTextChannel;
 let publishDiscordStorefront: typeof import("./discord-storefront").publishDiscordStorefront;
+let publishDiscordIntegratedStorefront: typeof import("./discord-storefront").publishDiscordIntegratedStorefront;
 let readStorefrontConfiguration: typeof import("./discord-storefront").readStorefrontConfiguration;
 let readStorefrontConfigurations: typeof import("./discord-storefront").readStorefrontConfigurations;
+let readDiscordIntegratedStorefrontConfiguration: typeof import("./discord-storefront").readDiscordIntegratedStorefrontConfiguration;
 let withStorefrontConfiguration: typeof import("./discord-storefront").withStorefrontConfiguration;
+let withDiscordIntegratedStorefrontConfiguration: typeof import("./discord-storefront").withDiscordIntegratedStorefrontConfiguration;
 
 const guildId = "123456789012345678";
 const channelId = "223456789012345678";
@@ -20,10 +23,13 @@ beforeAll(async () => {
   ({
     listDiscordTextChannels,
     createDiscordTextChannel,
+    publishDiscordIntegratedStorefront,
     publishDiscordStorefront,
+    readDiscordIntegratedStorefrontConfiguration,
     readStorefrontConfiguration,
     readStorefrontConfigurations,
     withStorefrontConfiguration,
+    withDiscordIntegratedStorefrontConfiguration,
   } = await import("./discord-storefront"));
 });
 
@@ -240,6 +246,41 @@ describe("Discord storefront", () => {
     expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
+  it("publica uma vitrine única que faz o comprador escolher a loja antes dos itens", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const integratedMessageId = "423456789012345678";
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ id: integratedMessageId, channel_id: channelId }));
+
+    const result = await publishDiscordIntegratedStorefront({
+      channel: { id: channelId, name: "compras" },
+      catalog: [
+        ...catalog(),
+        {
+          ...catalog()[0]!,
+          id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+          name: "Blox Fruits",
+          catalogStoreId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+          catalogStoreName: "Gamepasses",
+        },
+      ],
+      previous: null,
+      fetcher,
+    });
+
+    const payload = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body));
+    expect(JSON.stringify(payload.components)).toContain("choose_storefront");
+    expect(JSON.stringify(payload.components)).toContain("Blox Fruits");
+    expect(JSON.stringify(payload.components)).not.toContain("select_products");
+    expect(result.configuration).toEqual({
+      channel_id: channelId,
+      channel_name: "compras",
+      message_id: integratedMessageId,
+      published_at: expect.any(String),
+    });
+  });
+
   it("recria a mensagem removida sem exigir permissão para fixar", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const replacementId = "723456789012345678";
@@ -271,6 +312,22 @@ describe("Discord storefront", () => {
       catalog_store_id: null,
       catalog_store_name: storefront.game_name,
     });
+  });
+
+  it("guarda a vitrine única sem apagar as vitrines separadas", () => {
+    const integrated = {
+      channel_id: channelId,
+      channel_name: "compras-gerais",
+      message_id: messageId,
+      published_at: "2026-08-29T12:00:00.000Z",
+    };
+    const merged = withDiscordIntegratedStorefrontConfiguration(
+      { storefronts: [storefrontConfiguration()] },
+      integrated,
+    );
+
+    expect(readDiscordIntegratedStorefrontConfiguration(merged)).toEqual(integrated);
+    expect(readStorefrontConfigurations(merged)).toHaveLength(1);
   });
 
   it("migra a vitrine antiga e mantém uma configuração separada por jogo", () => {

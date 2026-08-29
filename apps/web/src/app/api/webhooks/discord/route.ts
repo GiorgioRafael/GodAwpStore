@@ -67,6 +67,10 @@ import {
   createNativeDiscordRobuxResponse,
   parseNativeDiscordRobuxInteraction,
 } from "@/lib/bot/discord-robux";
+import {
+  createNativeDiscordIntegratedStorefrontResponse,
+  parseNativeDiscordIntegratedStorefrontInteraction,
+} from "@/lib/bot/discord-integrated-storefront";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -121,6 +125,16 @@ export async function POST(request: Request) {
 
       if (native.scope === "ranking") {
         return Response.json(createNativeDiscordRankingResponse());
+      }
+
+      if (native.scope === "integrated_storefront") {
+        return Response.json(
+          await createNativeDiscordIntegratedStorefrontResponse(
+            native.raw,
+            native.interaction,
+            await loadBotMessageCustomization(),
+          ),
+        );
       }
 
       if (native.scope === "robux") {
@@ -472,6 +486,16 @@ async function readNativeDiscordInteraction(request: Request) {
       raw,
       scope: "ranking" as const,
       interaction: { kind: "publish" as const },
+    };
+  }
+
+  const integratedStorefront = parseNativeDiscordIntegratedStorefrontInteraction(raw);
+  if (integratedStorefront) {
+    return {
+      body,
+      raw,
+      scope: "integrated_storefront" as const,
+      interaction: integratedStorefront,
     };
   }
 

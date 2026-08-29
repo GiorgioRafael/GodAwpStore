@@ -4,8 +4,12 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { BotCommerceService } from "./commerce-service";
 import {
   deleteDiscordStorefrontMessages,
+  catalogStoresForIntegratedStorefront,
+  publishDiscordIntegratedStorefront,
   publishDiscordStorefront,
+  readDiscordIntegratedStorefrontConfiguration,
   readStorefrontConfigurations,
+  withDiscordIntegratedStorefrontConfiguration,
   withStorefrontConfigurations,
 } from "./discord-storefront";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
@@ -35,7 +39,10 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
 
   const publishedGuilds = (guilds ?? []).flatMap((guild) => {
     const storefronts = readStorefrontConfigurations(guild.configuration);
-    return storefronts.length > 0 ? [{ guild, storefronts }] : [];
+    const integratedStorefront = readDiscordIntegratedStorefrontConfiguration(guild.configuration);
+    return storefronts.length > 0 || integratedStorefront
+      ? [{ guild, storefronts, integratedStorefront }]
+      : [];
   });
   if (publishedGuilds.length === 0) {
     return { published: 0, failed: 0, productEmojiFailures: 0 };
@@ -61,7 +68,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
     loadBotMessageCustomization(client),
   ]);
   const results = await Promise.all(
-    publishedGuilds.map(async ({ guild, storefronts }) => {
+    publishedGuilds.map(async ({ guild, storefronts, integratedStorefront }) => {
       const publicationResults = await Promise.all(
         storefronts.map(async (storefront) => {
           try {
@@ -104,38 +111,66 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
           }
         }),
       );
-      const succeeded = publicationResults.filter((result) => result.ok).length;
-      if (succeeded === 0) {
-        return { published: 0, failed: publicationResults.length };
+      let integratedResult:
+        | { ok: true; configuration: ReturnType<typeof readDiscordIntegratedStorefrontConfiguration> }
+        | { ok: false; configuration: NonNullable<ReturnType<typeof readDiscordIntegratedStorefrontConfiguration>> }
+        | null = null;
+      if (integratedStorefront) {
+        try {
+          const publication = await publishDiscordIntegratedStorefront({
+            channel: {
+              id: integratedStorefront.channel_id,
+              name: integratedStorefront.channel_name,
+            },
+            catalog: catalogStoresForIntegratedStorefront(catalog),
+            customization,
+            previous: integratedStorefront,
+          });
+          integratedResult = { ok: true, configuration: publication.configuration };
+        } catch (syncError) {
+          const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
+          console.error(`[discord-integrated-storefront:sync:${guild.id}] ${message}`);
+          integratedResult = { ok: false, configuration: integratedStorefront };
+        }
       }
 
-      const published = publicationResults.filter(
-        (result) => result.ok && result.configuration !== null,
-      ).length;
+      const succeeded = publicationResults.filter((result) => result.ok).length +
+        (integratedResult?.ok ? 1 : 0);
+      const attempted = publicationResults.length + (integratedResult ? 1 : 0);
+      if (succeeded === 0) return { published: 0, failed: attempted };
 
       try {
+        let nextConfiguration = withStorefrontConfigurations(
+          guild.configuration,
+          publicationResults
+            .map((result) => result.configuration)
+            .filter((configuration) => configuration !== null),
+        );
+        if (integratedResult?.ok) {
+          nextConfiguration = withDiscordIntegratedStorefrontConfiguration(
+            nextConfiguration,
+            integratedResult.configuration,
+          );
+        }
         const { data: updated, error: updateError } = await client
           .from("guilds")
           .update({
-            configuration: withStorefrontConfigurations(
-              guild.configuration,
-              publicationResults
-                .map((result) => result.configuration)
-                .filter((configuration) => configuration !== null),
-            ),
+            configuration: nextConfiguration,
           })
           .eq("id", guild.id)
           .select("id")
           .maybeSingle();
         if (updateError || !updated) throw new Error("Configuração da vitrine não foi salva.");
         return {
-          published,
-          failed: publicationResults.length - succeeded,
+          published: publicationResults.filter(
+            (result) => result.ok && result.configuration !== null,
+          ).length + (integratedResult?.ok ? 1 : 0),
+          failed: attempted - succeeded,
         };
       } catch (syncError) {
         const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
         console.error(`[discord-storefront:sync:${guild.id}] ${message}`);
-        return { published: 0, failed: publicationResults.length };
+        return { published: 0, failed: attempted };
       }
     }),
   );

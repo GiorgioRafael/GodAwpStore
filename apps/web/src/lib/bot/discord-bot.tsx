@@ -81,6 +81,7 @@ const DISCORD_MODAL_SUBMIT = 5;
 const DISCORD_DEFERRED_CHANNEL_MESSAGE = 5;
 const DISCORD_MODAL_RESPONSE = 9;
 const QUANTITY_MODAL_PREFIX = "gwstore_quantity:";
+export const INTEGRATED_STOREFRONT_SELECT_ACTION = "choose_storefront";
 const UNPAID_ORDER_EXPIRATION_NOTICE =
   "⏰ **Atenção:** pedidos não pagos são cancelados automaticamente após **30 minutos**. O estoque só é reduzido quando o pagamento é confirmado.";
 
@@ -555,6 +556,96 @@ export function catalogCards(
       </Actions>
     </Card>
   ];
+}
+
+/**
+ * Public entry point for a single Discord storefront that contains every
+ * configured game/world. The next interaction is always ephemeral, so a
+ * buyer sees only the products from the store they selected.
+ */
+export function integratedStorefrontCard(
+  catalog: BotCatalogGame[],
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
+  if (catalog.length > 25) {
+    throw new Error("A vitrine única do Discord aceita no máximo 25 lojas ativas.");
+  }
+
+  const message = customization.storefront;
+  const storefrontImageUrl =
+    discordStorefrontBannerUrl(customization) ??
+    discordBotBannerUrl(customization, "orderUrl");
+
+  return (
+    <Card
+      title={interpolateBotMessageLimited(message.title, {}, 256)}
+      subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+      imageUrl={storefrontImageUrl ?? undefined}
+    >
+      {message.welcome ? <CardText>{message.welcome}</CardText> : null}
+      <CardText>
+        Escolha primeiro a loja ou o jogo. Em seguida, os produtos aparecerão somente para você.
+      </CardText>
+      {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
+      {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
+      <Divider />
+      <Actions>
+        <Select
+          id={INTEGRATED_STOREFRONT_SELECT_ACTION}
+          label="Escolha uma loja"
+          placeholder="Selecione o jogo ou a loja"
+        >
+          {catalog.map((store) => {
+            const productCount = flattenCatalog([store]).length;
+            return (
+              <SelectOption
+                key={store.catalogStoreId ?? store.id}
+                label={truncateSelectText(integratedStorefrontStoreLabel(store))}
+                value={store.catalogStoreId ?? store.id}
+                description={truncateSelectText(
+                  `${productCount} produto${productCount === 1 ? "" : "s"} ${productCount === 1 ? "disponível" : "disponíveis"}`,
+                )}
+              />
+            );
+          })}
+        </Select>
+      </Actions>
+    </Card>
+  );
+}
+
+export function integratedStorefrontStoreLabel(store: BotCatalogGame) {
+  const storeName = store.catalogStoreName?.trim();
+  if (!storeName || storeName.toLocaleLowerCase("pt-BR") === store.name.toLocaleLowerCase("pt-BR")) {
+    return store.name;
+  }
+  return `${store.name} · ${storeName}`;
+}
+
+export function createNativeIntegratedStorefrontSelectionResponse(
+  store: BotCatalogGame,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+) {
+  const card = catalogCards([store], customization)[0];
+  const normalized = card ? toCardElement(card) : null;
+  if (!normalized) throw new Error("Não foi possível abrir os produtos desta loja.");
+
+  return {
+    type: DISCORD_CHANNEL_MESSAGE_RESPONSE,
+    data: {
+      ...configureDiscordStorefrontBanner(
+        configureDiscordProductEntrySelect(
+          cardToDiscordPayload(normalized, {
+            contentFormat: DiscordContentFormat.ComponentsV2,
+          }),
+          collectDiscordProductOptionEmojis(card),
+        ),
+        customization,
+      ),
+      flags: DISCORD_EPHEMERAL_FLAG,
+      allowed_mentions: { parse: [] },
+    },
+  };
 }
 
 function helpCard(
@@ -1059,6 +1150,7 @@ export function configureDiscordProductEntrySelect<T>(
 export function configureDiscordStorefrontBanner<T>(
   payload: T,
   customization?: BotMessageCustomization,
+  selectActionId = "select_products",
 ): T {
   if (!isObject(payload) || !Array.isArray(payload.components)) {
     return payload;
@@ -1072,7 +1164,7 @@ export function configureDiscordStorefrontBanner<T>(
           isDiscordMediaGalleryForUrl(component, bannerUrl),
         )
       : -1;
-    if (bannerIndex < 0 && hasDiscordProductSelector(container.components)) {
+    if (bannerIndex < 0 && hasDiscordSelectAction(container.components, selectActionId)) {
       bannerIndex = container.components.findIndex(isDiscordMediaGallery);
     }
     if (bannerIndex < 0) continue;
@@ -1226,13 +1318,13 @@ function isDiscordMediaGallery(
   return isObject(value) && value.type === 12 && Array.isArray(value.items);
 }
 
-function hasDiscordProductSelector(components: unknown[]) {
+function hasDiscordSelectAction(components: unknown[], actionId: string) {
   let found = false;
   visitDiscordComponents(components, (component) => {
     if (
       component.type === 3 &&
       typeof component.custom_id === "string" &&
-      decodeDiscordCustomId(component.custom_id).actionId === "select_products"
+      decodeDiscordCustomId(component.custom_id).actionId === actionId
     ) {
       found = true;
     }

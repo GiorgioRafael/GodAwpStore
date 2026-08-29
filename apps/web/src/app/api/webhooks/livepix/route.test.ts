@@ -339,7 +339,7 @@ describe("LivePix webhook route", () => {
       productName: "Robux",
       quantity: 1_000,
       paidAmountCents: 3_500,
-      controls: false,
+      controls: "robux",
     });
     expect(mocks.completeRobuxTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
     expect(mocks.reconcileRouletteSpin).not.toHaveBeenCalled();

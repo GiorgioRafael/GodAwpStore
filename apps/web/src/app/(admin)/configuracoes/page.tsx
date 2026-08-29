@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   listDiscordTextChannels,
+  readDiscordIntegratedStorefrontConfiguration,
   readStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { readRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
@@ -104,6 +105,7 @@ export default async function SettingsPage() {
             name: guild.name,
             channels: await listDiscordTextChannels(guild.discord_guild_id),
             current: readStorefrontConfigurations(guild.configuration),
+            integrated: readDiscordIntegratedStorefrontConfiguration(guild.configuration),
             robux: readRobuxStorefrontConfiguration(guild.configuration),
             boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError: null,
@@ -118,6 +120,7 @@ export default async function SettingsPage() {
             name: guild.name,
             channels: [],
             current: readStorefrontConfigurations(guild.configuration),
+            integrated: readDiscordIntegratedStorefrontConfiguration(guild.configuration),
             robux: readRobuxStorefrontConfiguration(guild.configuration),
             boosterDiscount: readBoosterDiscountConfiguration(guild.configuration),
             channelLoadError:

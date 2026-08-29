@@ -9,6 +9,7 @@ import {
   MessageSquareText,
   RefreshCw,
   Store,
+  StoreIcon,
 } from "lucide-react";
 
 import { publishDiscordStorefrontAction } from "@/app/actions/admin";
@@ -31,6 +32,7 @@ import type { BoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import type {
   DiscordStorefrontChannel,
   DiscordStorefrontConfiguration,
+  DiscordIntegratedStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 import type { DiscordRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
 
@@ -49,6 +51,7 @@ export type DiscordStorefrontGuildOption = {
   name: string;
   channels: DiscordStorefrontChannel[];
   current: DiscordStorefrontConfiguration[];
+  integrated?: DiscordIntegratedStorefrontConfiguration | null;
   robux?: DiscordRobuxStorefrontConfiguration | null;
   boosterDiscount: BoosterDiscountConfiguration;
   channelLoadError: string | null;
@@ -62,6 +65,9 @@ export function DiscordStorefrontForm({
   games: DiscordStorefrontGameOption[];
 }) {
   const initialGuild = guilds.find((guild) => guild.current.length > 0) ?? guilds[0] ?? null;
+  const [mode, setMode] = useState<"separate" | "integrated">(
+    initialGuild?.integrated && initialGuild.current.length === 0 ? "integrated" : "separate",
+  );
   const initialGameId = preferredGameId(initialGuild, games);
   const [selectedGuildId, setSelectedGuildId] = useState(initialGuild?.id ?? "");
   const [selectedGameId, setSelectedGameId] = useState(initialGameId);
@@ -100,6 +106,7 @@ export function DiscordStorefrontForm({
     setSelectedGuildId(guildId);
     setSelectedGameId(gameId);
     setSelectedChannelId(preferredChannelId(guild, gameId));
+    setMode(guild?.integrated && guild.current.length === 0 ? "integrated" : "separate");
     const discount = discountFormValues(guild);
     setBoosterDiscountEnabled(discount.enabled);
     setBoosterDiscountPercent(discount.percent);
@@ -112,6 +119,7 @@ export function DiscordStorefrontForm({
   }
 
   function editStorefront(storefront: DiscordStorefrontConfiguration) {
+    setMode("separate");
     const gameId = storefront.catalog_store_id ?? games.find(
       (store) => store.gameId === storefront.game_id,
     )?.id ?? games[0]?.id ?? "";
@@ -119,9 +127,14 @@ export function DiscordStorefrontForm({
     setSelectedChannelId(storefront.channel_id);
   }
 
+  function editIntegratedStorefront(storefront: DiscordIntegratedStorefrontConfiguration) {
+    setMode("integrated");
+    setSelectedChannelId(storefront.channel_id);
+  }
+
   const canPublish = Boolean(
     selectedGuild &&
-      selectedGame &&
+      (mode === "integrated" || selectedGame) &&
       selectedChannelId &&
       !selectedGuild.channelLoadError,
   );
@@ -133,11 +146,11 @@ export function DiscordStorefrontForm({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold tracking-tight">Vitrines do Discord</h2>
-              <Badge tone="gold">Por loja</Badge>
+              <Badge tone="gold">2 formatos</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
-              Crie uma vitrine para cada loja ou mundo. Cada uma fica no seu próprio canal e
-              mostra somente o estoque separado daquela loja.
+              Escolha entre uma vitrine para cada loja, em que cada uma fica no seu próprio canal,
+              ou uma única mensagem em que o comprador escolhe o jogo antes de ver os itens.
             </p>
           </div>
           <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-gold/20 bg-gold/[0.06] text-gold">
@@ -164,28 +177,49 @@ export function DiscordStorefrontForm({
           <CardContent className="space-y-6 pt-5">
             <ActionFeedback state={state} />
             <input type="hidden" name="guildId" value={selectedGuildId} />
+            <input type="hidden" name="mode" value={mode} />
             <input type="hidden" name="storeId" value={selectedGameId} />
 
             <div className="rounded-xl border border-success/20 bg-success/[0.045] p-4">
               <p className="text-sm font-semibold text-foreground">Como funciona</p>
               <ol className="mt-3 grid gap-3 text-sm text-muted-strong md:grid-cols-3">
-                <Step number="1" text="Escolha a loja/mundo." />
-                <Step number="2" text="Escolha o canal dessa loja." />
-                <Step number="3" text="Publique o estoque independente." />
+                <Step number="1" text="Escolha o formato da vitrine." />
+                <Step number="2" text="Selecione o canal no Discord." />
+                <Step number="3" text="Publique ou atualize a mensagem." />
               </ol>
             </div>
 
-            {selectedGuild?.current.length ? (
+            {selectedGuild?.current.length || selectedGuild?.integrated ? (
               <section aria-labelledby={`${formId}-published-title`} className="space-y-3">
                 <div>
                   <h3 id={`${formId}-published-title`} className="text-sm font-semibold text-foreground">
                     Vitrines já publicadas
                   </h3>
                   <p className="mt-1 text-xs leading-5 text-muted">
-                    Para mover ou atualizar uma delas, clique em Configurar.
+                    Você pode manter os dois formatos em canais diferentes. Clique em Configurar
+                    para atualizar uma mensagem já publicada.
                   </p>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
+                  {selectedGuild?.integrated ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold/25 bg-gold/[0.045] p-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
+                          <StoreIcon aria-hidden="true" className="size-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">Vitrine única · todas as lojas</p>
+                          <p className="mt-1 truncate text-xs text-muted">
+                            #{selectedGuild.integrated.channel_name} · atualizada em {formatDateTime(selectedGuild.integrated.published_at)}
+                          </p>
+                          <p className="mt-1 text-xs text-muted">O comprador escolhe o jogo antes de ver os itens.</p>
+                        </div>
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => editIntegratedStorefront(selectedGuild.integrated!)}>
+                        Configurar
+                      </Button>
+                    </div>
+                  ) : null}
                   {selectedGuild.current.map((storefront) => (
                     <div
                       key={storefront.catalog_store_id ?? storefront.game_id ?? "legacy"}
@@ -234,14 +268,48 @@ export function DiscordStorefrontForm({
             <section aria-labelledby={`${formId}-setup-title`} className="space-y-4">
               <div>
                 <h3 id={`${formId}-setup-title`} className="text-sm font-semibold text-foreground">
-                  {selectedStorefront || legacyStorefront
-                    ? "Atualizar uma vitrine"
-                    : "Adicionar nova vitrine"}
+                  {mode === "integrated"
+                    ? selectedGuild?.integrated
+                      ? "Atualizar vitrine única"
+                      : "Publicar vitrine única"
+                    : selectedStorefront || legacyStorefront
+                      ? "Atualizar uma vitrine por loja"
+                      : "Adicionar vitrine por loja"}
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-muted">
-                  Cada loja usa um canal e estoque próprios. Publicar novamente atualiza a mesma
-                  mensagem, sem criar cópias.
+                  {mode === "integrated"
+                    ? "Uma única mensagem mostra todas as lojas. O comprador escolhe primeiro o jogo e recebe os produtos em privado."
+                    : "Cada loja usa um canal e estoque próprios. Publicar novamente atualiza a mesma mensagem, sem criar cópias."}
                 </p>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2" role="radiogroup" aria-label="Formato da vitrine">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === "separate"}
+                  onClick={() => setMode("separate")}
+                  className={`rounded-xl border p-4 text-left transition ${mode === "separate" ? "border-gold/50 bg-gold/[0.07]" : "border-border bg-surface-muted hover:border-gold/30"}`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Store aria-hidden="true" className="size-4 text-gold" />
+                    Uma vitrine por loja
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 text-muted">Como hoje: cada mundo usa seu próprio canal e lista apenas seus itens.</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={mode === "integrated"}
+                  onClick={() => setMode("integrated")}
+                  className={`rounded-xl border p-4 text-left transition ${mode === "integrated" ? "border-gold/50 bg-gold/[0.07]" : "border-border bg-surface-muted hover:border-gold/30"}`}
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <StoreIcon aria-hidden="true" className="size-4 text-gold" />
+                    Uma vitrine com todas as lojas
+                  </span>
+                  <span className="mt-2 block text-xs leading-5 text-muted">Um canal só: o comprador escolhe o jogo primeiro e depois seleciona os itens.</span>
+                </button>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-3">
@@ -263,27 +331,34 @@ export function DiscordStorefrontForm({
                   </Select>
                 </Field>
 
-                <Field
-                  label="1. Loja/mundo desta vitrine"
-                  htmlFor={`${formId}-game`}
-                  error={fieldError(state, "storeId")}
-                >
-                  <Select
-                    id={`${formId}-game`}
-                    value={selectedGameId}
-                    onChange={(event) => changeGame(event.target.value)}
+                {mode === "separate" ? (
+                  <Field
+                    label="1. Loja/mundo desta vitrine"
+                    htmlFor={`${formId}-game`}
+                    error={fieldError(state, "storeId")}
                   >
-                    {games.map((game) => (
-                      <option key={game.id} value={game.id}>
-                        {game.name}{game.gameName ? ` · ${game.gameName}` : ""} · {game.productCount} produto
-                        {game.productCount === 1 ? "" : "s"}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
+                    <Select
+                      id={`${formId}-game`}
+                      value={selectedGameId}
+                      onChange={(event) => changeGame(event.target.value)}
+                    >
+                      {games.map((game) => (
+                        <option key={game.id} value={game.id}>
+                          {game.name}{game.gameName ? ` · ${game.gameName}` : ""} · {game.productCount} produto
+                          {game.productCount === 1 ? "" : "s"}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                ) : (
+                  <div className="rounded-xl border border-border bg-surface-muted px-4 py-3">
+                    <p className="text-sm font-medium text-foreground">1. Todas as lojas ativas</p>
+                    <p className="mt-1 text-xs leading-5 text-muted">O comprador verá {games.length} loja{games.length === 1 ? "" : "s"} para escolher.</p>
+                  </div>
+                )}
 
                 <Field
-                  label="2. Canal da vitrine"
+                  label={mode === "integrated" ? "2. Canal da vitrine única" : "2. Canal da vitrine"}
                   htmlFor={`${formId}-channel`}
                   hint="Escolha um canal de texto do servidor"
                   error={fieldError(state, "channelId")}
@@ -326,7 +401,7 @@ export function DiscordStorefrontForm({
                 </Field>
               </div>
 
-              {selectedGame ? (
+              {mode === "separate" && selectedGame ? (
                 <div className="flex items-start gap-3 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
                   <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
                     <Store aria-hidden="true" className="size-4" />
@@ -342,6 +417,17 @@ export function DiscordStorefrontForm({
                       {selectedGame.categoryCount === 1 ? "" : "s"}. Produtos de outras lojas
                       não aparecerão neste canal.
                     </p>
+                  </div>
+                </div>
+              ) : null}
+              {mode === "integrated" ? (
+                <div className="flex items-start gap-3 rounded-xl border border-gold/20 bg-gold/[0.035] p-4">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-gold/20 bg-gold/[0.08] text-gold">
+                    <StoreIcon aria-hidden="true" className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">O que aparecerá nesta vitrine única</p>
+                    <p className="mt-1 text-xs leading-5 text-muted">Uma lista com todas as {games.length} lojas. Depois da escolha, os itens da loja selecionada aparecem apenas para o comprador.</p>
                   </div>
                 </div>
               ) : null}
@@ -444,9 +530,13 @@ export function DiscordStorefrontForm({
               )}
               {pending
                 ? "Publicando..."
-                : selectedStorefront || legacyStorefront
-                  ? "Atualizar vitrine"
-                  : "Publicar nova vitrine"}
+                : mode === "integrated"
+                  ? selectedGuild?.integrated
+                    ? "Atualizar vitrine única"
+                    : "Publicar vitrine única"
+                  : selectedStorefront || legacyStorefront
+                    ? "Atualizar vitrine"
+                    : "Publicar nova vitrine"}
             </Button>
           </CardFooter>
         </form>

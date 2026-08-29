@@ -142,4 +142,29 @@ describe("configuração de vitrines do Discord", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Atualizar vitrine" })).toBeEnabled();
   });
+
+  it("oferece a vitrine única para o comprador escolher a loja antes dos itens", async () => {
+    const user = userEvent.setup();
+    render(
+      <DiscordStorefrontForm
+        games={[firstGame, secondGame]}
+        guilds={[{
+          id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+          discordGuildId: "123456789012345678",
+          name: "GWStore",
+          channels,
+          current: [],
+          integrated: null,
+          boosterDiscount: { enabled: true, discount_bps: 500, minimum_subtotal_cents: 5_000 },
+          channelLoadError: null,
+        }]}
+      />,
+    );
+
+    await user.click(screen.getByRole("radio", { name: /Uma vitrine com todas as lojas/i }));
+
+    expect(screen.getByText(/O comprador verá 2 lojas para escolher/i)).toBeInTheDocument();
+    expect(screen.getByText(/itens da loja selecionada aparecem apenas para o comprador/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar vitrine única" })).toBeEnabled();
+  });
 });

@@ -3,9 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createAdminSupabaseClient: vi.fn(),
   deleteDiscordStorefrontMessages: vi.fn(),
+  catalogStoresForIntegratedStorefront: vi.fn(),
   listCatalog: vi.fn(),
+  publishDiscordIntegratedStorefront: vi.fn(),
   publishDiscordStorefront: vi.fn(),
+  readDiscordIntegratedStorefrontConfiguration: vi.fn(),
   readStorefrontConfigurations: vi.fn(),
+  withDiscordIntegratedStorefrontConfiguration: vi.fn(),
   withStorefrontConfigurations: vi.fn(),
   loadBotMessageCustomization: vi.fn(),
   synchronizeDiscordProductEmojis: vi.fn(),
@@ -25,8 +29,12 @@ vi.mock("./supabase-repository", () => ({
 }));
 vi.mock("./discord-storefront", () => ({
   deleteDiscordStorefrontMessages: mocks.deleteDiscordStorefrontMessages,
+  catalogStoresForIntegratedStorefront: mocks.catalogStoresForIntegratedStorefront,
+  publishDiscordIntegratedStorefront: mocks.publishDiscordIntegratedStorefront,
   publishDiscordStorefront: mocks.publishDiscordStorefront,
+  readDiscordIntegratedStorefrontConfiguration: mocks.readDiscordIntegratedStorefrontConfiguration,
   readStorefrontConfigurations: mocks.readStorefrontConfigurations,
+  withDiscordIntegratedStorefrontConfiguration: mocks.withDiscordIntegratedStorefrontConfiguration,
   withStorefrontConfigurations: mocks.withStorefrontConfigurations,
 }));
 vi.mock("./message-customization-server", () => ({
@@ -63,6 +71,7 @@ describe("sincronização automática da vitrine Discord", () => {
       },
     ]);
     mocks.readStorefrontConfigurations.mockReturnValue([storefront]);
+    mocks.readDiscordIntegratedStorefrontConfiguration.mockReturnValue(null);
     mocks.withStorefrontConfigurations.mockReturnValue({ storefronts: [storefront] });
     mocks.loadBotMessageCustomization.mockResolvedValue(customization);
     mocks.publishDiscordStorefront.mockResolvedValue({ configuration: storefront });

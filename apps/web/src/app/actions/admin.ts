@@ -19,11 +19,15 @@ import { requireAdmin } from "@/lib/auth";
 import { BotCommerceService } from "@/lib/bot/commerce-service";
 import { withBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
+  catalogStoresForIntegratedStorefront,
   createDiscordTextChannel,
   deleteDiscordStorefrontMessages,
   listDiscordTextChannels,
+  publishDiscordIntegratedStorefront,
   publishDiscordStorefront,
+  readDiscordIntegratedStorefrontConfiguration,
   readStorefrontConfigurations,
+  withDiscordIntegratedStorefrontConfiguration,
   withStorefrontConfiguration,
   withStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
@@ -71,7 +75,8 @@ const productOrderSchema = z
   });
 const discordStorefrontSchema = z.object({
   guildId: uuidSchema,
-  storeId: uuidSchema,
+  mode: z.enum(["separate", "integrated"]),
+  storeId: z.string().trim(),
   channelId: z.string().regex(/^[0-9]{15,22}$/, "Canal Discord inválido."),
   boosterDiscountEnabled: z.boolean(),
   // Sem o desconto ligado, esses dois campos não descrevem nada: exigi-los
@@ -79,6 +84,13 @@ const discordStorefrontSchema = z.object({
   boosterDiscountBps: z.number().int().min(0).max(9_000, "O desconto máximo é 90%."),
   boosterMinimumSubtotalCents: z.number().int().min(0),
 }).superRefine((value, context) => {
+  if (value.mode === "separate" && !uuidSchema.safeParse(value.storeId).success) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["storeId"],
+      message: "Escolha a loja que terá esta vitrine.",
+    });
+  }
   if (!value.boosterDiscountEnabled) return;
   if (value.boosterDiscountBps < 1) {
     context.addIssue({
@@ -1289,6 +1301,7 @@ export async function publishDiscordStorefrontAction(
   }
   const parsed = discordStorefrontSchema.safeParse({
     guildId: text(formData, "guildId"),
+    mode: text(formData, "mode"),
     storeId: text(formData, "storeId"),
     channelId: text(formData, "channelId"),
     boosterDiscountEnabled: formData.get("boosterDiscountEnabled") === "on",
@@ -1345,6 +1358,59 @@ export async function publishDiscordStorefrontAction(
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),
       loadBotMessageCustomization(supabase),
     ]);
+    if (parsed.data.mode === "integrated") {
+      const integratedCatalog = catalogStoresForIntegratedStorefront(catalog);
+      if (integratedCatalog.length === 0) {
+        return {
+          ok: false,
+          message: "Cadastre pelo menos uma loja com produtos antes de publicar a vitrine única.",
+        };
+      }
+      if (integratedCatalog.length > 25) {
+        return {
+          ok: false,
+          message: "A vitrine única comporta até 25 lojas. Publique vitrines separadas para as lojas excedentes.",
+        };
+      }
+
+      const published = await publishDiscordIntegratedStorefront({
+        channel,
+        catalog: integratedCatalog,
+        customization,
+        previous: readDiscordIntegratedStorefrontConfiguration(guild.configuration),
+      });
+      const { data: updatedGuild, error: updateError } = await supabase
+        .from("guilds")
+        .update({
+          configuration: withBoosterDiscountConfiguration(
+            withDiscordIntegratedStorefrontConfiguration(
+              guild.configuration,
+              published.configuration,
+            ),
+            {
+              enabled: parsed.data.boosterDiscountEnabled,
+              discount_bps: parsed.data.boosterDiscountBps,
+              minimum_subtotal_cents: parsed.data.boosterMinimumSubtotalCents,
+            },
+          ),
+        })
+        .eq("id", guild.id)
+        .select("id")
+        .maybeSingle();
+      if (updateError) return databaseFailure(updateError.code);
+      if (!updatedGuild) return { ok: false, message: "Servidor Discord não encontrado ao salvar." };
+
+      revalidatePath("/configuracoes");
+      return {
+        ok: true,
+        message: `Vitrine única publicada em #${published.configuration.channel_name}. O comprador escolhe primeiro uma das ${integratedCatalog.length} lojas e só então vê os itens.${
+          emojiSync.failed > 0
+            ? ` ${emojiSync.failed} ícone(s) de produto não puderam ser sincronizados.`
+            : ""
+        }`,
+      };
+    }
+
     const game = catalog.find((item) => item.catalogStoreId === parsed.data.storeId);
     if (!game) {
       return {

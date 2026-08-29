@@ -7,11 +7,14 @@ import {
 import { toCardElement } from "chat";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
+import { IS_GWSTORE } from "@/lib/brand";
 import {
   catalogCards,
   collectDiscordProductOptionEmojis,
   configureDiscordProductEntrySelect,
   configureDiscordStorefrontBanner,
+  INTEGRATED_STOREFRONT_SELECT_ACTION,
+  integratedStorefrontCard,
 } from "./discord-bot";
 import type { BotMessageCustomization } from "./message-customization";
 import type { BotCatalogGame } from "./types";
@@ -55,6 +58,17 @@ export type DiscordStorefrontConfiguration = {
 
 export type PublishDiscordStorefrontResult = {
   configuration: DiscordStorefrontConfiguration;
+};
+
+export type DiscordIntegratedStorefrontConfiguration = {
+  channel_id: string;
+  channel_name: string;
+  message_id: string;
+  published_at: string;
+};
+
+export type PublishDiscordIntegratedStorefrontResult = {
+  configuration: DiscordIntegratedStorefrontConfiguration;
 };
 
 type DiscordChannelPayload = {
@@ -182,6 +196,26 @@ export function readStorefrontConfigurations(
   return legacy ? [legacy] : [];
 }
 
+export function readDiscordIntegratedStorefrontConfiguration(
+  configuration: Json,
+): DiscordIntegratedStorefrontConfiguration | null {
+  if (!isObject(configuration) || !isObject(configuration.integrated_storefront)) return null;
+  const storefront = configuration.integrated_storefront;
+  const channelId = asSnowflake(storefront.channel_id);
+  const channelName = asChannelName(storefront.channel_name);
+  const messageId = asSnowflake(storefront.message_id);
+  const publishedAt = typeof storefront.published_at === "string"
+    ? storefront.published_at.trim()
+    : "";
+  if (!channelId || !channelName || !messageId || !publishedAt) return null;
+  return {
+    channel_id: channelId,
+    channel_name: channelName,
+    message_id: messageId,
+    published_at: publishedAt,
+  };
+}
+
 function normalizeStorefrontConfiguration(
   storefront: unknown,
   fallbackGame?: { gameId: null; gameName: string },
@@ -269,6 +303,21 @@ export function withStorefrontConfigurations(
   return {
     ...next,
   };
+}
+
+export function withDiscordIntegratedStorefrontConfiguration(
+  configuration: Json,
+  storefront: DiscordIntegratedStorefrontConfiguration | null,
+): JsonObject {
+  const next: JsonObject = {
+    ...(isObject(configuration) ? configuration : {}),
+  };
+  if (storefront) {
+    next.integrated_storefront = storefront;
+  } else {
+    delete next.integrated_storefront;
+  }
+  return next;
 }
 
 export async function deleteDiscordStorefrontMessages(
@@ -365,6 +414,44 @@ export async function publishDiscordStorefront({
   };
 }
 
+/** Publishes one reusable entry point where buyers choose the game/store first. */
+export async function publishDiscordIntegratedStorefront({
+  channel,
+  catalog,
+  customization,
+  previous,
+  fetcher = fetch,
+}: {
+  channel: Pick<DiscordStorefrontChannel, "id" | "name">;
+  catalog: BotCatalogGame[];
+  customization?: BotMessageCustomization;
+  previous: DiscordIntegratedStorefrontConfiguration | null;
+  fetcher?: typeof fetch;
+}): Promise<PublishDiscordIntegratedStorefrontResult> {
+  assertSnowflake(channel.id, "canal");
+  const channelName = asChannelName(channel.name);
+  if (!channelName) throw new Error("Nome do canal Discord inválido.");
+
+  const payload = createDiscordIntegratedStorefrontPayload(catalog, customization);
+  const reusableMessageId = previous?.channel_id === channel.id ? previous.message_id : null;
+  const message = reusableMessageId
+    ? await editOrCreateMessage(channel.id, reusableMessageId, payload, fetcher)
+    : await createMessage(channel.id, payload, fetcher);
+
+  if (previous && previous.channel_id !== channel.id) {
+    await deleteMessages(previous.channel_id, [previous.message_id], fetcher);
+  }
+
+  return {
+    configuration: {
+      channel_id: channel.id,
+      channel_name: channelName,
+      message_id: message.id,
+      published_at: new Date().toISOString(),
+    },
+  };
+}
+
 export function createDiscordStorefrontPayloads(
   catalog: BotCatalogGame[],
   customization?: BotMessageCustomization,
@@ -385,6 +472,32 @@ export function createDiscordStorefrontPayloads(
       ),
       allowed_mentions: { parse: [] },
     };
+  });
+}
+
+export function createDiscordIntegratedStorefrontPayload(
+  catalog: BotCatalogGame[],
+  customization?: BotMessageCustomization,
+) {
+  const normalized = toCardElement(integratedStorefrontCard(catalog, customization));
+  if (!normalized) throw new Error("Não foi possível montar a vitrine única do Discord.");
+  return {
+    ...configureDiscordStorefrontBanner(
+      cardToDiscordPayload(normalized, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      }),
+      customization,
+      INTEGRATED_STOREFRONT_SELECT_ACTION,
+    ),
+    allowed_mentions: { parse: [] },
+  };
+}
+
+/** The Robux flow has its own payment button and must never enter a catalog selector. */
+export function catalogStoresForIntegratedStorefront(catalog: BotCatalogGame[]) {
+  return catalog.filter((store) => {
+    const name = (store.catalogStoreName ?? store.name).trim().toLocaleLowerCase("pt-BR");
+    return !IS_GWSTORE || name !== "robux";
   });
 }
 
