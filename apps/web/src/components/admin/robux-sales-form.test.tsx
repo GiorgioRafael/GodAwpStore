@@ -58,7 +58,7 @@ describe("RobuxSalesForm", () => {
     const channel = screen.getByLabelText("Canal da mensagem de Robux");
     expect(channel).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "#robux" })).toBeInTheDocument();
-    expect(screen.getByText("1.000 Robux = R$ 42,00")).toBeInTheDocument();
+    expect(screen.getByText("1.000 Robux = R$ 40,00")).toBeInTheDocument();
     const publish = screen.getByRole("button", { name: "Publicar mensagem" });
     expect(publish).toBeEnabled();
     await user.selectOptions(channel, "");

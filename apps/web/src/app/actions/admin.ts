@@ -1264,7 +1264,7 @@ export async function publishDiscordRobuxStorefrontAction(
     revalidatePath("/configuracoes");
     return {
       ok: true,
-      message: `Mensagem de Robux publicada em #${published.channel_name}. O comprador verá o preço de R$ 42,00 por 1.000 Robux antes de pagar.`,
+      message: `Mensagem de Robux publicada em #${published.channel_name}. O comprador verá o preço de R$ 40,00 por 1.000 Robux antes de pagar.`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

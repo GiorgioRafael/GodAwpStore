@@ -170,7 +170,7 @@ async function openRobuxDeliveryTicket(confirmation: {
       productName: "Robux",
       quantity: claim.robuxQuantity,
       paidAmountCents: claim.paidAmountCents,
-      controls: false,
+      controls: "robux",
     });
     await robux.completeTicket(claim.orderId, ticket.channelId);
     return Response.json({ received: true, robux: "paid", ticket: "open" });

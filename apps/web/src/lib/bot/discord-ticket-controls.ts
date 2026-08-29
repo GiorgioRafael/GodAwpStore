@@ -135,6 +135,44 @@ export function buildPaidTicketControlComponents(
   ];
 }
 
+/**
+ * Robux is delivered manually through a Gamepass, so the buyer keeps sending
+ * the Roblox nick in the ticket. The team still gets the same delivery and
+ * closing controls used by item-sale tickets.
+ */
+export function buildRobuxTicketControlComponents(
+  orderId: string,
+  customization: BotMessageCustomization,
+) {
+  return [
+    {
+      type: 1,
+      components: [
+        {
+          type: 2,
+          style: 3,
+          custom_id: ticketDeliveryInteractionId(orderId),
+          label: interpolateBotMessageLimited(
+            customization.ticket.deliveryButtonLabel,
+            {},
+            80,
+          ),
+        },
+        {
+          type: 2,
+          style: 4,
+          custom_id: ticketCloseInteractionId(orderId),
+          label: interpolateBotMessageLimited(
+            customization.ticket.closeButtonLabel,
+            {},
+            80,
+          ),
+        },
+      ],
+    },
+  ];
+}
+
 export async function synchronizeOpenDiscordTicketControls(
   input: {
     orderId: string;

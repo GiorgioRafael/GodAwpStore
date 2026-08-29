@@ -43,6 +43,7 @@ type DiscordMessage = {
 };
 
 export type PaidTicketDeliveryOrder = {
+  source?: "items" | "robux";
   orderId: string;
   guildId: string;
   buyerDiscordId: string;
@@ -58,6 +59,7 @@ export type PaidTicketDeliveryOrder = {
 export interface DiscordTicketDeliveryRepository {
   find(orderId: string): Promise<PaidTicketDeliveryOrder | null>;
   complete(input: {
+    source?: "robux";
     orderId: string;
     discordGuildId: string;
     ticketChannelId: string;
@@ -71,6 +73,21 @@ export interface DiscordTicketDeliveryRepository {
 }
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
+type DeliveryRpcRow = {
+  completed_order_id: string;
+  was_completed: boolean;
+  order_status: string;
+  ticket_status: string;
+  ticket_channel_id: string;
+  delivery_completed_at: string;
+  auto_close_at: string;
+  delivered_by_discord_user_id: string;
+};
+type UntypedRpcClient = {
+  rpc: (name: string, args: Record<string, unknown>) => {
+    single: () => Promise<{ data: DeliveryRpcRow; error: { message: string } | null }>;
+  };
+};
 
 export class SupabaseDiscordTicketDeliveryRepository
   implements DiscordTicketDeliveryRepository
@@ -86,48 +103,86 @@ export class SupabaseDiscordTicketDeliveryRepository
       .eq("id", orderId)
       .maybeSingle();
     if (orderError) throw new Error(orderError.message);
-    if (!order?.discord_ticket_channel_id) return null;
+    if (order?.discord_ticket_channel_id) {
+      const { data: guild, error: guildError } = await this.client
+        .from("guilds")
+        .select("discord_guild_id")
+        .eq("id", order.guild_id)
+        .maybeSingle();
+      if (guildError) throw new Error(guildError.message);
+      if (!guild) return null;
 
-    const { data: guild, error: guildError } = await this.client
+      const { data: items, error: itemsError } = await this.client
+        .from("order_items")
+        .select("quantity,products(name)")
+        .eq("order_id", order.id)
+        .order("position");
+      if (itemsError) throw new Error(itemsError.message);
+
+      return {
+        source: "items",
+        orderId: order.id,
+        guildId: guild.discord_guild_id,
+        buyerDiscordId: order.buyer_discord_id,
+        channelId: order.discord_ticket_channel_id,
+        ticketStatus: order.discord_ticket_status,
+        orderStatus: order.status,
+        paymentStatus: order.payment_status,
+        paidAt: order.paid_at,
+        itemSummary: (items ?? []).map((item) => ({
+          name: item.products?.name ?? "Produto",
+          quantity: Math.max(Number(item.quantity) || 1, 1),
+        })),
+        totalCents: Math.max(Number(order.sale_price_cents) || 0, 0),
+      };
+    }
+
+    const { data: robuxOrder, error: robuxOrderError } = await this.client
+      .from("robux_orders")
+      .select(
+        "id,guild_id,buyer_discord_id,status,payment_status,paid_at,amount_cents,discord_ticket_status,discord_ticket_channel_id",
+      )
+      .eq("id", orderId)
+      .maybeSingle();
+    if (robuxOrderError) throw new Error(robuxOrderError.message);
+    if (!robuxOrder?.discord_ticket_channel_id) return null;
+
+    const { data: robuxGuild, error: robuxGuildError } = await this.client
       .from("guilds")
       .select("discord_guild_id")
-      .eq("id", order.guild_id)
+      .eq("id", robuxOrder.guild_id)
       .maybeSingle();
-    if (guildError) throw new Error(guildError.message);
-    if (!guild) return null;
-
-    const { data: items, error: itemsError } = await this.client
-      .from("order_items")
-      .select("quantity,products(name)")
-      .eq("order_id", order.id)
-      .order("position");
-    if (itemsError) throw new Error(itemsError.message);
+    if (robuxGuildError) throw new Error(robuxGuildError.message);
+    if (!robuxGuild) return null;
 
     return {
-      orderId: order.id,
-      guildId: guild.discord_guild_id,
-      buyerDiscordId: order.buyer_discord_id,
-      channelId: order.discord_ticket_channel_id,
-      ticketStatus: order.discord_ticket_status,
-      orderStatus: order.status,
-      paymentStatus: order.payment_status,
-      paidAt: order.paid_at,
-      itemSummary: (items ?? []).map((item) => ({
-        name: item.products?.name ?? "Produto",
-        quantity: Math.max(Number(item.quantity) || 1, 1),
-      })),
-      totalCents: Math.max(Number(order.sale_price_cents) || 0, 0),
+      source: "robux",
+      orderId: robuxOrder.id,
+      guildId: robuxGuild.discord_guild_id,
+      buyerDiscordId: robuxOrder.buyer_discord_id,
+      channelId: robuxOrder.discord_ticket_channel_id,
+      ticketStatus: robuxOrder.discord_ticket_status,
+      orderStatus: robuxOrder.status,
+      paymentStatus: robuxOrder.payment_status,
+      paidAt: robuxOrder.paid_at,
+      itemSummary: [{ name: "Robux", quantity: 1 }],
+      totalCents: Math.max(Number(robuxOrder.amount_cents) || 0, 0),
     };
   }
 
   async complete(input: {
+    source?: "robux";
     orderId: string;
     discordGuildId: string;
     ticketChannelId: string;
     deliveredByDiscordUserId: string;
   }) {
-    const { data, error } = await this.client
-      .rpc("complete_paid_order_discord_delivery", {
+    const rpcName =
+      input.source === "robux"
+        ? "complete_robux_discord_ticket_delivery"
+        : "complete_paid_order_discord_delivery";
+    const { data, error } = await (this.client as unknown as UntypedRpcClient)
+      .rpc(rpcName, {
         p_order_id: input.orderId,
         p_discord_guild_id: input.discordGuildId,
         p_ticket_channel_id: input.ticketChannelId,
@@ -137,7 +192,7 @@ export class SupabaseDiscordTicketDeliveryRepository
     if (error) throw new Error(error.message);
     if (
       data.completed_order_id !== input.orderId ||
-      data.order_status !== "delivered" ||
+      data.order_status !== (input.source === "robux" ? "paid" : "delivered") ||
       data.ticket_status !== "open" ||
       data.ticket_channel_id !== input.ticketChannelId ||
       data.delivered_by_discord_user_id !== input.deliveredByDiscordUserId ||
@@ -288,6 +343,7 @@ export async function completeDiscordTicketDelivery(
       discordGuildId: context.guildId,
       ticketChannelId: context.channelId,
       deliveredByDiscordUserId: context.userId,
+      ...(order.source === "robux" ? { source: "robux" as const } : {}),
     });
 
     if (completed.wasCompleted && deliveryLogChannelId) {
@@ -524,7 +580,9 @@ function isEligibleOrder(
     order.guildId === context.guildId &&
     order.channelId === context.channelId &&
     order.ticketStatus === "open" &&
-    ["paid", "processing", "delivered"].includes(order.orderStatus) &&
+    (order.source === "robux"
+      ? order.orderStatus === "paid"
+      : ["paid", "processing", "delivered"].includes(order.orderStatus)) &&
     order.paymentStatus === "paid" &&
     order.paidAt !== null &&
     SNOWFLAKE_PATTERN.test(order.buyerDiscordId)

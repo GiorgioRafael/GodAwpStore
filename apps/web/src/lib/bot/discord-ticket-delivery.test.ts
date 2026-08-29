@@ -286,6 +286,34 @@ describe("Discord paid-ticket delivery message", () => {
 
     expect(requests.some((request) => request.method === "POST")).toBe(false);
   });
+
+  it("usa a conclusão própria de Robux e mantém a mensagem de avaliação", async () => {
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+    const deliveryRepository = repository({
+      source: "robux",
+      orderStatus: "paid",
+      itemSummary: [{ name: "Robux", quantity: 1 }],
+      totalCents: 4_000,
+    });
+
+    await expect(
+      completeDiscordTicketDelivery(interaction(), settings, {
+        repository: deliveryRepository,
+        fetcher: deliveryFetcher(requests),
+      }),
+    ).resolves.toMatchObject({ status: "sent", feedbackChannelId });
+
+    expect(deliveryRepository.complete).toHaveBeenCalledWith({
+      source: "robux",
+      orderId,
+      discordGuildId: guildId,
+      ticketChannelId: channelId,
+      deliveredByDiscordUserId: adminId,
+    });
+    expect(
+      requests.find((request) => request.url.endsWith(`/channels/${channelId}/messages`))?.body,
+    ).toMatchObject({ content: expect.stringContaining(`<#${feedbackChannelId}>`) });
+  });
 });
 
 function interaction(userId = adminId) {

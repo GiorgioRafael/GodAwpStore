@@ -39,6 +39,7 @@ export type NativeDiscordTicketCloseInteraction =
   | { kind: "cancel"; orderId: string };
 
 export type DiscordTicketCloseClaim = {
+  source?: "items" | "robux";
   orderId: string;
   claimed: boolean;
   alreadyClosed: boolean;
@@ -56,14 +57,34 @@ export interface DiscordTicketCloseRepository {
     claimToken: string;
   }): Promise<DiscordTicketCloseClaim>;
   complete(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
   }): Promise<void>;
-  release(input: { orderId: string; claimToken: string }): Promise<void>;
+  release(input: { source?: "robux"; orderId: string; claimToken: string }): Promise<void>;
 }
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
+type CloseRpcRow = {
+  claimed_order_id: string;
+  claimed: boolean;
+  already_closed: boolean;
+  ticket_status: string;
+  ticket_channel_id: string | null;
+  claim_token: string | null;
+};
+type UntypedRpcClient = {
+  rpc: (name: string, args: Record<string, unknown>) => Promise<{
+    data: unknown;
+    error: { message: string; code?: string } | null;
+  }> & {
+    single: () => Promise<{
+      data: CloseRpcRow;
+      error: { message: string; code?: string } | null;
+    }>;
+  };
+};
 
 export class SupabaseDiscordTicketCloseRepository
   implements DiscordTicketCloseRepository
@@ -77,8 +98,15 @@ export class SupabaseDiscordTicketCloseRepository
     closedByDiscordUserId: string;
     claimToken: string;
   }): Promise<DiscordTicketCloseClaim> {
-    const { data, error } = await this.client
-      .rpc("claim_discord_ticket_close", {
+    const { data: robuxOrder, error: robuxOrderError } = await this.client
+      .from("robux_orders")
+      .select("id")
+      .eq("id", input.orderId)
+      .maybeSingle();
+    if (robuxOrderError) throw repositoryError(robuxOrderError);
+    const source = robuxOrder ? "robux" : "items";
+    const { data, error } = await (this.client as unknown as UntypedRpcClient)
+      .rpc(source === "robux" ? "claim_robux_discord_ticket_close" : "claim_discord_ticket_close", {
         p_order_id: input.orderId,
         p_discord_guild_id: input.discordGuildId,
         p_ticket_channel_id: input.ticketChannelId,
@@ -88,6 +116,7 @@ export class SupabaseDiscordTicketCloseRepository
       .single();
     if (error) throw repositoryError(error);
     return {
+      source,
       orderId: data.claimed_order_id,
       claimed: data.claimed,
       alreadyClosed: data.already_closed,
@@ -98,23 +127,34 @@ export class SupabaseDiscordTicketCloseRepository
   }
 
   async complete(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
   }): Promise<void> {
-    const { error } = await this.client.rpc("complete_discord_ticket_close", {
+    const { error } = await (this.client as unknown as UntypedRpcClient).rpc(
+      input.source === "robux"
+        ? "complete_robux_discord_ticket_close"
+        : "complete_discord_ticket_close",
+      {
       p_order_id: input.orderId,
       p_ticket_channel_id: input.ticketChannelId,
       p_claim_token: input.claimToken,
-    });
+      },
+    );
     if (error) throw repositoryError(error);
   }
 
-  async release(input: { orderId: string; claimToken: string }): Promise<void> {
-    const { error } = await this.client.rpc("release_discord_ticket_close", {
+  async release(input: { source?: "robux"; orderId: string; claimToken: string }): Promise<void> {
+    const { error } = await (this.client as unknown as UntypedRpcClient).rpc(
+      input.source === "robux"
+        ? "release_robux_discord_ticket_close"
+        : "release_discord_ticket_close",
+      {
       p_order_id: input.orderId,
       p_claim_token: input.claimToken,
-    });
+      },
+    );
     if (error) throw repositoryError(error);
   }
 }
@@ -254,7 +294,12 @@ export async function completeDiscordTicketClose(
 
   const repository = options.repository ?? new SupabaseDiscordTicketCloseRepository();
   const requestedClaimToken = (options.createClaimToken ?? randomUUID)();
-  let activeClaim: { orderId: string; ticketChannelId: string; claimToken: string } | null = null;
+  let activeClaim: {
+    source: "items" | "robux";
+    orderId: string;
+    ticketChannelId: string;
+    claimToken: string;
+  } | null = null;
   let deletionOutcome: "not_attempted" | "not_removed" | "ambiguous" | "removed" =
     "not_attempted";
 
@@ -286,6 +331,7 @@ export async function completeDiscordTicketClose(
       );
     }
     activeClaim = {
+      source: claim.source === "robux" ? "robux" : "items",
       orderId: claim.orderId,
       ticketChannelId: claim.ticketChannelId,
       claimToken: claim.claimToken,
@@ -378,6 +424,7 @@ export async function completeDiscordTicketClose(
         await repository.release({
           orderId: activeClaim.orderId,
           claimToken: activeClaim.claimToken,
+          ...(activeClaim.source === "robux" ? { source: "robux" as const } : {}),
         });
       } catch (releaseError) {
         logCloseError("release", releaseError);
@@ -400,7 +447,12 @@ export async function completeDiscordTicketClose(
 
 async function completeClaimWithRetry(
   repository: DiscordTicketCloseRepository,
-  claim: { orderId: string; ticketChannelId: string; claimToken: string },
+  claim: {
+    source: "items" | "robux";
+    orderId: string;
+    ticketChannelId: string;
+    claimToken: string;
+  },
   options: {
     wait?: (milliseconds: number) => Promise<void>;
     now?: () => number;
@@ -414,7 +466,12 @@ async function completeClaimWithRetry(
   for (let attempt = 0; attempt <= COMPLETE_RETRY_DELAYS_MS.length; attempt += 1) {
     if (attempt > 0 && now() >= deadline) break;
     try {
-      await repository.complete(claim);
+      await repository.complete({
+        orderId: claim.orderId,
+        ticketChannelId: claim.ticketChannelId,
+        claimToken: claim.claimToken,
+        ...(claim.source === "robux" ? { source: "robux" as const } : {}),
+      });
       return;
     } catch (error) {
       lastError = error;

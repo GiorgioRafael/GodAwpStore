@@ -16,6 +16,7 @@ import {
   samePermissionOverwrites,
   ticketTopicMarker,
   welcomeMessageMarker,
+  buildRobuxTicketControlComponents,
   type DiscordPermissionOverwrite,
 } from "./discord-ticket-controls";
 import {
@@ -57,8 +58,11 @@ export type PaidOrderTicketInput = {
   quantity: number;
   paidAmountCents: number;
   parentChannelId?: string | null;
-  /** A Robux sale uses the same private ticket shell, but not the item-order controls. */
-  controls?: boolean;
+  /**
+   * Robux uses the same delivery and close controls, but the nickname stays a
+   * normal message because the delivery is done through Gamepass.
+   */
+  controls?: boolean | "robux";
 };
 
 export type PaidOrderTicketResult = {
@@ -244,7 +248,7 @@ export function paidTicketWelcomeMessage(
   const orderMarker = welcomeMessageMarker(input.orderId);
   const message = customization.ticket;
   const nicknamePrompt =
-    input.controls === false
+    input.controls === false || input.controls === "robux"
       ? "Para concluir o atendimento, envie seu nick no jogo neste ticket."
       : interpolateBotMessageLimited(message.nicknamePromptText, {}, 1_000);
   const configuredNotificationUserIds = normalizeTicketNotificationDiscordUserIds(
@@ -297,7 +301,12 @@ export function paidTicketWelcomeMessage(
         footer: { text: orderMarker },
       },
     ],
-    components: input.controls === false ? [] : buildPaidTicketControlComponents(input.orderId, customization),
+    components:
+      input.controls === false
+        ? []
+        : input.controls === "robux"
+          ? buildRobuxTicketControlComponents(input.orderId, customization)
+          : buildPaidTicketControlComponents(input.orderId, customization),
   };
 }
 

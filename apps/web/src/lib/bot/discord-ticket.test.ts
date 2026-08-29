@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 
 vi.mock("server-only", () => ({}));
 vi.mock("./message-customization-server", async () => {
@@ -233,6 +234,37 @@ describe("Discord paid-order ticket", () => {
     expect(payload.content).toContain("envie seu nick no jogo neste ticket");
     expect(payload.content).not.toContain("botão abaixo");
     expect(payload.components).toEqual([]);
+  });
+
+  it("gives a Robux ticket the delivery and close controls without the item nickname modal", () => {
+    const payload = ticket.paidTicketWelcomeMessage({
+      ...order,
+      productName: "Robux",
+      quantity: 1_000,
+      paidAmountCents: 4_000,
+      controls: "robux",
+    });
+
+    expect(payload.content).toContain("envie seu nick no jogo neste ticket");
+    expect(payload.components).toEqual([
+      {
+        type: 1,
+        components: [
+          {
+            type: 2,
+            style: 3,
+            custom_id: `gwstore_ticket_delivery:${order.orderId}`,
+            label: DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.deliveryButtonLabel,
+          },
+          {
+            type: 2,
+            style: 4,
+            custom_id: `gwstore_ticket_close:${order.orderId}`,
+            label: DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.closeButtonLabel,
+          },
+        ],
+      },
+    ]);
   });
 
   it("colapsa concorrência e reutiliza o mesmo ticket sem duplicar mensagem", async () => {

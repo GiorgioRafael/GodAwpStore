@@ -181,6 +181,36 @@ describe("Discord ticket close interactions", () => {
     ).toMatchObject({ content: "Fechado.", components: [] });
   });
 
+  it("fecha o ticket de Robux pelo mesmo fluxo confirmado", async () => {
+    const repository = fakeRepository({
+      claim: async () => ({
+        source: "robux",
+        orderId,
+        claimed: true,
+        alreadyClosed: false,
+        ticketStatus: "open",
+        ticketChannelId: channelId,
+        claimToken,
+      }),
+    });
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+
+    await expect(
+      completeDiscordTicketClose(interaction("confirm"), settings, {
+        repository,
+        fetcher: discordFetcher(requests),
+        createClaimToken: () => claimToken,
+      }),
+    ).resolves.toEqual({ status: "closed", channelId });
+
+    expect(repository.complete).toHaveBeenCalledWith({
+      source: "robux",
+      orderId,
+      ticketChannelId: channelId,
+      claimToken,
+    });
+  });
+
   it("nao exclui um canal cujo servidor ou topico nao corresponde ao pedido", async () => {
     const repository = fakeRepository();
     const requests: Array<{ url: string; method: string; body: unknown }> = [];

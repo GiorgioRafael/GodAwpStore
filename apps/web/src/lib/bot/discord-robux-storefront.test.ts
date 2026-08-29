@@ -20,7 +20,7 @@ describe("Discord Robux storefront", () => {
       ],
     });
     expect(payload.embeds[0]?.description).toContain("confira o valor antes de gerar o Pix");
-    expect(payload.embeds[0]?.fields?.[0]?.value).toBe("**1.000 Robux = R$ 42,00**");
+    expect(payload.embeds[0]?.fields?.[0]?.value).toBe("**1.000 Robux = R$ 40,00**");
     expect(payload.embeds[0]?.image).toEqual({
       url: "https://gwstore.vercel.app/brands/gwstore-storefront-banner.png",
     });

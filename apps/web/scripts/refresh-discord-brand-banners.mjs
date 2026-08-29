@@ -51,10 +51,10 @@ try {
     const robuxStorefront = asObject(configuration.robux_storefront);
     const channelId = snowflake(robuxStorefront.channel_id);
     const messageId = snowflake(robuxStorefront.message_id);
-    if (channelId && messageId && robuxBannerUrl) {
+    if (channelId && messageId) {
       if (await refreshBanner(
         "Robux",
-        () => replaceEmbedBanner(channelId, messageId, robuxBannerUrl),
+        () => refreshRobuxStorefront(channelId, messageId, robuxBannerUrl),
       )) robux += 1;
     }
   }
@@ -122,6 +122,30 @@ async function replaceEmbedBanner(channelId, messageId, bannerUrl) {
   const embeds = message.embeds.map((embed, index) => {
     if (index !== 0 || !asObject(embed)) return embed;
     return { ...writableEmbed(embed), image: { url: bannerUrl } };
+  });
+  await patchDiscordMessage(channelId, messageId, { embeds });
+  return true;
+}
+
+// The Robux message is a regular Discord embed, unlike catalog storefronts.
+// Refresh its price in the same idempotent production pass that keeps banners
+// current, while preserving its copy and payment button.
+async function refreshRobuxStorefront(channelId, messageId, bannerUrl) {
+  const message = await getDiscordMessage(channelId, messageId);
+  if (!Array.isArray(message.embeds) || message.embeds.length === 0) return false;
+  const embeds = message.embeds.map((embed, index) => {
+    if (index !== 0 || !asObject(embed)) return embed;
+    const writable = writableEmbed(embed);
+    const fields = Array.isArray(writable.fields) ? writable.fields : [];
+    const nextFields = fields.map((field) => {
+      if (!asObject(field) || field.name !== "Preço") return field;
+      return { ...field, value: "**1.000 Robux = R$ 40,00**" };
+    });
+    return {
+      ...writable,
+      fields: nextFields,
+      ...(bannerUrl ? { image: { url: bannerUrl } } : {}),
+    };
   });
   await patchDiscordMessage(channelId, messageId, { embeds });
   return true;
