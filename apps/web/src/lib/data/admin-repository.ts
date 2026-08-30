@@ -50,6 +50,30 @@ export type PaginatedOrders = {
   totalPages: number;
 };
 
+export type DeliveryLogRow = Pick<
+  Tables<"orders">,
+  | "id"
+  | "buyer_discord_id"
+  | "sale_price_cents"
+  | "quantity"
+  | "product_id"
+  | "discord_ticket_channel_id"
+  | "discord_ticket_delivery_completed_at"
+  | "discord_ticket_delivery_completed_by_discord_user_id"
+  | "delivered_at"
+  | "created_at"
+> & {
+  items: AdminOrder["items"];
+};
+
+export type PaginatedDeliveryLog = {
+  rows: DeliveryLogRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type ListOrdersOptions = {
   period: OrdersPeriodRange;
   status: OrdersStatusFilter;
@@ -348,6 +372,74 @@ export async function listOrders(
   return {
     rows: orders.map((order) => ({
       ...order,
+      items: itemsByOrder.get(order.id) ?? [],
+    })),
+    total,
+    page,
+    pageSize,
+    totalPages,
+  };
+}
+
+/**
+ * Records only deliveries actually concluded by the store flow. It is separate
+ * from the order list so staff can answer "what was already sent?" without
+ * interpreting payment or ticket statuses.
+ */
+export async function listDeliveryLog(options: {
+  page: number;
+  pageSize: number;
+}): Promise<PaginatedDeliveryLog> {
+  const supabase = await client();
+  const page = Math.max(1, Math.trunc(options.page));
+  const pageSize = Math.min(Math.max(Math.trunc(options.pageSize), 1), 100);
+  const offset = (page - 1) * pageSize;
+  const { data, error, count } = await supabase
+    .from("orders")
+    .select("*", { count: "exact" })
+    .eq("status", "delivered")
+    .order("discord_ticket_delivery_completed_at", { ascending: false, nullsFirst: false })
+    .order("delivered_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + pageSize - 1);
+  assertQuerySucceeded(error, "carregar o log de entregas");
+
+  const orders = data ?? [];
+  const total = count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (orders.length === 0) return { rows: [], total, page, pageSize, totalPages };
+
+  const { data: itemRows, error: itemError } = await supabase
+    .from("order_items")
+    .select("order_id,position,product_id,quantity,products(name)")
+    .in("order_id", orders.map((order) => order.id))
+    .order("position");
+  assertQuerySucceeded(itemError, "carregar os itens entregues");
+
+  const itemsByOrder = new Map<string, AdminOrder["items"]>();
+  for (const item of itemRows ?? []) {
+    const items = itemsByOrder.get(item.order_id) ?? [];
+    items.push({
+      productId: item.product_id,
+      productName: item.products?.name ?? "Produto",
+      quantity: toSafeNumber(item.quantity),
+    });
+    itemsByOrder.set(item.order_id, items);
+  }
+
+  return {
+    rows: orders.map((order) => ({
+      id: order.id,
+      buyer_discord_id: order.buyer_discord_id,
+      sale_price_cents: order.sale_price_cents,
+      quantity: order.quantity,
+      product_id: order.product_id,
+      discord_ticket_channel_id: order.discord_ticket_channel_id,
+      discord_ticket_delivery_completed_at: order.discord_ticket_delivery_completed_at,
+      discord_ticket_delivery_completed_by_discord_user_id:
+        order.discord_ticket_delivery_completed_by_discord_user_id,
+      delivered_at: order.delivered_at,
+      created_at: order.created_at,
       items: itemsByOrder.get(order.id) ?? [],
     })),
     total,

@@ -20,6 +20,7 @@ import {
   getOrderDailySeries,
   getPaidOrderSummary,
   getPaidPixMetrics,
+  listDeliveryLog,
   listOrders,
 } from "./admin-repository";
 
@@ -186,5 +187,63 @@ describe("listOrders", () => {
 
     await listOrders({ period: { from: null, to: null }, status: "cancelled", page: 1, pageSize: 50 });
     expect(query.in).toHaveBeenCalledWith("status", ["cancelled", "expired"]);
+  });
+});
+
+describe("listDeliveryLog", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.createServerSupabaseClient.mockResolvedValue({ from: mocks.from, rpc: mocks.rpc });
+  });
+
+  it("lista somente pedidos entregues, trazendo seus itens em ordem", async () => {
+    const orderQuery = { select: vi.fn(), eq: vi.fn(), order: vi.fn(), range: vi.fn() };
+    orderQuery.select.mockReturnValue(orderQuery);
+    orderQuery.eq.mockReturnValue(orderQuery);
+    orderQuery.order.mockReturnValue(orderQuery);
+    orderQuery.range.mockResolvedValue({
+      data: [{
+        id: "71000000-0000-4000-8000-000000000001",
+        product_id: "71000000-0000-4000-8000-000000000003",
+        buyer_discord_id: "123456789012345678",
+        sale_price_cents: 2_500,
+        quantity: 1,
+        discord_ticket_delivery_completed_at: "2026-08-30T12:00:00.000Z",
+        discord_ticket_delivery_completed_by_discord_user_id: "223456789012345678",
+        delivered_at: "2026-08-30T12:00:00.000Z",
+        created_at: "2026-08-30T10:00:00.000Z",
+      }],
+      count: 1,
+      error: null,
+    });
+
+    const itemQuery = { select: vi.fn(), in: vi.fn(), order: vi.fn() };
+    itemQuery.select.mockReturnValue(itemQuery);
+    itemQuery.in.mockReturnValue(itemQuery);
+    itemQuery.order.mockResolvedValue({
+      data: [{
+        order_id: "71000000-0000-4000-8000-000000000001",
+        product_id: "71000000-0000-4000-8000-000000000003",
+        position: 0,
+        quantity: 2,
+        products: { name: "Item entregue" },
+      }],
+      error: null,
+    });
+    mocks.from.mockImplementation((table: string) => table === "orders" ? orderQuery : itemQuery);
+
+    await expect(listDeliveryLog({ page: 1, pageSize: 50 })).resolves.toMatchObject({
+      total: 1,
+      rows: [{
+        buyer_discord_id: "123456789012345678",
+        items: [{ productName: "Item entregue", quantity: 2 }],
+      }],
+    });
+    expect(orderQuery.eq).toHaveBeenCalledWith("status", "delivered");
+    expect(orderQuery.order).toHaveBeenCalledWith(
+      "discord_ticket_delivery_completed_at",
+      { ascending: false, nullsFirst: false },
+    );
+    expect(itemQuery.in).toHaveBeenCalledWith("order_id", ["71000000-0000-4000-8000-000000000001"]);
   });
 });

@@ -58,6 +58,7 @@ export const navigationGroups: NavigationGroup[] = [
     label: "Operação",
     items: [
       { label: "Pedidos", href: "/pedidos", icon: ClipboardList },
+      { label: "Entregas", href: "/entregas", icon: PackageCheck },
       { label: "Saldos", href: "/saldos", icon: Coins },
       { label: "Saques", href: "/saques", icon: Landmark },
     ],
