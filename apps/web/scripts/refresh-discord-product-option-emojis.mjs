@@ -34,10 +34,15 @@ try {
   for (const guild of guilds) {
     for (const storefront of storefrontConfigurations(asObject(guild.configuration))) {
       for (const messageId of storefront.message_ids) {
-        const updated = await refreshStorefrontOptions(storefront.channel_id, messageId, emojis);
-        if (updated > 0) {
-          storefronts += 1;
-          options += updated;
+        try {
+          const updated = await refreshStorefrontOptions(storefront.channel_id, messageId, emojis);
+          if (updated > 0) {
+            storefronts += 1;
+            options += updated;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "erro desconhecido";
+          console.warn(`[discord-product-option-emojis] vitrine ignorada: ${message}`);
         }
       }
     }
