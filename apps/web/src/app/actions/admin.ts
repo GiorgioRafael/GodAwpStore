@@ -1097,10 +1097,7 @@ export async function deleteProductAction(
       };
     }
     if (error.message.includes("product_has_history")) {
-      return {
-        ok: false,
-        message: "Este produto possui histórico de estoque, pedido, sorteio ou roleta e só pode ser arquivado.",
-      };
+      return removeHistoricalProductFromCatalog(supabase, parsed.data);
     }
     if (error.message.includes("product_not_found")) {
       return { ok: false, message: "Produto não encontrado ou já excluído." };
@@ -1134,6 +1131,43 @@ export async function deleteProductAction(
   return emojiWarning
     ? { ...synchronized, message: `${synchronized.message}${emojiWarning}` }
     : synchronized;
+}
+
+/**
+ * A product used by an order, inventory batch or roulette entry cannot be
+ * physically removed without breaking the historical record. From the
+ * operator's perspective it still needs to be "deleted": it must disappear
+ * from the catalog and Discord storefront immediately. Archive it as the
+ * transparent fallback instead of making the button look broken.
+ */
+async function removeHistoricalProductFromCatalog(
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>,
+  productId: string,
+): Promise<AdminActionState> {
+  if (!supabase) throw new Error("Supabase não configurado.");
+
+  const { data, error } = await supabase
+    .from("products")
+    .update({ status: "archived", archived_at: new Date().toISOString() })
+    .eq("id", productId)
+    .is("archived_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) return databaseFailure(error.code);
+  if (!data) {
+    return {
+      ok: false,
+      message: "O produto já foi removido ou mudou enquanto você tentava excluí-lo. Recarregue a página.",
+    };
+  }
+
+  revalidatePath("/catalogo/produtos");
+  revalidatePath("/estoque");
+  revalidatePath("/dashboard");
+  revalidatePath("/configuracoes");
+  return synchronizeCatalogStorefront(
+    "Produto removido da loja. O histórico de estoque, pedidos, sorteios e roleta foi preservado.",
+  );
 }
 
 export async function moveCatalogProductsAction(

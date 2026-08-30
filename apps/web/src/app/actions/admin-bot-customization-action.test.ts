@@ -58,6 +58,7 @@ vi.mock("@/lib/bot/message-customization-server", () => ({
 }));
 
 import {
+  deleteProductAction,
   saveBotMessageCustomizationAction,
   saveProductAction,
   saveProductOrderAction,
@@ -381,6 +382,47 @@ describe("action de produtos", () => {
     expect(result).toEqual({
       ok: true,
       message: "Produto e estoque criados. Vitrine do Discord sincronizada.",
+    });
+  });
+
+  it("remove da vitrine o produto zerado que possui histórico", async () => {
+    const productId = "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae";
+    const rpc = vi.fn(async () => ({
+      data: null,
+      error: { message: "product_has_history" },
+    }));
+    const maybeSingle = vi.fn(async () => ({
+      data: { id: productId },
+      error: null,
+    }));
+    const archiveQuery = {
+      eq: vi.fn(),
+      is: vi.fn(),
+      select: vi.fn(),
+      maybeSingle,
+    };
+    archiveQuery.eq.mockReturnValue(archiveQuery);
+    archiveQuery.is.mockReturnValue(archiveQuery);
+    archiveQuery.select.mockReturnValue(archiveQuery);
+    const update = vi.fn(() => archiveQuery);
+    mocks.createServerSupabaseClient.mockResolvedValue({
+      rpc,
+      from: vi.fn(() => ({ update })),
+    });
+
+    const result = await deleteProductAction(productId);
+
+    expect(rpc).toHaveBeenCalledWith("admin_delete_unused_product", {
+      p_product_id: productId,
+    });
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "archived" }),
+    );
+    expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
+    expect(result).toEqual({
+      ok: true,
+      message:
+        "Produto removido da loja. O histórico de estoque, pedidos, sorteios e roleta foi preservado. Vitrine do Discord sincronizada.",
     });
   });
 });

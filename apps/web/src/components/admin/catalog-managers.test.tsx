@@ -240,35 +240,35 @@ describe("gestores do catálogo", () => {
     );
   });
 
-  it("confirma a exclusão definitiva de produto sem estoque", async () => {
+  it("remove produto sem estoque da loja", async () => {
     const user = userEvent.setup();
     const unusedProduct = { ...activeProduct, stock_quantity: 0 };
     render(<ProductsManager products={[unusedProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     await user.click(
-      screen.getByRole("button", { name: `Excluir definitivamente ${unusedProduct.name}` }),
+      screen.getByRole("button", { name: `Excluir ${unusedProduct.name}` }),
     );
     expect(
-      screen.getByRole("heading", { name: "Excluir produto definitivamente" }),
+      screen.getByRole("heading", { name: "Excluir produto" }),
     ).toBeInTheDocument();
     expect(actionMocks.deleteProductAction).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Excluir definitivamente" }));
+    await user.click(screen.getByRole("button", { name: "Excluir produto" }));
     await waitFor(() => {
       expect(actionMocks.deleteProductAction).toHaveBeenCalledWith(unusedProduct.id);
     });
     expect(await screen.findByText("Produto excluído definitivamente.")).toBeInTheDocument();
   });
 
-  it("exige estoque zerado antes da exclusão definitiva", async () => {
+  it("exige estoque zerado antes de remover produto da loja", async () => {
     const user = userEvent.setup();
     render(<ProductsManager products={[activeProduct]} substores={[activeSubstore]} stores={[activeStore]} />);
 
     await user.click(
-      screen.getByRole("button", { name: `Excluir definitivamente ${activeProduct.name}` }),
+      screen.getByRole("button", { name: `Excluir ${activeProduct.name}` }),
     );
     expect(screen.getByText(/Este produto tem 100 unidade/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Excluir definitivamente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Excluir produto" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Arquivar produto" })).toBeEnabled();
   });
 

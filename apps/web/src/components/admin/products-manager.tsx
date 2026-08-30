@@ -503,8 +503,8 @@ export function ProductsManager({ products, substores, stores }: ProductsManager
                     variant="ghost"
                     size="sm"
                     className="text-danger"
-                    aria-label={`Excluir definitivamente ${product.name}`}
-                    title="Excluir produto definitivamente"
+                    aria-label={`Excluir ${product.name}`}
+                    title="Excluir produto"
                     onClick={() => setDeleteRecord({
                       id: product.id,
                       label: product.name,
@@ -590,8 +590,8 @@ function DeleteProductDialog({
     <AdminDialog
       open={Boolean(record)}
       onClose={onClose}
-      title="Excluir produto definitivamente"
-      description="Use esta opção somente para cadastros sem uso. Produtos com histórico continuam disponíveis para arquivamento."
+      title="Excluir produto"
+      description="O item sai da loja e da vitrine do Discord. Se ele já tiver histórico, esse histórico será preservado com segurança."
       footer={
         state.ok ? (
           <Button onClick={onClose}>Concluir</Button>
@@ -612,7 +612,7 @@ function DeleteProductDialog({
               ) : (
                 <Trash2 aria-hidden="true" className="size-4" />
               )}
-              {pending ? "Excluindo..." : "Excluir definitivamente"}
+              {pending ? "Excluindo..." : "Excluir produto"}
             </Button>
           </>
         )
@@ -620,7 +620,7 @@ function DeleteProductDialog({
     >
       <div className="space-y-4">
         <p className="text-sm leading-6 text-muted-strong">
-          Esta ação removerá <strong className="font-semibold text-foreground">{record?.label}</strong> permanentemente e não poderá ser desfeita.
+          Esta ação removerá <strong className="font-semibold text-foreground">{record?.label}</strong> da loja e da vitrine do Discord.
         </p>
         {hasStock ? (
           <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-warning">
@@ -631,7 +631,7 @@ function DeleteProductDialog({
           </div>
         ) : (
           <p className="rounded-xl border border-border bg-surface-muted p-3 text-xs leading-5 text-muted">
-            A exclusão será recusada se existirem pedidos, estoque importado, sorteios, ofertas ou registros da roleta vinculados.
+            Sem histórico, o cadastro é apagado de vez. Com pedidos, estoque, sorteios ou roleta, ele é removido da loja e arquivado automaticamente para não quebrar os registros antigos.
           </p>
         )}
         <ActionFeedback state={state} />
