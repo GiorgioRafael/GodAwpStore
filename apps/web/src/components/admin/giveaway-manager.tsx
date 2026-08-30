@@ -100,6 +100,7 @@ export function GiveawayManager({
   const formId = useId();
   const [guildId, setGuildId] = useState(guilds[0]?.id ?? "");
   const [winnerCount, setWinnerCount] = useState(1);
+  const [requiredValidInvites, setRequiredValidInvites] = useState(0);
   const [prizes, setPrizes] = useState([{
     key: `${formId}-prize-0`,
     productId: "",
@@ -235,18 +236,29 @@ export function GiveawayManager({
             </div>
 
             <div className="grid gap-5 sm:grid-cols-3">
-              <Field label="Indicações válidas" htmlFor={`${formId}-invites`} hint="Por participante" error={fieldError(state, "requiredValidInvites")}>
-                <Input id={`${formId}-invites`} name="requiredValidInvites" type="number" min={0} max={100} defaultValue={1} required />
+              <Field label="Convites obrigatórios" htmlFor={`${formId}-invites`} hint="0 = sem convites" error={fieldError(state, "requiredValidInvites")}>
+                <Input
+                  id={`${formId}-invites`}
+                  name="requiredValidInvites"
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={requiredValidInvites}
+                  onChange={(event) => setRequiredValidInvites(Math.max(0, Number(event.target.value) || 0))}
+                  required
+                />
               </Field>
-              <Field label="Idade mínima da conta" htmlFor={`${formId}-age`} hint="Dias" error={fieldError(state, "minimumAccountAgeDays")}>
-                <Input id={`${formId}-age`} name="minimumAccountAgeDays" type="number" min={0} max={3650} defaultValue={7} required />
+              <Field label="Idade mínima da conta" htmlFor={`${formId}-age`} hint={requiredValidInvites === 0 ? "Usada ao exigir convites" : "Dias"} error={fieldError(state, "minimumAccountAgeDays")}>
+                <Input id={`${formId}-age`} name="minimumAccountAgeDays" type="number" min={0} max={3650} defaultValue={7} disabled={requiredValidInvites === 0} required />
               </Field>
-              <Field label="Permanência mínima" htmlFor={`${formId}-stay`} hint="Horas" error={fieldError(state, "minimumStayMinutes")}>
-                <Input id={`${formId}-stay`} name="minimumStayHours" type="number" min={0} max={720} step="0.5" defaultValue={1} required />
+              <Field label="Permanência mínima" htmlFor={`${formId}-stay`} hint={requiredValidInvites === 0 ? "Usada ao exigir convites" : "Horas"} error={fieldError(state, "minimumStayMinutes")}>
+                <Input id={`${formId}-stay`} name="minimumStayHours" type="number" min={0} max={720} step="0.5" defaultValue={1} disabled={requiredValidInvites === 0} required />
               </Field>
             </div>
             <p className="rounded-xl border border-gold/20 bg-gold/[0.05] px-4 py-3 text-xs leading-5 text-muted">
-              Depois de participar, o usuário cria um convite nativo pelo próprio Discord. O bot identifica quem criou o convite e contabiliza automaticamente as entradas que cumprirem estes critérios.
+              {requiredValidInvites === 0
+                ? "Sem convites obrigatórios: basta o participante clicar em Participar e continuar no servidor até o encerramento."
+                : "Depois de participar, o usuário cria um convite nativo pelo próprio Discord. O bot identifica quem criou o convite e contabiliza automaticamente as entradas que cumprirem estes critérios."}
             </p>
           </CardContent>
           <CardFooter className="flex items-center justify-between gap-3">
@@ -391,7 +403,7 @@ function GiveawayCard({ giveaway }: { giveaway: GiveawayListItem }) {
           </form>
         ) : null}
         {!giveaway.winners.length && giveaway.discordTicketChannelId ? <p className="flex items-center gap-2 text-sm text-success"><Ticket aria-hidden="true" className="size-4" /> Ticket aberto: <span className="font-mono">{giveaway.discordTicketChannelId}</span></p> : !giveaway.winners.length && giveaway.status === "completed" ? <p className="flex items-center gap-2 text-sm text-warning"><Ticket aria-hidden="true" className="size-4" /> Ticket: {giveaway.discordTicketStatus === "failed" ? "tentativa falhou; o cron tentará novamente" : "aguardando abertura"}</p> : null}
-        {giveaway.publicationError ? <p className="rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-xs leading-5 text-[#f3c878]">Anúncio pendente: {giveaway.publicationError}</p> : null}
+        {giveaway.publicationError ? <p className="rounded-xl border border-warning/25 bg-warning/[0.06] p-3 text-xs leading-5 text-[#f3c878]">Anúncio pendente: {giveawayPublicationError(giveaway.publicationError)}</p> : null}
         {giveaway.failureReason ? <p className="rounded-xl border border-danger/25 bg-danger/[0.06] p-3 text-xs leading-5 text-[#ffc0bd]">{giveaway.failureReason}</p> : null}
         <ActionFeedback state={rerollState.message ? rerollState : cancelState.message ? cancelState : publishState} />
       </CardContent>
@@ -432,6 +444,16 @@ function GiveawayStatusBadge({ status }: { status: GiveawayListItem["status"] })
   const labels = { scheduled: "Agendado", active: "Ativo", drawing: "Sorteando", completed: "Concluído", cancelled: "Cancelado", failed: "Sem elegíveis" };
   const tones = { scheduled: "neutral", active: "success", drawing: "warning", completed: "gold", cancelled: "danger", failed: "danger" } as const;
   return <Badge tone={tones[status]}>{labels[status]}</Badge>;
+}
+
+function giveawayPublicationError(error: string) {
+  if (error.includes("(403)")) {
+    return "O bot não pode publicar neste canal. Em Configurações do canal, libere Ver canal, Enviar mensagens e Incorporar links para o cargo do bot; depois clique em Atualizar anúncio.";
+  }
+  if (error.includes("(404)")) {
+    return "A mensagem ou o canal original não existe mais. Escolha um canal disponível e publique novamente.";
+  }
+  return error;
 }
 
 function formatNumber(value: number) { return new Intl.NumberFormat("pt-BR").format(value); }

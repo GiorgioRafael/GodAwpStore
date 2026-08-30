@@ -152,7 +152,7 @@ export async function createGiveawayAction(
       ok: true,
       message: publication
         ? "Sorteio iniciado, estoque reservado e anúncio publicado."
-        : "Sorteio criado e estoque reservado, mas o anúncio precisa ser republicado.",
+        : "Sorteio criado e estoque reservado, mas o bot não conseguiu publicar. Verifique no canal as permissões Ver canal, Enviar mensagens e Incorporar links; depois use Atualizar anúncio.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "erro desconhecido";

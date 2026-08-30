@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const actionMocks = vi.hoisted(() => ({
@@ -51,7 +51,16 @@ describe("GiveawayManager", () => {
     const winnerSelect = screen.getByLabelText("Quantidade de ganhadores") as HTMLSelectElement;
     expect(winnerSelect.options).toHaveLength(5);
     expect(winnerSelect.value).toBe("1");
-    expect(screen.getByLabelText("Indicações válidas")).toBeTruthy();
+    const inviteInput = screen.getByLabelText("Convites obrigatórios") as HTMLInputElement;
+    expect(inviteInput.value).toBe("0");
+    expect(screen.getByText(/Sem convites obrigatórios/)).toBeTruthy();
+    expect(screen.getByLabelText("Idade mínima da conta")).toBeDisabled();
+    expect(screen.getByLabelText("Permanência mínima")).toBeDisabled();
+
+    fireEvent.change(inviteInput, { target: { value: "3" } });
+    expect(inviteInput.value).toBe("3");
+    expect(screen.getByLabelText("Idade mínima da conta")).not.toBeDisabled();
+    expect(screen.getByLabelText("Permanência mínima")).not.toBeDisabled();
     expect(screen.getByLabelText("Observações adicionais")).toBeTruthy();
     expect(screen.getByText(/usuário cria um convite nativo pelo próprio Discord/))
       .toBeTruthy();
