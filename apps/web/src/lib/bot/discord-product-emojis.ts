@@ -183,7 +183,10 @@ async function downloadAndPrepareEmoji(imageUrl: string, fetcher: typeof fetch) 
         background: { r: 0, g: 0, b: 0, alpha: 0 },
         withoutEnlargement: false,
       })
-      .webp({ quality: 90, alphaQuality: 100 })
+      // Discord only accepts PNG, JPEG, or GIF data URIs when an application
+      // emoji is created. Palette PNG also keeps the 128px product thumbnail
+      // comfortably below Discord's 256 KiB limit.
+      .png({ compressionLevel: 9, palette: true })
       .toBuffer();
   } catch {
     throw new Error("A foto do produto não pôde ser convertida em ícone.");
@@ -192,7 +195,7 @@ async function downloadAndPrepareEmoji(imageUrl: string, fetcher: typeof fetch) 
   if (prepared.byteLength > MAX_DISCORD_EMOJI_BYTES) {
     throw new Error("O ícone convertido excede 256 KiB.");
   }
-  return `data:image/webp;base64,${prepared.toString("base64")}`;
+  return `data:image/png;base64,${prepared.toString("base64")}`;
 }
 
 async function readLimitedResponseBody(response: Response, limit: number) {

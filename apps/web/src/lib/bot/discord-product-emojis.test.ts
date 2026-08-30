@@ -53,9 +53,9 @@ describe("sincronização dos ícones de produto no Discord", () => {
     const createCall = fetcher.mock.calls.find(([, init]) => init?.method === "POST");
     const body = JSON.parse(String(createCall?.[1]?.body)) as { name: string; image: string };
     expect(body.name).toMatch(/^gw_[a-f0-9]{12}_[a-f0-9]{8}$/);
-    expect(body.image).toMatch(/^data:image\/webp;base64,/);
-    const webp = Buffer.from(body.image.split(",")[1] ?? "", "base64");
-    await expect(sharp(webp).metadata()).resolves.toMatchObject({ width: 128, height: 128 });
+    expect(body.image).toMatch(/^data:image\/png;base64,/);
+    const png = Buffer.from(body.image.split(",")[1] ?? "", "base64");
+    await expect(sharp(png).metadata()).resolves.toMatchObject({ width: 128, height: 128 });
   });
 
   it("não acessa rede nem banco quando a foto já está sincronizada", async () => {
