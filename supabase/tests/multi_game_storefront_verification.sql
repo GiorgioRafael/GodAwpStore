@@ -69,27 +69,28 @@ begin
     raise exception 'products from two independent storefronts were globally limited';
   end if;
 
-  begin
-    insert into public.products (
-      substore_id,
-      name,
-      slug,
-      minimum_price_cents,
-      status
-    ) values (
-      '93100000-0000-4000-8000-000000000002',
-      'Game B product 26',
-      'multi-storefront-game-b-product-26',
-      100,
-      'active'
-    );
-    raise exception '26th active product in one game was unexpectedly accepted';
-  exception
-    when check_violation then
-      if sqlerrm <> 'products_active_limit' then
-        raise;
-      end if;
-  end;
+  insert into public.products (
+    substore_id,
+    name,
+    slug,
+    minimum_price_cents,
+    status
+  ) values (
+    '93100000-0000-4000-8000-000000000002',
+    'Game B product 26',
+    'multi-storefront-game-b-product-26',
+    100,
+    'active'
+  );
+
+  if (
+    select count(*)
+    from public.products
+    where slug like 'multi-storefront-%'
+      and status = 'active'
+  ) <> 51 then
+    raise exception 'A catalog store still limits active products';
+  end if;
 end
 $$;
 

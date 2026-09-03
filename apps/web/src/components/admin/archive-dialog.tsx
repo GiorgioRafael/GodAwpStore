@@ -42,6 +42,7 @@ const ARCHIVE_EFFECT: Record<string, string> = {
 export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogProps) {
   const [state, setState] = useState<AdminActionState>(initialAdminActionState);
   const [pending, startTransition] = useTransition();
+  const isGame = target === "game";
 
   function archive() {
     if (!record) return;
@@ -55,7 +56,7 @@ export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogPr
     <AdminDialog
       open={Boolean(record)}
       onClose={onClose}
-      title={`Arquivar ${noun}`}
+      title={isGame ? "Excluir jogo" : `Arquivar ${noun}`}
       description={ARCHIVE_EFFECT[target] ?? "O registro deixa de ficar disponível para novas operações, mas seu histórico é preservado."}
       footer={
         state.ok ? (
@@ -71,7 +72,7 @@ export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogPr
               ) : (
                 <Archive aria-hidden="true" className="size-4" />
               )}
-              {pending ? "Arquivando..." : "Confirmar arquivamento"}
+              {pending ? (isGame ? "Excluindo..." : "Arquivando...") : (isGame ? "Excluir jogo" : "Confirmar arquivamento")}
             </Button>
           </>
         )
@@ -79,7 +80,7 @@ export function ArchiveDialog({ target, record, onClose, noun }: ArchiveDialogPr
     >
       <div className="space-y-4">
         <p className="text-sm leading-6 text-muted-strong">
-          Você está prestes a arquivar <strong className="font-semibold text-foreground">{record?.label}</strong>.
+          Você está prestes a {isGame ? "excluir" : "arquivar"} <strong className="font-semibold text-foreground">{record?.label}</strong>.
         </p>
         <ActionFeedback state={state} />
       </div>

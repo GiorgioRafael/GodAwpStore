@@ -863,15 +863,15 @@ begin
     raise exception 'Discord product emoji constraints are missing';
   end if;
 
-  if to_regprocedure('public.enforce_active_product_limit()') is null
-    or not exists (
+  if to_regprocedure('public.enforce_active_product_limit()') is not null
+    or exists (
       select 1
       from pg_trigger
       where tgrelid = 'public.products'::regclass
         and tgname = 'products_enforce_active_limit'
         and not tgisinternal
     ) then
-    raise exception 'Active Discord product limit trigger is missing';
+    raise exception 'Obsolete Discord product limit trigger still exists';
   end if;
 
   if to_regprocedure('public.admin_reorder_products(uuid[])') is null then

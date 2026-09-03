@@ -38,7 +38,6 @@ import {
   withRobuxStorefrontConfiguration,
 } from "@/lib/bot/discord-robux-storefront";
 import { IS_GWSTORE } from "@/lib/brand";
-import { DISCORD_STOREFRONT_PRODUCT_LIMIT } from "@/lib/bot/discord-product-emoji-shared";
 import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
 import { botMessageCustomizationSchema } from "@/lib/bot/message-customization-validation";
@@ -511,26 +510,6 @@ export async function saveProductAction(
     };
   }
 
-  if (parsed.data.status === "active") {
-    let activeProductsQuery = supabase
-      .from("products")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "active")
-      .is("archived_at", null)
-      .eq("catalog_store_id", catalogStoreId);
-    if (id) activeProductsQuery = activeProductsQuery.neq("id", id);
-    const { count, error: countError } = await activeProductsQuery;
-    if (countError) return databaseFailure(countError.code);
-    if ((count ?? 0) >= DISCORD_STOREFRONT_PRODUCT_LIMIT) {
-      return {
-        ok: false,
-        message: `Cada loja aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos na sua vitrine.`,
-        fieldErrors: {
-          status: ["Desative, arquive ou mova outro produto desta loja antes de ativar este."],
-        },
-      };
-    }
-  }
   const record = {
     substore_id: parsed.data.substoreId,
     catalog_store_id: catalogStoreId,
@@ -559,18 +538,7 @@ export async function saveProductAction(
         .select("id")
         .single();
   const { data, error } = await operation;
-  if (error) {
-    if (error.code === "23514" && error.message.includes("products_active_limit")) {
-      return {
-        ok: false,
-        message: `Cada loja aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos na sua vitrine.`,
-        fieldErrors: {
-          status: ["Desative, arquive ou mova outro produto desta loja antes de ativar este."],
-        },
-      };
-    }
-    return databaseFailure(error.code);
-  }
+  if (error) return databaseFailure(error.code);
   if (!data) {
     return {
       ok: false,
@@ -1059,12 +1027,6 @@ export async function deleteCatalogStoreAction(
         message: "A loja principal não pode ser excluída. Arquive o jogo para removê-la.",
       };
     }
-    if (error.message.includes("catalog_store_not_empty")) {
-      return {
-        ok: false,
-        message: "Mova todos os produtos para outra loja antes de excluir esta loja.",
-      };
-    }
     if (error.message.includes("catalog_store_not_found")) {
       return { ok: false, message: "Loja não encontrada ou já excluída." };
     }
@@ -1076,7 +1038,7 @@ export async function deleteCatalogStoreAction(
   revalidatePath("/estoque");
   revalidatePath("/catalogo/produtos");
   return synchronizeCatalogStorefront(
-    "Loja excluída. O canal foi preservado e a vitrine removida do Discord.",
+    "Loja removida da vitrine. Os produtos e o histórico foram preservados para consulta.",
   );
 }
 
@@ -1193,9 +1155,6 @@ export async function moveCatalogProductsAction(
     p_target_store_id: parsed.data.targetStoreId,
   });
   if (error) {
-    if (error.message.includes("products_active_limit")) {
-      return { ok: false, message: "A loja de destino ultrapassaria o limite de 25 produtos ativos." };
-    }
     if (error.message.includes("scope_mismatch")) {
       return { ok: false, message: "Produtos só podem ser movidos entre lojas do mesmo jogo." };
     }
@@ -1402,13 +1361,6 @@ export async function publishDiscordStorefrontAction(
           message: "Cadastre pelo menos um jogo com produtos antes de publicar a vitrine única.",
         };
       }
-      if (integratedGames.length > 25) {
-        return {
-          ok: false,
-          message: "A vitrine única comporta até 25 jogos. Publique vitrines separadas para os jogos excedentes.",
-        };
-      }
-
       const published = await publishDiscordIntegratedStorefront({
         channel,
         catalog: integratedCatalog,
@@ -1459,15 +1411,6 @@ export async function publishDiscordStorefrontAction(
       (sum, substore) => sum + substore.products.length,
       0,
     );
-    if (productCount > DISCORD_STOREFRONT_PRODUCT_LIMIT) {
-      return {
-        ok: false,
-        message: `Esta loja tem ${productCount} produtos ativos. O Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} por vitrine.`,
-        fieldErrors: {
-          storeId: ["Desative ou mova alguns produtos desta loja antes de publicar."],
-        },
-      };
-    }
     const currentStorefronts = readStorefrontConfigurations(guild.configuration);
     const channelConflict = currentStorefronts.find(
       (storefront) =>
@@ -1676,10 +1619,10 @@ export async function archiveRecordAction(
   revalidatePath("/whitelist");
   revalidatePath("/dashboard");
   return parsed.data.target === "whitelist"
-    ? { ok: true, message: `${ARCHIVE_NOUN[parsed.data.target]} arquivado.` }
+      ? { ok: true, message: `${ARCHIVE_NOUN[parsed.data.target]} arquivado.` }
     : synchronizeCatalogStorefront(
         parsed.data.target === "game"
-          ? `${ARCHIVE_NOUN[parsed.data.target]} arquivado e suas vitrines foram removidas do Discord.`
+          ? `${ARCHIVE_NOUN[parsed.data.target]} removido do catálogo e suas vitrines foram removidas do Discord. O histórico foi preservado.`
           : `${ARCHIVE_NOUN[parsed.data.target]} arquivado.`,
       );
 }

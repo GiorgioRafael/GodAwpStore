@@ -508,54 +508,55 @@ export function catalogCards(
     ];
   }
 
-  if (products.length > DISCORD_STOREFRONT_PRODUCT_LIMIT) {
-    throw new Error(
-      `A vitrine do Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos ativos.`,
-    );
-  }
-
   const storefrontImageUrl =
     discordStorefrontBannerUrl(customization) ??
     discordImageUrl(catalog[0]?.substores[0]?.imageUrl) ??
     discordBotBannerUrl(customization, "orderUrl");
-  return [
-    <Card
-      key="catalog"
-      title={interpolateBotMessageLimited(
-        catalog.length === 1 ? catalog[0]?.catalogStoreName ?? message.title : message.title,
-        {},
-        256,
-      )}
-      subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
-      imageUrl={storefrontImageUrl ?? undefined}
-    >
-      {message.welcome ? <CardText>{message.welcome}</CardText> : null}
-      {message.catalogText ? <CardText>{message.catalogText}</CardText> : null}
-      {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
-      {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
-      <Divider />
-      {message.prompt ? <CardText>{message.prompt}</CardText> : null}
-      <Actions>
-        <Select
-          id="select_products"
-          label={interpolateBotMessageLimited(message.selectLabel, {}, 100)}
-          placeholder={interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)}
-        >
-          {products.map(({ product }) => (
-            <SelectOption
-              key={product.id}
-              {...discordSelectOptionMetadata(product.discordEmoji)}
-              label={truncateSelectText(product.name)}
-              value={encodeDiscordCartSelection(product.id, product.name)}
-              description={truncateSelectText(
-                `Preço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`,
-              )}
-            />
-          ))}
-        </Select>
-      </Actions>
-    </Card>
-  ];
+  const title = interpolateBotMessageLimited(
+    catalog.length === 1 ? catalog[0]?.catalogStoreName ?? message.title : message.title,
+    {},
+    256,
+  );
+  const pages = chunkDiscordSelectOptions(products);
+
+  // Discord accepts a maximum of 25 options in a select menu. The store itself
+  // has no product cap: larger catalogs are published as consecutive messages,
+  // so every item remains selectable instead of silently disappearing.
+  return pages.map((page, pageIndex) => {
+    const pageLabel = discordSelectPageLabel(pageIndex, pages.length);
+    return (
+      <Card
+        key={`catalog-${pageIndex}`}
+        title={pageIndex === 0 ? title : `${title} · ${pageLabel}`}
+        subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+        imageUrl={storefrontImageUrl ?? undefined}
+      >
+        {pageIndex === 0 && message.welcome ? <CardText>{message.welcome}</CardText> : null}
+        {pageIndex === 0 && message.catalogText ? <CardText>{message.catalogText}</CardText> : null}
+        {pageIndex === 0 && message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
+        {pageIndex === 0 && message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
+        {pageIndex === 0 ? <Divider /> : null}
+        {pageIndex === 0 && message.prompt ? <CardText>{message.prompt}</CardText> : null}
+        <Actions>
+          <Select
+            id="select_products"
+            label={discordSelectPageLabel(
+              interpolateBotMessageLimited(message.selectLabel, {}, 100),
+              pageIndex,
+              pages.length,
+            )}
+            placeholder={discordSelectPageLabel(
+              interpolateBotMessageLimited(message.selectPlaceholder, {}, 150),
+              pageIndex,
+              pages.length,
+            )}
+          >
+            {page.map(({ product }) => productSelectOption(product))}
+          </Select>
+        </Actions>
+      </Card>
+    );
+  });
 }
 
 /**
@@ -568,10 +569,6 @@ export function integratedStorefrontCard(
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
 ) {
   const games = integratedStorefrontGames(catalog);
-  if (games.length > 25) {
-    throw new Error("A vitrine única do Discord aceita no máximo 25 jogos ativos.");
-  }
-
   const message = customization.storefront;
   const storefrontImageUrl =
     discordStorefrontBannerUrl(customization) ??
@@ -590,30 +587,32 @@ export function integratedStorefrontCard(
       {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
       {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
       <Divider />
-      <Actions>
-        <Select
-          id={INTEGRATED_STOREFRONT_SELECT_ACTION}
-          label="1. Escolha o jogo"
-          placeholder="Selecione o jogo"
-        >
-          {games.map((game) => {
-            const productCount = game.stores.reduce(
-              (total, store) => total + flattenCatalog([store]).length,
-              0,
-            );
-            return (
-              <SelectOption
-                key={game.id}
-                label={truncateSelectText(game.name)}
-                value={game.id}
-                description={truncateSelectText(
-                  `${productCount} produto${productCount === 1 ? "" : "s"} ${productCount === 1 ? "disponível" : "disponíveis"}`,
-                )}
-              />
-            );
-          })}
-        </Select>
-      </Actions>
+      {chunkDiscordSelectOptions(games).map((gamePage, pageIndex, pages) => (
+        <Actions key={`integrated-games-${pageIndex}`}>
+          <Select
+            id={INTEGRATED_STOREFRONT_SELECT_ACTION}
+            label={discordSelectPageLabel("1. Escolha o jogo", pageIndex, pages.length)}
+            placeholder={discordSelectPageLabel("Selecione o jogo", pageIndex, pages.length)}
+          >
+            {gamePage.map((game) => {
+              const productCount = game.stores.reduce(
+                (total, store) => total + flattenCatalog([store]).length,
+                0,
+              );
+              return (
+                <SelectOption
+                  key={game.id}
+                  label={truncateSelectText(game.name)}
+                  value={game.id}
+                  description={truncateSelectText(
+                    `${productCount} produto${productCount === 1 ? "" : "s"} ${productCount === 1 ? "disponível" : "disponíveis"}`,
+                  )}
+                />
+              );
+            })}
+          </Select>
+        </Actions>
+      ))}
     </Card>
   );
 }
@@ -679,8 +678,8 @@ export function createNativeIntegratedStorefrontSelectionResponse(
 /**
  * Second step of the integrated storefront. Products remain grouped by the
  * catalog store/world, but the buyer has already chosen the game at this
- * point. This avoids mixing unrelated games while keeping each selector
- * below Discord's 25-option limit.
+ * point. This avoids mixing unrelated games while every selector stays below
+ * Discord's 25-option limit.
  */
 function integratedStorefrontProductsCard(
   stores: BotCatalogGame[],
@@ -692,12 +691,6 @@ function integratedStorefrontProductsCard(
 
   if (!gameName || availableStores.length === 0) {
     return catalogCards([], customization)[0];
-  }
-
-  if (availableStores.some((store) => flattenCatalog([store]).length > DISCORD_STOREFRONT_PRODUCT_LIMIT)) {
-    throw new Error(
-      `A vitrine do Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos por lista.`,
-    );
   }
 
   const storefrontImageUrl =
@@ -717,37 +710,67 @@ function integratedStorefrontProductsCard(
       {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
       {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
       <Divider />
-      {availableStores.map((store) => {
+      {availableStores.flatMap((store) => {
         const products = flattenCatalog([store]);
-        const storeLabel = availableStores.length === 1
-          ? interpolateBotMessageLimited(message.selectLabel, {}, 100)
-          : truncateSelectText(`${integratedStorefrontStoreLabel(store)} — escolha os produtos`);
-        const placeholder = availableStores.length === 1
-          ? interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)
-          : truncateSelectText(`Produtos de ${integratedStorefrontStoreLabel(store)}`);
-        return (
-          <Actions key={store.catalogStoreId ?? store.id}>
+        const pages = chunkDiscordSelectOptions(products);
+        return pages.map((page, pageIndex) => {
+          const storeLabel = availableStores.length === 1
+            ? interpolateBotMessageLimited(message.selectLabel, {}, 100)
+            : truncateSelectText(`${integratedStorefrontStoreLabel(store)} — escolha os produtos`);
+          const placeholder = availableStores.length === 1
+            ? interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)
+            : truncateSelectText(`Produtos de ${integratedStorefrontStoreLabel(store)}`);
+          return (
+          <Actions key={`${store.catalogStoreId ?? store.id}-${pageIndex}`}>
             <Select
-              id={`select_products\n${store.catalogStoreId ?? store.id}`}
-              label={storeLabel}
-              placeholder={placeholder}
+              id={`select_products\n${store.catalogStoreId ?? store.id}\n${pageIndex}`}
+              label={discordSelectPageLabel(storeLabel, pageIndex, pages.length)}
+              placeholder={discordSelectPageLabel(placeholder, pageIndex, pages.length)}
             >
-              {products.map(({ product }) => (
-                <SelectOption
-                  key={product.id}
-                  {...discordSelectOptionMetadata(product.discordEmoji)}
-                  label={truncateSelectText(product.name)}
-                  value={encodeDiscordCartSelection(product.id, product.name)}
-                  description={truncateSelectText(
-                    `Preço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`,
-                  )}
-                />
-              ))}
+              {page.map(({ product }) => productSelectOption(product))}
             </Select>
           </Actions>
-        );
+          );
+        });
       })}
     </Card>
+  );
+}
+
+function chunkDiscordSelectOptions<T>(items: T[]): T[][] {
+  const pages: T[][] = [];
+  for (let index = 0; index < items.length; index += DISCORD_STOREFRONT_PRODUCT_LIMIT) {
+    pages.push(items.slice(index, index + DISCORD_STOREFRONT_PRODUCT_LIMIT));
+  }
+  return pages;
+}
+
+function discordSelectPageLabel(label: string, pageIndex: number, pageCount: number): string;
+function discordSelectPageLabel(pageIndex: number, pageCount: number): string;
+function discordSelectPageLabel(
+  labelOrPageIndex: string | number,
+  pageIndexOrPageCount: number,
+  maybePageCount?: number,
+) {
+  const label = typeof labelOrPageIndex === "string" ? labelOrPageIndex : "Produtos";
+  const pageIndex = typeof labelOrPageIndex === "string" ? pageIndexOrPageCount : labelOrPageIndex;
+  const pageCount = typeof labelOrPageIndex === "string" ? maybePageCount ?? 1 : pageIndexOrPageCount;
+  return pageCount > 1
+    ? truncateSelectText(`${label} · página ${pageIndex + 1}/${pageCount}`)
+    : label;
+}
+
+function productSelectOption(product: BotCatalogProduct) {
+  return (
+    <SelectOption
+      key={product.id}
+      {...discordSelectOptionMetadata(product.discordEmoji)}
+      label={truncateSelectText(product.name)}
+      value={encodeDiscordCartSelection(product.id, product.name)}
+      description={truncateSelectText(
+        `Preço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`,
+      )}
+    />
   );
 }
 

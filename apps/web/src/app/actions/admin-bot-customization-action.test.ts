@@ -317,7 +317,6 @@ describe("action de produtos", () => {
       data: [{ slug: "pocao-dagua" }, { slug: "pocao-dagua-2" }],
       error: null,
     });
-    const activeProductsQuery = awaitableQuery({ count: 0, error: null });
     const targetSubstoreQuery = {
       select: vi.fn(),
       eq: vi.fn(),
@@ -356,7 +355,6 @@ describe("action de produtos", () => {
       .mockReturnValueOnce(existingSlugsQuery)
       .mockReturnValueOnce(targetSubstoreQuery)
       .mockReturnValueOnce(selectedStoreQuery)
-      .mockReturnValueOnce(activeProductsQuery)
       .mockReturnValueOnce({ insert });
     mocks.createServerSupabaseClient.mockResolvedValue({ from });
 

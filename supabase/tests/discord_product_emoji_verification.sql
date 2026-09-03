@@ -39,29 +39,28 @@ select
   'active'
 from generate_series(1, 25) item;
 
+insert into public.products (
+  substore_id,
+  name,
+  slug,
+  minimum_price_cents,
+  status
+) values (
+  '82000000-0000-4000-8000-000000000001',
+  'Produto 26',
+  'discord-emoji-product-26',
+  100,
+  'active'
+);
+
 do $$
 begin
-  begin
-    insert into public.products (
-      substore_id,
-      name,
-      slug,
-      minimum_price_cents,
-      status
-    ) values (
-      '82000000-0000-4000-8000-000000000001',
-      'Produto 26',
-      'discord-emoji-product-26',
-      100,
-      'active'
-    );
-    raise exception '26th active product was unexpectedly accepted';
-  exception
-    when check_violation then
-      if sqlerrm <> 'products_active_limit' then
-        raise;
-      end if;
-  end;
+  if (
+    select count(*) from public.products
+    where slug like 'discord-emoji-product-%' and status = 'active'
+  ) <> 26 then
+    raise exception 'The 26th active product was not accepted';
+  end if;
 end
 $$;
 

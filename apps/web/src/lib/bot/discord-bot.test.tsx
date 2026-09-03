@@ -113,6 +113,38 @@ describe("Discord catalog cards", () => {
     expect(privateCard).toContain('select_products\\n');
   });
 
+  it("mantém todos os produtos da loja integrada quando ela passa de 25 itens", () => {
+    const products = Array.from({ length: 26 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      name: `Produto integrado ${index}`,
+      description: null,
+      priceCents: 100,
+      availableStock: 1,
+      sortOrder: index,
+    }));
+
+    const response = createNativeIntegratedStorefrontSelectionResponse([{
+      id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+      name: "Blox Fruits",
+      catalogStoreId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+      catalogStoreName: "Gamepasses",
+      substores: [{
+        id: "gamepasses",
+        name: "Gamepasses",
+        title: "Gamepasses",
+        description: "",
+        colorHex: "#D4AF37",
+        imageUrl: null,
+        products,
+      }],
+    }]);
+
+    const serialized = JSON.stringify(response);
+    expect(serialized).toContain("Produto integrado 0");
+    expect(serialized).toContain("Produto integrado 25");
+    expect(serialized.match(/select_products/g)).toHaveLength(2);
+  });
+
   it("responde /ranking imediatamente com a tabela pública completa", () => {
     expect(
       isNativeDiscordRankingCommand({
@@ -406,7 +438,7 @@ describe("Discord catalog cards", () => {
     }
   });
 
-  it("rejeita mais de 25 produtos para impedir truncamento silencioso", () => {
+  it("divide mais de 25 produtos em páginas sem esconder nenhum item", () => {
     const products = Array.from({ length: 26 }, (_, index) => ({
       id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
       name: `Produto ${index}`,
@@ -417,25 +449,34 @@ describe("Discord catalog cards", () => {
       sortOrder: index,
     }));
 
-    expect(() =>
-      catalogCards([
-        {
-          id: "game",
-          name: "Grow a Garden 2",
-          substores: [
-            {
-              id: "seeds",
-              name: "Seeds",
-              title: "Seeds",
-              description: "",
-              colorHex: "#D4AF37",
-              imageUrl: null,
-              products,
-            },
-          ],
-        },
-      ]),
-    ).toThrow("no máximo 25 produtos ativos");
+    const cards = catalogCards([
+      {
+        id: "game",
+        name: "Grow a Garden 2",
+        substores: [
+          {
+            id: "seeds",
+            name: "Seeds",
+            title: "Seeds",
+            description: "",
+            colorHex: "#D4AF37",
+            imageUrl: null,
+            products,
+          },
+        ],
+      },
+    ]);
+
+    expect(cards).toHaveLength(2);
+    expect(JSON.stringify(toCardElement(cards[0]))).toContain("Produto 0");
+    expect(JSON.stringify(toCardElement(cards[1]))).toContain("Produto 25");
+    for (const card of cards) {
+      const normalized = toCardElement(card);
+      if (!normalized) throw new Error("Cartão de catálogo inválido.");
+      expect(() => cardToDiscordPayload(normalized, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      })).not.toThrow();
+    }
   });
 
   it("mostra estado vazio sem criar botão", () => {

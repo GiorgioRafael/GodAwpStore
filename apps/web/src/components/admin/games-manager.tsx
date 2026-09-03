@@ -208,13 +208,13 @@ export function GamesManager({ games, relatedCounts }: GamesManagerProps) {
                     variant="ghost"
                     size="sm"
                     className="text-danger"
-                    aria-label={`Arquivar ${game.name}`}
-                    title={game.status === "archived" ? "Jogo já arquivado" : "Arquivar jogo"}
+                    aria-label={`Excluir ${game.name}`}
+                    title={game.status === "archived" ? "Jogo já excluído" : "Excluir jogo"}
                     disabled={game.status === "archived"}
                     onClick={() => setArchiveRecord({ id: game.id, label: game.name })}
                   >
                     <Archive aria-hidden="true" className="size-4" />
-                    Arquivar
+                    Excluir
                   </Button>
                 </div>
               </td>

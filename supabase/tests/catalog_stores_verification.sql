@@ -161,6 +161,8 @@ $$;
 set local role service_role;
 
 do $$
+declare
+  v_default_store_id uuid;
 begin
   begin
     perform public.admin_move_products_to_catalog_store(
@@ -171,18 +173,18 @@ begin
   exception when check_violation then null;
   end;
 
-  begin
-    perform public.admin_archive_catalog_store(
-      'a2000000-0000-4000-8000-000000000001'
-    );
-    raise exception 'non-empty catalog store was unexpectedly archived';
-  exception when check_violation then null;
-  end;
+  if not public.admin_archive_catalog_store(
+    'a2000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'non-empty catalog store archive returned false';
+  end if;
 
+  select id into v_default_store_id
+  from public.catalog_stores
+  where game_id = 'a1000000-0000-4000-8000-000000000001'
+    and is_default;
   begin
-    perform public.admin_archive_catalog_store(
-      'a2000000-0000-4000-8000-000000000001'
-    );
+    perform public.admin_archive_catalog_store(v_default_store_id);
     raise exception 'default catalog store was unexpectedly archived';
   exception when check_violation then null;
   end;
@@ -202,11 +204,23 @@ begin
   if not exists (
     select 1
     from public.catalog_stores
-    where id = 'a2000000-0000-4000-8000-000000000003'
+    where id in (
+      'a2000000-0000-4000-8000-000000000001',
+      'a2000000-0000-4000-8000-000000000003'
+    )
+      and status = 'archived'
+      and archived_at is not null
+  ) <> 2 then
+    raise exception 'catalog stores were not archived';
+  end if;
+  if not exists (
+    select 1
+    from public.products
+    where id = 'a4000000-0000-4000-8000-000000000001'
       and status = 'archived'
       and archived_at is not null
   ) then
-    raise exception 'empty catalog store was not archived';
+    raise exception 'products in a removed catalog store were not archived';
   end if;
 end
 $$;

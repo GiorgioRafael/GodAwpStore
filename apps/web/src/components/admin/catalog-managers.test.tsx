@@ -336,11 +336,11 @@ describe("gestores do catálogo", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: `Arquivar ${activeGame.name}` }));
-    expect(screen.getByRole("heading", { name: "Arquivar jogo" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: `Excluir ${activeGame.name}` }));
+    expect(screen.getByRole("heading", { name: "Excluir jogo" })).toBeInTheDocument();
     expect(actionMocks.archiveRecordAction).not.toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Confirmar arquivamento" }));
+    await user.click(screen.getByRole("button", { name: "Excluir jogo" }));
     await waitFor(() => {
       expect(actionMocks.archiveRecordAction).toHaveBeenCalledWith("game", activeGame.id);
     });
