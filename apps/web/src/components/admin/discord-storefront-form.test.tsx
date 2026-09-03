@@ -143,7 +143,7 @@ describe("configuração de vitrines do Discord", () => {
     expect(screen.getByRole("button", { name: "Atualizar vitrine" })).toBeEnabled();
   });
 
-  it("oferece a vitrine única para o comprador escolher a loja antes dos itens", async () => {
+  it("oferece a vitrine única para o comprador escolher o jogo antes dos produtos", async () => {
     const user = userEvent.setup();
     render(
       <DiscordStorefrontForm
@@ -163,8 +163,8 @@ describe("configuração de vitrines do Discord", () => {
 
     await user.click(screen.getByRole("radio", { name: /Uma vitrine com todas as lojas/i }));
 
-    expect(screen.getByText(/O comprador verá 2 lojas para escolher/i)).toBeInTheDocument();
-    expect(screen.getByText(/itens da loja selecionada aparecem apenas para o comprador/i)).toBeInTheDocument();
+    expect(screen.getByText(/O comprador verá 1 jogo para escolher/i)).toBeInTheDocument();
+    expect(screen.getByText(/aparecem apenas os produtos daquele jogo/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Publicar vitrine única" })).toBeEnabled();
   });
 });

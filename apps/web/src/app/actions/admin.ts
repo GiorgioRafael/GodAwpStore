@@ -31,6 +31,7 @@ import {
   withStorefrontConfiguration,
   withStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
+import { integratedStorefrontGames } from "@/lib/bot/discord-bot";
 import {
   publishDiscordRobuxStorefront,
   readRobuxStorefrontConfiguration,
@@ -1394,16 +1395,17 @@ export async function publishDiscordStorefrontAction(
     ]);
     if (parsed.data.mode === "integrated") {
       const integratedCatalog = catalogStoresForIntegratedStorefront(catalog);
-      if (integratedCatalog.length === 0) {
+      const integratedGames = integratedStorefrontGames(integratedCatalog);
+      if (integratedGames.length === 0) {
         return {
           ok: false,
-          message: "Cadastre pelo menos uma loja com produtos antes de publicar a vitrine única.",
+          message: "Cadastre pelo menos um jogo com produtos antes de publicar a vitrine única.",
         };
       }
-      if (integratedCatalog.length > 25) {
+      if (integratedGames.length > 25) {
         return {
           ok: false,
-          message: "A vitrine única comporta até 25 lojas. Publique vitrines separadas para as lojas excedentes.",
+          message: "A vitrine única comporta até 25 jogos. Publique vitrines separadas para os jogos excedentes.",
         };
       }
 

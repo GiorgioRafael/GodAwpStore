@@ -87,6 +87,23 @@ export function DiscordStorefrontForm({
     () => guilds.find((guild) => guild.id === selectedGuildId) ?? null,
     [guilds, selectedGuildId],
   );
+  const integratedGames = useMemo(() => {
+    const grouped = new Map<string, { name: string; productCount: number }>();
+    for (const store of games) {
+      if (store.productCount < 1) continue;
+      const id = store.gameId ?? store.id;
+      const current = grouped.get(id);
+      if (current) {
+        current.productCount += store.productCount;
+      } else {
+        grouped.set(id, {
+          name: store.gameName ?? store.name,
+          productCount: store.productCount,
+        });
+      }
+    }
+    return [...grouped.values()];
+  }, [games]);
   const selectedGame = games.find((game) => game.id === selectedGameId) ?? null;
   const selectedStorefront =
     selectedGuild?.current.find(
@@ -278,7 +295,7 @@ export function DiscordStorefrontForm({
                 </h3>
                 <p className="mt-1 text-xs leading-5 text-muted">
                   {mode === "integrated"
-                    ? "Uma única mensagem mostra todas as lojas. O comprador escolhe primeiro o jogo e recebe os produtos em privado."
+                    ? "Uma única mensagem mostra os jogos. O comprador escolhe primeiro o jogo e recebe os produtos dele em privado."
                     : "Cada loja usa um canal e estoque próprios. Publicar novamente atualiza a mesma mensagem, sem criar cópias."}
                 </p>
               </div>
@@ -352,8 +369,8 @@ export function DiscordStorefrontForm({
                   </Field>
                 ) : (
                   <div className="rounded-xl border border-border bg-surface-muted px-4 py-3">
-                    <p className="text-sm font-medium text-foreground">1. Todas as lojas ativas</p>
-                    <p className="mt-1 text-xs leading-5 text-muted">O comprador verá {games.length} loja{games.length === 1 ? "" : "s"} para escolher.</p>
+                    <p className="text-sm font-medium text-foreground">1. Jogos com produtos</p>
+                    <p className="mt-1 text-xs leading-5 text-muted">O comprador verá {integratedGames.length} jogo{integratedGames.length === 1 ? "" : "s"} para escolher.</p>
                   </div>
                 )}
 
@@ -427,7 +444,7 @@ export function DiscordStorefrontForm({
                   </span>
                   <div>
                     <p className="text-sm font-semibold text-foreground">O que aparecerá nesta vitrine única</p>
-                    <p className="mt-1 text-xs leading-5 text-muted">Uma lista com todas as {games.length} lojas. Depois da escolha, os itens da loja selecionada aparecem apenas para o comprador.</p>
+                    <p className="mt-1 text-xs leading-5 text-muted">Uma lista com {integratedGames.length} jogo{integratedGames.length === 1 ? "" : "s"}. Depois da escolha, aparecem apenas os produtos daquele jogo.</p>
                   </div>
                 </div>
               ) : null}
