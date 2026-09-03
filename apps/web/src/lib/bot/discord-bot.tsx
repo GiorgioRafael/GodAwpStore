@@ -630,19 +630,21 @@ export function createNativeIntegratedStorefrontSelectionResponse(
   const normalized = card ? toCardElement(card) : null;
   if (!normalized) throw new Error("Não foi possível abrir os produtos desta loja.");
 
+  const payload = configureDiscordStorefrontBanner(
+    configureDiscordProductEntrySelect(
+      cardToDiscordPayload(normalized, {
+        contentFormat: DiscordContentFormat.ComponentsV2,
+      }),
+      collectDiscordProductOptionEmojis(card),
+    ),
+    customization,
+  );
+
   return {
     type: DISCORD_CHANNEL_MESSAGE_RESPONSE,
     data: {
-      ...configureDiscordStorefrontBanner(
-        configureDiscordProductEntrySelect(
-          cardToDiscordPayload(normalized, {
-            contentFormat: DiscordContentFormat.ComponentsV2,
-          }),
-          collectDiscordProductOptionEmojis(card),
-        ),
-        customization,
-      ),
-      flags: DISCORD_EPHEMERAL_FLAG,
+      ...payload,
+      flags: (payload.flags ?? 0) | DISCORD_EPHEMERAL_FLAG,
       allowed_mentions: { parse: [] },
     },
   };

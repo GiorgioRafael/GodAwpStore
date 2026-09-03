@@ -69,6 +69,7 @@ import {
 } from "@/lib/bot/discord-robux";
 import {
   completeNativeDiscordIntegratedStorefrontResponse,
+  DEFERRED_INTEGRATED_STOREFRONT_FLAGS,
   parseNativeDiscordIntegratedStorefrontInteraction,
 } from "@/lib/bot/discord-integrated-storefront";
 
@@ -140,7 +141,10 @@ export async function POST(request: Request) {
             console.error(`[discord-integrated-storefront] ${message}`);
           }
         });
-        return Response.json({ type: 5, data: { flags: 64 } });
+        return Response.json({
+          type: 5,
+          data: { flags: DEFERRED_INTEGRATED_STOREFRONT_FLAGS },
+        });
       }
 
       if (native.scope === "robux") {

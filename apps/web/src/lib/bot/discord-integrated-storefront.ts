@@ -23,10 +23,15 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 const DISCORD_MESSAGE_COMPONENT = 3;
 const DISCORD_CHANNEL_MESSAGE_RESPONSE = 4;
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
+const DISCORD_COMPONENTS_V2_FLAG = 1 << 15;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const INTERACTION_TOKEN_PATTERN = /^[A-Za-z0-9._-]{20,500}$/;
+
+/** The deferred original message must already be Components V2 before it is edited. */
+export const DEFERRED_INTEGRATED_STOREFRONT_FLAGS =
+  DISCORD_EPHEMERAL_FLAG | DISCORD_COMPONENTS_V2_FLAG;
 
 export type NativeDiscordIntegratedStorefrontInteraction = {
   catalogStoreId: string;
@@ -169,8 +174,14 @@ function discordEphemeralText(content: string) {
   return {
     type: 4,
     data: {
-      content,
-      flags: DISCORD_EPHEMERAL_FLAG,
+      flags: DEFERRED_INTEGRATED_STOREFRONT_FLAGS,
+      components: [
+        {
+          type: 17,
+          accent_color: 0x5865f2,
+          components: [{ type: 10, content }],
+        },
+      ],
       allowed_mentions: { parse: [] },
     },
   };
