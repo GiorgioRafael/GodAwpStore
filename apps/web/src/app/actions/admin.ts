@@ -1439,7 +1439,7 @@ export async function publishDiscordStorefrontAction(
       revalidatePath("/configuracoes");
       return {
         ok: true,
-        message: `Vitrine única publicada em #${published.configuration.channel_name}. O comprador escolhe primeiro uma das ${integratedCatalog.length} lojas e só então vê os itens.${
+        message: `Vitrine única publicada em #${published.configuration.channel_name}. O comprador escolhe primeiro um dos ${integratedGames.length} jogos e só então vê os itens daquele jogo.${
           emojiSync.failed > 0
             ? ` ${emojiSync.failed} ícone(s) de produto não puderam ser sincronizados.`
             : ""
