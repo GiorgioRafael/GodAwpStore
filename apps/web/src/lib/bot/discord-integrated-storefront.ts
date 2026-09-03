@@ -34,7 +34,7 @@ export const DEFERRED_INTEGRATED_STOREFRONT_FLAGS =
   DISCORD_EPHEMERAL_FLAG | DISCORD_COMPONENTS_V2_FLAG;
 
 export type NativeDiscordIntegratedStorefrontInteraction = {
-  catalogStoreId: string;
+  gameId: string;
 };
 
 export function parseNativeDiscordIntegratedStorefrontInteraction(
@@ -49,16 +49,16 @@ export function parseNativeDiscordIntegratedStorefrontInteraction(
   if (decodeDiscordCustomId(raw.data.custom_id).actionId !== INTEGRATED_STOREFRONT_SELECT_ACTION) {
     return null;
   }
-  const [catalogStoreId] = raw.data.values;
-  if (raw.data.values.length !== 1 || typeof catalogStoreId !== "string" || !UUID_PATTERN.test(catalogStoreId)) {
+  const [gameId] = raw.data.values;
+  if (raw.data.values.length !== 1 || typeof gameId !== "string" || !UUID_PATTERN.test(gameId)) {
     return null;
   }
-  return { catalogStoreId };
+  return { gameId };
 }
 
 /**
  * Validates that this selector is the one published by this server before
- * rendering the selected store. This prevents copied component ids in another
+ * rendering the selected game. This prevents copied component ids in another
  * channel from turning into a catalog entry point.
  */
 export async function createNativeDiscordIntegratedStorefrontResponse(
@@ -96,9 +96,11 @@ export async function createNativeDiscordIntegratedStorefrontResponse(
     const catalog = catalogStoresForIntegratedStorefront(
       await new BotCommerceService(new SupabaseBotCommerceRepository(client)).listCatalog(),
     );
-    const store = catalog.find((item) => item.catalogStoreId === interaction.catalogStoreId);
-    if (!store) return discordEphemeralText("Esta loja não está disponível no momento.");
-    return createNativeIntegratedStorefrontSelectionResponse(store, customization);
+    const gameStores = catalog.filter((item) => item.id === interaction.gameId);
+    if (gameStores.length === 0) {
+      return discordEphemeralText("Este jogo não está disponível no momento.");
+    }
+    return createNativeIntegratedStorefrontSelectionResponse(gameStores, customization);
   } catch (error) {
     console.error(
       `[discord-integrated-storefront] ${error instanceof Error ? error.message : "erro desconhecido"}`,

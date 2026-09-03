@@ -12,7 +12,9 @@ let configureDiscordProductEntrySelect: typeof import("./discord-bot").configure
 let configureDiscordStorefrontBanner: typeof import("./discord-bot").configureDiscordStorefrontBanner;
 let createNativeDiscordRankingResponse: typeof import("./discord-bot").createNativeDiscordRankingResponse;
 let createNativeDiscordQuantityResponse: typeof import("./discord-bot").createNativeDiscordQuantityResponse;
+let createNativeIntegratedStorefrontSelectionResponse: typeof import("./discord-bot").createNativeIntegratedStorefrontSelectionResponse;
 let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
+let integratedStorefrontCard: typeof import("./discord-bot").integratedStorefrontCard;
 let isNativeDiscordRankingCommand: typeof import("./discord-bot").isNativeDiscordRankingCommand;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
 let purchaseResultCard: typeof import("./discord-bot").purchaseResultCard;
@@ -28,7 +30,9 @@ beforeAll(async () => {
     configureDiscordStorefrontBanner,
     createNativeDiscordRankingResponse,
     createNativeDiscordQuantityResponse,
+    createNativeIntegratedStorefrontSelectionResponse,
     getDiscordBot,
+    integratedStorefrontCard,
     isNativeDiscordRankingCommand,
     postDiscordEphemeral,
     purchaseResultCard,
@@ -41,6 +45,74 @@ beforeAll(async () => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("Discord catalog cards", () => {
+  it("faz a vitrine integrada escolher o jogo antes de exibir produtos", () => {
+    const stores = [
+      {
+        id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+        name: "Blox Fruits",
+        catalogStoreId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+        catalogStoreName: "Gamepasses",
+        substores: [
+          {
+            id: "gamepasses",
+            name: "Gamepasses",
+            title: "Gamepasses",
+            description: "",
+            colorHex: "#D4AF37",
+            imageUrl: null,
+            products: [{
+              id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+              name: "2x Drops",
+              description: null,
+              priceCents: 1_225,
+              availableStock: 1,
+              sortOrder: 0,
+            }],
+          },
+        ],
+      },
+      {
+        id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+        name: "Blox Fruits",
+        catalogStoreId: "e5b82d6f-a324-47fa-a861-a046559e3a11",
+        catalogStoreName: "Frutas físicas",
+        substores: [
+          {
+            id: "fruits",
+            name: "Fruits",
+            title: "Fruits",
+            description: "",
+            colorHex: "#D4AF37",
+            imageUrl: null,
+            products: [{
+              id: "aa845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+              name: "Dragon",
+              description: null,
+              priceCents: 17_500,
+              availableStock: 1,
+              sortOrder: 0,
+            }],
+          },
+        ],
+      },
+    ];
+
+    const publicCard = JSON.stringify(toCardElement(integratedStorefrontCard(stores)));
+    expect(publicCard).toContain("1. Escolha o jogo");
+    expect(publicCard).toContain("Blox Fruits");
+    expect(publicCard).not.toContain("Gamepasses");
+    expect(publicCard).not.toContain("2x Drops");
+
+    const response = createNativeIntegratedStorefrontSelectionResponse(stores);
+    const privateCard = JSON.stringify(response);
+    expect(privateCard).toContain("2. Agora escolha os produtos de Blox Fruits.");
+    expect(privateCard).toContain("Gamepasses");
+    expect(privateCard).toContain("Frutas físicas");
+    expect(privateCard).toContain("2x Drops");
+    expect(privateCard).toContain("Dragon");
+    expect(privateCard).toContain('select_products\\n');
+  });
+
   it("responde /ranking imediatamente com a tabela pública completa", () => {
     expect(
       isNativeDiscordRankingCommand({

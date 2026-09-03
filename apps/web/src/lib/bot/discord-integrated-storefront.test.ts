@@ -11,7 +11,7 @@ beforeAll(async () => {
 });
 
 describe("vitrine única do Discord", () => {
-  it("aceita somente uma loja válida selecionada no componente publicado", () => {
+  it("aceita somente um jogo válido selecionado no componente publicado", () => {
     expect(
       parseNativeDiscordIntegratedStorefrontInteraction({
         type: 3,
@@ -20,7 +20,7 @@ describe("vitrine única do Discord", () => {
           values: ["c5b82d6f-a324-47fa-a861-a046559e3a11"],
         },
       }),
-    ).toEqual({ catalogStoreId: "c5b82d6f-a324-47fa-a861-a046559e3a11" });
+    ).toEqual({ gameId: "c5b82d6f-a324-47fa-a861-a046559e3a11" });
   });
 
   it("recusa valores adulterados, múltiplas lojas e outros componentes", () => {

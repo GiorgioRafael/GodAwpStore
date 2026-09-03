@@ -567,8 +567,9 @@ export function integratedStorefrontCard(
   catalog: BotCatalogGame[],
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
 ) {
-  if (catalog.length > 25) {
-    throw new Error("A vitrine única do Discord aceita no máximo 25 lojas ativas.");
+  const games = integratedStorefrontGames(catalog);
+  if (games.length > 25) {
+    throw new Error("A vitrine única do Discord aceita no máximo 25 jogos ativos.");
   }
 
   const message = customization.storefront;
@@ -584,7 +585,7 @@ export function integratedStorefrontCard(
     >
       {message.welcome ? <CardText>{message.welcome}</CardText> : null}
       <CardText>
-        Escolha primeiro a loja ou o jogo. Em seguida, os produtos aparecerão somente para você.
+        Escolha primeiro o jogo. Depois, você verá somente os produtos daquele jogo.
       </CardText>
       {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
       {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
@@ -592,16 +593,19 @@ export function integratedStorefrontCard(
       <Actions>
         <Select
           id={INTEGRATED_STOREFRONT_SELECT_ACTION}
-          label="Escolha uma loja"
-          placeholder="Selecione o jogo ou a loja"
+          label="1. Escolha o jogo"
+          placeholder="Selecione o jogo"
         >
-          {catalog.map((store) => {
-            const productCount = flattenCatalog([store]).length;
+          {games.map((game) => {
+            const productCount = game.stores.reduce(
+              (total, store) => total + flattenCatalog([store]).length,
+              0,
+            );
             return (
               <SelectOption
-                key={store.catalogStoreId ?? store.id}
-                label={truncateSelectText(integratedStorefrontStoreLabel(store))}
-                value={store.catalogStoreId ?? store.id}
+                key={game.id}
+                label={truncateSelectText(game.name)}
+                value={game.id}
                 description={truncateSelectText(
                   `${productCount} produto${productCount === 1 ? "" : "s"} ${productCount === 1 ? "disponível" : "disponíveis"}`,
                 )}
@@ -614,6 +618,28 @@ export function integratedStorefrontCard(
   );
 }
 
+export type IntegratedStorefrontGame = {
+  id: string;
+  name: string;
+  stores: BotCatalogGame[];
+};
+
+/** Groups a catalog by game so the public integrated storefront never exposes a flat store list. */
+export function integratedStorefrontGames(catalog: BotCatalogGame[]): IntegratedStorefrontGame[] {
+  const games = new Map<string, IntegratedStorefrontGame>();
+  for (const store of catalog) {
+    const current = games.get(store.id);
+    if (current) {
+      current.stores.push(store);
+    } else {
+      games.set(store.id, { id: store.id, name: store.name, stores: [store] });
+    }
+  }
+  return [...games.values()].filter((game) =>
+    game.stores.some((store) => flattenCatalog([store]).length > 0),
+  );
+}
+
 export function integratedStorefrontStoreLabel(store: BotCatalogGame) {
   const storeName = store.catalogStoreName?.trim();
   if (!storeName || storeName.toLocaleLowerCase("pt-BR") === store.name.toLocaleLowerCase("pt-BR")) {
@@ -623,10 +649,10 @@ export function integratedStorefrontStoreLabel(store: BotCatalogGame) {
 }
 
 export function createNativeIntegratedStorefrontSelectionResponse(
-  store: BotCatalogGame,
+  stores: BotCatalogGame[],
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
 ) {
-  const card = catalogCards([store], customization)[0];
+  const card = integratedStorefrontProductsCard(stores, customization);
   const normalized = card ? toCardElement(card) : null;
   if (!normalized) throw new Error("Não foi possível abrir os produtos desta loja.");
 
@@ -648,6 +674,81 @@ export function createNativeIntegratedStorefrontSelectionResponse(
       allowed_mentions: { parse: [] },
     },
   };
+}
+
+/**
+ * Second step of the integrated storefront. Products remain grouped by the
+ * catalog store/world, but the buyer has already chosen the game at this
+ * point. This avoids mixing unrelated games while keeping each selector
+ * below Discord's 25-option limit.
+ */
+function integratedStorefrontProductsCard(
+  stores: BotCatalogGame[],
+  customization: BotMessageCustomization,
+) {
+  const availableStores = stores.filter((store) => flattenCatalog([store]).length > 0);
+  const gameName = availableStores[0]?.name;
+  const message = customization.storefront;
+
+  if (!gameName || availableStores.length === 0) {
+    return catalogCards([], customization)[0];
+  }
+
+  if (availableStores.some((store) => flattenCatalog([store]).length > DISCORD_STOREFRONT_PRODUCT_LIMIT)) {
+    throw new Error(
+      `A vitrine do Discord aceita no máximo ${DISCORD_STOREFRONT_PRODUCT_LIMIT} produtos por lista.`,
+    );
+  }
+
+  const storefrontImageUrl =
+    discordStorefrontBannerUrl(customization) ??
+    discordImageUrl(availableStores[0]?.substores[0]?.imageUrl) ??
+    discordBotBannerUrl(customization, "orderUrl");
+
+  return (
+    <Card
+      key={`integrated-game-${availableStores[0]?.id}`}
+      title={interpolateBotMessageLimited(gameName, {}, 256)}
+      subtitle={interpolateBotMessageLimited(message.subtitle, {}, 256)}
+      imageUrl={storefrontImageUrl ?? undefined}
+    >
+      {message.welcome ? <CardText>{message.welcome}</CardText> : null}
+      <CardText>2. Agora escolha os produtos de {gameName}.</CardText>
+      {message.privacyText ? <CardText>{message.privacyText}</CardText> : null}
+      {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
+      <Divider />
+      {availableStores.map((store) => {
+        const products = flattenCatalog([store]);
+        const storeLabel = availableStores.length === 1
+          ? interpolateBotMessageLimited(message.selectLabel, {}, 100)
+          : truncateSelectText(`${integratedStorefrontStoreLabel(store)} — escolha os produtos`);
+        const placeholder = availableStores.length === 1
+          ? interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)
+          : truncateSelectText(`Produtos de ${integratedStorefrontStoreLabel(store)}`);
+        return (
+          <Actions key={store.catalogStoreId ?? store.id}>
+            <Select
+              id={`select_products\n${store.catalogStoreId ?? store.id}`}
+              label={storeLabel}
+              placeholder={placeholder}
+            >
+              {products.map(({ product }) => (
+                <SelectOption
+                  key={product.id}
+                  {...discordSelectOptionMetadata(product.discordEmoji)}
+                  label={truncateSelectText(product.name)}
+                  value={encodeDiscordCartSelection(product.id, product.name)}
+                  description={truncateSelectText(
+                    `Preço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`,
+                  )}
+                />
+              ))}
+            </Select>
+          </Actions>
+        );
+      })}
+    </Card>
+  );
 }
 
 function helpCard(
