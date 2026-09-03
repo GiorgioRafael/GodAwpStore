@@ -17,9 +17,10 @@ const quantityPreparationMocks = vi.hoisted(() => ({
     totalPriceCents: 100,
   })),
 }));
+const nextServerMocks = vi.hoisted(() => ({ after: vi.fn() }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("next/server", () => ({ after: nextServerMocks.after }));
 vi.mock("@/lib/bot/message-customization-server", async () => {
   const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import(
     "@/lib/bot/message-customization"
@@ -252,6 +253,46 @@ describe("Discord native quantity interactions", () => {
         ],
       },
     });
+  });
+});
+
+describe("Discord vitrine integrada", () => {
+  it("confirma a escolha imediatamente e monta a lista em segundo plano", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const body = JSON.stringify({
+      type: 3,
+      id: "223456789012345678",
+      application_id: "123456789012345678",
+      token: "integrated_storefront_interaction_token",
+      guild_id: "323456789012345678",
+      channel_id: "423456789012345678",
+      message: { id: "523456789012345678" },
+      data: {
+        custom_id: "choose_storefront",
+        values: ["c5b82d6f-a324-47fa-a861-a046559e3a11"],
+      },
+    });
+    const timestamp = String(Math.floor(Date.now() / 1_000));
+    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
+
+    const response = await POST(
+      new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-signature-ed25519": signature,
+          "x-signature-timestamp": timestamp,
+        },
+        body,
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ type: 5, data: { flags: 64 } });
+    expect(nextServerMocks.after).toHaveBeenCalledTimes(1);
   });
 });
 

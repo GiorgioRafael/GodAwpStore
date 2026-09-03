@@ -68,7 +68,7 @@ import {
   parseNativeDiscordRobuxInteraction,
 } from "@/lib/bot/discord-robux";
 import {
-  createNativeDiscordIntegratedStorefrontResponse,
+  completeNativeDiscordIntegratedStorefrontResponse,
   parseNativeDiscordIntegratedStorefrontInteraction,
 } from "@/lib/bot/discord-integrated-storefront";
 
@@ -128,13 +128,19 @@ export async function POST(request: Request) {
       }
 
       if (native.scope === "integrated_storefront") {
-        return Response.json(
-          await createNativeDiscordIntegratedStorefrontResponse(
-            native.raw,
-            native.interaction,
-            await loadBotMessageCustomization(),
-          ),
-        );
+        after(async () => {
+          try {
+            await completeNativeDiscordIntegratedStorefrontResponse(
+              native.raw,
+              native.interaction,
+              await loadBotMessageCustomization(),
+            );
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "erro desconhecido";
+            console.error(`[discord-integrated-storefront] ${message}`);
+          }
+        });
+        return Response.json({ type: 5, data: { flags: 64 } });
       }
 
       if (native.scope === "robux") {

@@ -12,6 +12,7 @@ import {
   catalogStoresForIntegratedStorefront,
   readDiscordIntegratedStorefrontConfiguration,
 } from "./discord-storefront";
+import { discordApiUrl } from "./discord-api";
 import {
   DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
   type BotMessageCustomization,
@@ -20,9 +21,12 @@ import { SupabaseBotCommerceRepository } from "./supabase-repository";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 const DISCORD_MESSAGE_COMPONENT = 3;
+const DISCORD_CHANNEL_MESSAGE_RESPONSE = 4;
 const DISCORD_EPHEMERAL_FLAG = 1 << 6;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
+const INTERACTION_TOKEN_PATTERN = /^[A-Za-z0-9._-]{20,500}$/;
 
 export type NativeDiscordIntegratedStorefrontInteraction = {
   catalogStoreId: string;
@@ -98,10 +102,67 @@ export async function createNativeDiscordIntegratedStorefrontResponse(
   }
 }
 
+/**
+ * The initial interaction must be acknowledged within three seconds. The
+ * catalog needs multiple database reads, so the route defers first and this
+ * function replaces the ephemeral loading state once the catalog is ready.
+ */
+export async function completeNativeDiscordIntegratedStorefrontResponse(
+  raw: unknown,
+  interaction: NativeDiscordIntegratedStorefrontInteraction,
+  customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  fetcher: typeof fetch = fetch,
+) {
+  const response = await createNativeDiscordIntegratedStorefrontResponse(
+    raw,
+    interaction,
+    customization,
+  );
+  if (
+    !isObject(response) ||
+    response.type !== DISCORD_CHANNEL_MESSAGE_RESPONSE ||
+    !isObject(response.data)
+  ) {
+    throw new Error("Resposta da vitrine integrada inválida.");
+  }
+
+  const { applicationId, token } = readInteractionFollowupContext(raw);
+  const update = await fetcher(
+    `${discordApiUrl()}/webhooks/${applicationId}/${token}/messages/@original`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...response.data,
+        allowed_mentions: { parse: [] },
+      }),
+      cache: "no-store",
+    },
+  );
+  if (!update.ok) {
+    throw new Error(`Discord recusou a resposta privada (${update.status}).`);
+  }
+}
+
 function readMessageId(raw: unknown) {
   if (!isObject(raw) || !isObject(raw.message)) return null;
   const id = raw.message.id;
   return typeof id === "string" && /^[0-9]{15,22}$/.test(id) ? id : null;
+}
+
+function readInteractionFollowupContext(raw: unknown) {
+  if (!isObject(raw)) throw new Error("Interação Discord inválida.");
+  const configuredApplicationId = process.env.DISCORD_APPLICATION_ID?.trim() ?? "";
+  const applicationId = typeof raw.application_id === "string" ? raw.application_id : "";
+  const token = typeof raw.token === "string" ? raw.token : "";
+  if (
+    applicationId !== configuredApplicationId ||
+    !SNOWFLAKE_PATTERN.test(applicationId) ||
+    !INTERACTION_TOKEN_PATTERN.test(token)
+  ) {
+    throw new Error("Interação Discord incompleta.");
+  }
+  return { applicationId, token };
 }
 
 function discordEphemeralText(content: string) {
