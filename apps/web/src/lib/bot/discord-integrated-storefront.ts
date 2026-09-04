@@ -29,8 +29,12 @@ const UUID_PATTERN =
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const INTERACTION_TOKEN_PATTERN = /^[A-Za-z0-9._-]{20,500}$/;
 
-/** The deferred original message must already be Components V2 before it is edited. */
-export const DEFERRED_INTEGRATED_STOREFRONT_FLAGS =
+/**
+ * Discord only permits EPHEMERAL on a deferred interaction response (type 5).
+ * Components V2 is applied when the deferred message is edited afterwards.
+ */
+export const DEFERRED_INTEGRATED_STOREFRONT_FLAGS = DISCORD_EPHEMERAL_FLAG;
+const INTEGRATED_STOREFRONT_RESPONSE_FLAGS =
   DISCORD_EPHEMERAL_FLAG | DISCORD_COMPONENTS_V2_FLAG;
 
 export type NativeDiscordIntegratedStorefrontInteraction = {
@@ -176,7 +180,7 @@ function discordEphemeralText(content: string) {
   return {
     type: 4,
     data: {
-      flags: DEFERRED_INTEGRATED_STOREFRONT_FLAGS,
+      flags: INTEGRATED_STOREFRONT_RESPONSE_FLAGS,
       components: [
         {
           type: 17,

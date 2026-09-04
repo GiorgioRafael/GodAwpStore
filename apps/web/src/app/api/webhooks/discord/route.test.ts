@@ -293,7 +293,7 @@ describe("Discord vitrine integrada", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       type: 5,
-      data: { flags: 64 | (1 << 15) },
+      data: { flags: 64 },
     });
     expect(nextServerMocks.after).toHaveBeenCalledTimes(1);
   });
