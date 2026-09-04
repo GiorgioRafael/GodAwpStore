@@ -711,30 +711,86 @@ function integratedStorefrontProductsCard(
       {message.paymentText ? <CardText>{message.paymentText}</CardText> : null}
       <Divider />
       {availableStores.flatMap((store) => {
-        const products = flattenCatalog([store]);
-        const pages = chunkDiscordSelectOptions(products);
-        return pages.map((page, pageIndex) => {
-          const storeLabel = availableStores.length === 1
-            ? interpolateBotMessageLimited(message.selectLabel, {}, 100)
-            : truncateSelectText(`${integratedStorefrontStoreLabel(store)} — escolha os produtos`);
-          const placeholder = availableStores.length === 1
-            ? interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)
-            : truncateSelectText(`Produtos de ${integratedStorefrontStoreLabel(store)}`);
-          return (
-          <Actions key={`${store.catalogStoreId ?? store.id}-${pageIndex}`}>
-            <Select
-              id={`select_products\n${store.catalogStoreId ?? store.id}\n${pageIndex}`}
-              label={discordSelectPageLabel(storeLabel, pageIndex, pages.length)}
-              placeholder={discordSelectPageLabel(placeholder, pageIndex, pages.length)}
-            >
-              {page.map(({ product }) => productSelectOption(product))}
-            </Select>
-          </Actions>
-          );
+        return integratedStorefrontProductGroups(store).flatMap((group) => {
+          const pages = chunkDiscordSelectOptions(group.products);
+          return pages.map((page, pageIndex) => {
+            const storeLabel = group.label ?? (availableStores.length === 1
+              ? interpolateBotMessageLimited(message.selectLabel, {}, 100)
+              : truncateSelectText(`${integratedStorefrontStoreLabel(store)} — escolha os produtos`));
+            const placeholder = group.placeholder ?? (availableStores.length === 1
+              ? interpolateBotMessageLimited(message.selectPlaceholder, {}, 150)
+              : truncateSelectText(`Produtos de ${integratedStorefrontStoreLabel(store)}`));
+            return (
+              <Actions key={`${store.catalogStoreId ?? store.id}-${group.key}-${pageIndex}`}>
+                <Select
+                  id={`select_products\n${store.catalogStoreId ?? store.id}\n${group.key}\n${pageIndex}`}
+                  label={discordSelectPageLabel(storeLabel, pageIndex, pages.length)}
+                  placeholder={discordSelectPageLabel(placeholder, pageIndex, pages.length)}
+                >
+                  {page.map(({ product }) => productSelectOption(product))}
+                </Select>
+              </Actions>
+            );
+          });
         });
       })}
     </Card>
   );
+}
+
+type IntegratedStorefrontProductGroup = {
+  key: string;
+  products: CatalogSelection[];
+  label?: string;
+  placeholder?: string;
+};
+
+/**
+ * Skins are often a large, visually distinct catalog section. Keep them in a
+ * named menu instead of hiding them in a generic paginated product list.
+ * Other categories remain together, preserving the compact checkout flow for
+ * existing stores.
+ */
+function integratedStorefrontProductGroups(
+  store: BotCatalogGame,
+): IntegratedStorefrontProductGroup[] {
+  const skinSubstores = store.substores.filter(
+    (substore) => normalizeCatalogCategoryName(substore.name) === "skins",
+  );
+  if (skinSubstores.length === 0) {
+    return [{ key: "all", products: flattenCatalog([store]) }];
+  }
+
+  const skinIds = new Set(skinSubstores.map((substore) => substore.id));
+  const remainingProducts = flattenCatalog([store]).filter(
+    (selection) => !skinIds.has(selection.substore.id),
+  );
+  const skinProducts = flattenCatalog([store]).filter((selection) =>
+    skinIds.has(selection.substore.id),
+  );
+  const storeName = integratedStorefrontStoreLabel(store);
+  const groups: IntegratedStorefrontProductGroup[] = [];
+
+  if (remainingProducts.length > 0) {
+    groups.push({ key: "all", products: remainingProducts });
+  }
+  if (skinProducts.length > 0) {
+    groups.push({
+      key: "skins",
+      products: skinProducts,
+      label: truncateSelectText(`${storeName} · SKINS`),
+      placeholder: truncateSelectText(`SKINS de ${storeName}`),
+    });
+  }
+  return groups;
+}
+
+function normalizeCatalogCategoryName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
 }
 
 function chunkDiscordSelectOptions<T>(items: T[]): T[][] {

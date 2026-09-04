@@ -145,6 +145,79 @@ describe("Discord catalog cards", () => {
     expect(serialized.match(/select_products/g)).toHaveLength(2);
   });
 
+  it("destaca SKINS em um seletor próprio sem duplicar os itens no catálogo geral", () => {
+    const response = createNativeIntegratedStorefrontSelectionResponse([
+      {
+        id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+        name: "Blox Fruits",
+        catalogStoreId: "d5b82d6f-a324-47fa-a861-a046559e3a11",
+        catalogStoreName: "Blox Fruits",
+        substores: [
+        {
+          id: "gamepasses",
+          name: "Gamepasses",
+          title: "Gamepasses",
+          description: "",
+          colorHex: "#D4AF37",
+          imageUrl: null,
+          products: [{
+            id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+            name: "2x Drops",
+            description: null,
+            priceCents: 1_225,
+            availableStock: 1,
+            sortOrder: 0,
+          }],
+        },
+        {
+          id: "skins",
+          name: "SKINS",
+          title: "SKINS",
+          description: "",
+          colorHex: "#D4AF37",
+          imageUrl: null,
+          products: [{
+            id: "aa845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+            name: "KITSUNE GALAXY",
+            description: null,
+            priceCents: 30_000,
+            availableStock: 1,
+            sortOrder: 1,
+          }],
+        },
+        ],
+      },
+      {
+        id: "c5b82d6f-a324-47fa-a861-a046559e3a11",
+        name: "Blox Fruits",
+        catalogStoreId: "e5b82d6f-a324-47fa-a861-a046559e3a11",
+        catalogStoreName: "Frutas Físicas",
+        substores: [{
+          id: "physical-fruits",
+          name: "Frutas Físicas",
+          title: "Frutas Físicas",
+          description: "",
+          colorHex: "#D4AF37",
+          imageUrl: null,
+          products: [{
+            id: "ba845b40-7c4e-4d25-9f3f-3cbd27f050c9",
+            name: "Dragon",
+            description: null,
+            priceCents: 17_500,
+            availableStock: 1,
+            sortOrder: 0,
+          }],
+        }],
+      },
+    ]);
+
+    const serialized = JSON.stringify(response);
+    expect(serialized.match(/select_products/g)).toHaveLength(3);
+    expect(serialized).toContain("SKINS de Blox Fruits");
+    expect(serialized).toContain("KITSUNE GALAXY");
+    expect(serialized).toContain("2x Drops");
+  });
+
   it("responde /ranking imediatamente com a tabela pública completa", () => {
     expect(
       isNativeDiscordRankingCommand({
