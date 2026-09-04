@@ -377,15 +377,11 @@ export async function POST(request: Request) {
         }
 
         if (native.interaction.kind === "open") {
-          const preparation = await prepareDiscordCartQuantities(
-            native.raw,
-            native.interaction.selections.map((selection) => selection.productId),
-          );
+          // Discord only gives a component click three seconds to open its
+          // modal. Catalog, guild and stock reads happen on submission, where
+          // the interaction is safely deferred before the purchase is checked.
           return Response.json(
-            createNativeDiscordCartResponse(
-              native.interaction.selections,
-              preparation,
-            ),
+            createNativeDiscordCartResponse(native.interaction.selections),
           );
         }
 

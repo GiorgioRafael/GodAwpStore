@@ -153,7 +153,7 @@ describe("Discord native quantity interactions", () => {
           {
             components: [{
               custom_id: expect.stringMatching(/^gwc:q:[A-Za-z0-9_-]{22}$/),
-              label: "Super Watering (mín. 10)",
+              label: "Super Watering",
             }],
           },
         ],
