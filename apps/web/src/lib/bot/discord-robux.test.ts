@@ -76,14 +76,14 @@ describe("native Discord Robux interactions", () => {
     expect(parseNativeDiscordRobuxInteraction({ type: 3, data: { custom_id: "other:open" } })).toBeNull();
   });
 
-  it("does not expose the sale on THStore", async () => {
+  it("exposes the quantity modal on THStore", async () => {
     vi.stubEnv("NEXT_PUBLIC_STORE_NAME", "THstore");
     vi.resetModules();
     const { createNativeDiscordRobuxResponse } = await import("./discord-robux");
 
     expect(createNativeDiscordRobuxResponse()).toMatchObject({
-      type: 4,
-      data: { flags: 64 },
+      type: 9,
+      data: { custom_id: "gwstore_robux:quantity" },
     });
   });
 

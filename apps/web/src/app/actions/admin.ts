@@ -37,7 +37,8 @@ import {
   readRobuxStorefrontConfiguration,
   withRobuxStorefrontConfiguration,
 } from "@/lib/bot/discord-robux-storefront";
-import { IS_GWSTORE } from "@/lib/brand";
+import { ROBUX_SALES_ENABLED } from "@/lib/brand";
+import { ROBUX_PRICE_LABEL } from "@/lib/robux/pricing";
 import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
 import { botMessageCustomizationSchema } from "@/lib/bot/message-customization-validation";
@@ -1172,8 +1173,8 @@ export async function publishDiscordRobuxStorefrontAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
-  if (!IS_GWSTORE) {
-    return { ok: false, message: "A venda de Robux está disponível somente na GWStore." };
+  if (!ROBUX_SALES_ENABLED) {
+    return { ok: false, message: "A venda de Robux não está disponível nesta loja." };
   }
   const parsed = robuxStorefrontSchema.safeParse({
     guildId: text(formData, "guildId"),
@@ -1270,7 +1271,7 @@ export async function publishDiscordRobuxStorefrontAction(
     revalidatePath("/configuracoes");
     return {
       ok: true,
-      message: `Mensagem de Robux publicada em #${published.channel_name}. O comprador verá o preço de R$ 40,00 por 1.000 Robux antes de pagar.`,
+      message: `Mensagem de Robux publicada em #${published.channel_name}. ${ROBUX_PRICE_LABEL}. O comprador confirma o valor antes de pagar.`,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Erro desconhecido.";

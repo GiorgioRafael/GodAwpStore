@@ -1,4 +1,5 @@
 import "server-only";
+import { IS_THSTORE } from "@/lib/brand";
 
 import { getLivePixClient, type LivePixPayment } from "@/lib/livepix/client";
 import { reconciliationDigest } from "@/lib/livepix/payment-service";
@@ -12,7 +13,7 @@ import {
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const GWSTORE_PUBLIC_SITE_URL = "https://gwstore.vercel.app";
+const GWSTORE_PUBLIC_SITE_URL = IS_THSTORE ? "https://thstoreadm.vercel.app" : "https://gwstore.vercel.app";
 
 type RpcError = { message: string; code?: string } | null;
 type RpcClient = {

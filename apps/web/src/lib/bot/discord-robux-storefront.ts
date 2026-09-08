@@ -1,4 +1,6 @@
 import "server-only";
+import { IS_THSTORE, STORE_NAME } from "@/lib/brand";
+import { ROBUX_PRICE_LABEL } from "@/lib/robux/pricing";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
 import {
@@ -98,24 +100,24 @@ export function createDiscordRobuxStorefrontPayload(
     allowed_mentions: { parse: [] },
     embeds: [
       {
-        color: 0xa855f7,
+        color: IS_THSTORE ? 0x3b82f6 : 0xa855f7,
         title: "Robux",
         description:
           "Compre Robux com Pix de forma simples e segura. Clique em comprar, informe a quantidade e confira o valor antes de gerar o Pix.",
         fields: [
           {
             name: "Preço",
-            value: "**1.000 Robux = R$ 40,00**",
+            value: `**${ROBUX_PRICE_LABEL}**`,
             inline: false,
           },
           {
             name: "Como funciona",
-            value: "Informe a quantidade, finalize a compra, pague o Pix e aguarde o ticket privado para a entrega.",
+            value: `${IS_THSTORE ? "Entrega via gamepass. " : ""}Informe a quantidade, finalize a compra, pague o Pix e aguarde o ticket privado para a entrega.`,
             inline: false,
           },
         ],
         image: { url: botMessageBannerUrl(customization, "robuxUrl") },
-        footer: { text: "GWStore · Pagamento via LivePix" },
+        footer: { text: `${STORE_NAME} · Pagamento via LivePix` },
       },
     ],
     components: [

@@ -30,6 +30,8 @@ export const STORE_SLUG =
 // identificadores representam a mesma loja e precisam habilitar os recursos
 // exclusivos dela durante a transição de marca.
 export const IS_GWSTORE = STORE_SLUG === "gwstore" || STORE_SLUG === "godawp-store";
+export const IS_THSTORE = STORE_SLUG === "thstore";
+export const ROBUX_SALES_ENABLED = IS_GWSTORE || IS_THSTORE;
 export const STORE_INITIALS =
   STORE_NAME
     .split(/\s+/)

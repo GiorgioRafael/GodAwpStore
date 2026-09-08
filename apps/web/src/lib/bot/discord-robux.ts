@@ -1,6 +1,6 @@
 import "server-only";
 
-import { IS_GWSTORE } from "@/lib/brand";
+import { ROBUX_SALES_ENABLED } from "@/lib/brand";
 import { getRobuxPaymentService } from "@/lib/robux/payment-service";
 import {
   calculateRobuxPriceCents,
@@ -59,7 +59,7 @@ export function parseNativeDiscordRobuxInteraction(
 }
 
 export function createNativeDiscordRobuxResponse() {
-  if (!IS_GWSTORE) return robuxErrorResponse("Esta venda está disponível somente na GWStore.");
+  if (!ROBUX_SALES_ENABLED) return robuxErrorResponse("Esta venda não está disponível nesta loja.");
   return {
     type: DISCORD_MODAL_RESPONSE,
     data: {
@@ -88,12 +88,12 @@ export function createNativeDiscordRobuxResponse() {
 
 export async function completeDiscordRobuxPurchase(raw: unknown) {
   try {
-    if (!IS_GWSTORE) {
-      await updateDiscordRobuxResponse(raw, robuxErrorPayload("Esta venda está disponível somente na GWStore."));
+    if (!ROBUX_SALES_ENABLED) {
+      await updateDiscordRobuxResponse(raw, robuxErrorPayload("Esta venda não está disponível nesta loja."));
       return;
     }
     const context = readDiscordContext(raw);
-    if (!context) throw new Error("Abra a venda de Robux dentro do servidor da GWStore.");
+    if (!context) throw new Error("Abra a venda de Robux dentro do servidor da loja.");
     const configured = await isConfiguredRobuxChannel(context.guildId, context.channelId);
     if (!configured) {
       throw new Error("Esta mensagem de Robux não está mais ativa. Use a mensagem publicada pela loja.");

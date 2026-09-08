@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useId, useMemo, useState } from "react";
+import { STORE_NAME } from "@/lib/brand";
+import { ROBUX_PRICE_LABEL } from "@/lib/robux/pricing";
 import { CheckCircle2, ChevronDown, Coins, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { publishDiscordRobuxStorefrontAction } from "@/app/actions/admin";
@@ -50,7 +52,7 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-semibold tracking-tight">Venda de Robux</h2>
-              <Badge tone="gold">Somente GWStore</Badge>
+              <Badge tone="gold">{STORE_NAME}</Badge>
             </div>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted">
               Publique uma mensagem própria em outro canal. O comprador informa a quantidade,
@@ -135,7 +137,7 @@ export function RobuxSalesForm({ guilds }: { guilds: DiscordStorefrontGuildOptio
             <div className="grid gap-3 rounded-xl border border-success/20 bg-success/[0.045] p-4 text-sm md:grid-cols-3">
               <div>
                 <p className="font-semibold text-foreground">Preço fixo</p>
-                <p className="mt-1 text-xs leading-5 text-muted">1.000 Robux = R$ 40,00</p>
+                <p className="mt-1 text-xs leading-5 text-muted">{ROBUX_PRICE_LABEL}</p>
               </div>
               <div>
                 <p className="font-semibold text-foreground">Pagamento seguro</p>

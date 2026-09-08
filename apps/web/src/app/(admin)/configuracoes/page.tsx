@@ -18,7 +18,7 @@ import {
   readStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { readRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
-import { IS_GWSTORE } from "@/lib/brand";
+import { IS_GWSTORE, ROBUX_SALES_ENABLED } from "@/lib/brand";
 import { readBoosterDiscountConfiguration } from "@/lib/bot/booster-discount";
 import {
   getPlatformSettings,
@@ -204,7 +204,7 @@ export default async function SettingsPage() {
           .map((guild) => ({ id: guild.id, name: guild.name }))}
       />
 
-      {IS_GWSTORE ? <RobuxSalesForm guilds={guilds} /> : null}
+      {ROBUX_SALES_ENABLED ? <RobuxSalesForm guilds={guilds} /> : null}
 
       {/* Alvo do item "Vitrines do Discord" no menu. */}
       <div id="vitrines" className="scroll-mt-24">
