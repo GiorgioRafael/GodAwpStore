@@ -17,6 +17,7 @@ let getDiscordBot: typeof import("./discord-bot").getDiscordBot;
 let integratedStorefrontCard: typeof import("./discord-bot").integratedStorefrontCard;
 let isNativeDiscordRankingCommand: typeof import("./discord-bot").isNativeDiscordRankingCommand;
 let postDiscordEphemeral: typeof import("./discord-bot").postDiscordEphemeral;
+let postDiscordPrivateCatalog: typeof import("./discord-bot").postDiscordPrivateCatalog;
 let purchaseResultCard: typeof import("./discord-bot").purchaseResultCard;
 let parseNativeDiscordQuantityInteraction: typeof import("./discord-bot").parseNativeDiscordQuantityInteraction;
 let selectedProductCard: typeof import("./discord-bot").selectedProductCard;
@@ -35,6 +36,7 @@ beforeAll(async () => {
     integratedStorefrontCard,
     isNativeDiscordRankingCommand,
     postDiscordEphemeral,
+    postDiscordPrivateCatalog,
     purchaseResultCard,
     parseNativeDiscordQuantityInteraction,
     selectedProductCard,
@@ -928,6 +930,37 @@ describe("Discord catalog cards", () => {
     expect(payload.allowed_mentions).toEqual({ parse: [] });
     expect(JSON.stringify(payload.components)).toContain("select_products");
     expect(JSON.stringify(payload.components)).toContain('"max_values":1');
+  });
+
+  it("mantém todas as páginas e lojas privadas após a primeira resposta de /loja", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response(null, { status: 200 }));
+    const card = catalogCards([])[0];
+    await postDiscordPrivateCatalog({
+      application_id: "123456789012345678",
+      token: "interaction-token-for-test-123456",
+    }, Array.from({ length: 8 }, () => card), fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(8);
+    expect(fetcher.mock.calls[0][1]?.method).toBe("PATCH");
+    expect(String(fetcher.mock.calls[0][0]).endsWith("/messages/@original")).toBe(true);
+    for (const [url, request] of fetcher.mock.calls.slice(1)) {
+      expect(String(url)).toContain("/webhooks/123456789012345678/");
+      expect(request?.method).toBe("POST");
+      const payload = JSON.parse(String(request?.body));
+      expect(payload.flags & 64).toBe(64);
+      expect(payload.allowed_mentions).toEqual({ parse: [] });
+    }
+    expect(fetcher.mock.calls.every(([url]) => !String(url).includes("/channels/"))).toBe(true);
+  });
+
+  it("interrompe catálogo se a resposta privada falhar, sem fallback público", async () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => new Response(null, { status: 404 }));
+    await expect(postDiscordPrivateCatalog({
+      application_id: "123456789012345678",
+      token: "interaction-token-for-test-123456",
+    }, [catalogCards([])[0], catalogCards([])[0]], fetcher)).rejects.toThrow();
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("rejeita follow-up que não pertence à aplicação configurada", async () => {

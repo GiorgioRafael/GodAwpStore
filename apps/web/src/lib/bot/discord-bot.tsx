@@ -161,10 +161,11 @@ function createBot() {
         context.channelId,
       );
       const cards = catalogCards(visibleCatalog, customization);
-      for (const card of cards) await event.channel.post(card);
+      await postDiscordPrivateCatalog(event.raw, cards);
     } catch (error) {
       logBotError("catalog", error);
-      await event.channel.post(
+      await postDiscordEphemeral(
+        event.raw,
         errorCard(customization.error.storeUnavailable, customization),
       );
     }
@@ -971,7 +972,9 @@ export async function postDiscordEphemeral(
     cardToDiscordPayload(normalizedCard, {
       contentFormat: DiscordContentFormat.ComponentsV2,
     }),
+    collectDiscordProductOptionEmojis(card),
   );
+  configureDiscordStorefrontBanner(payload);
   const apiUrl = (process.env.DISCORD_API_URL?.trim() || "https://discord.com/api/v10").replace(/\/$/, "");
   const response = await fetcher(
     `${apiUrl}/webhooks/${interaction.applicationId}/${interaction.token}`,
@@ -1000,9 +1003,13 @@ export async function updateDiscordEphemeralResponse(
   const interaction = readDiscordFollowupContext(raw);
   const normalizedCard = toCardElement(card);
   if (!normalizedCard) throw new Error("Resposta privada Discord inválida.");
-  const payload = cardToDiscordPayload(normalizedCard, {
-    contentFormat: DiscordContentFormat.ComponentsV2,
-  });
+  const payload = configureDiscordProductEntrySelect(
+    cardToDiscordPayload(normalizedCard, {
+      contentFormat: DiscordContentFormat.ComponentsV2,
+    }),
+    collectDiscordProductOptionEmojis(card),
+  );
+  configureDiscordStorefrontBanner(payload);
   const apiUrl = (process.env.DISCORD_API_URL?.trim() || "https://discord.com/api/v10").replace(/\/$/, "");
   const response = await fetcher(
     `${apiUrl}/webhooks/${interaction.applicationId}/${interaction.token}/messages/@original`,
@@ -1020,6 +1027,21 @@ export async function updateDiscordEphemeralResponse(
   if (!response.ok) {
     throw new Error(`Discord recusou a atualização privada (${response.status}).`);
   }
+}
+
+/** The adapter only inherits the private flag on the first slash response.
+ * Never publish subsequent catalog pages through channel.post (or fall back
+ * to a public channel message if an interaction token expires).
+ */
+export async function postDiscordPrivateCatalog(
+  raw: unknown,
+  cards: ChatElement[],
+  fetcher: typeof fetch = fetch,
+) {
+  const [first, ...remaining] = cards;
+  if (!first) return;
+  await updateDiscordEphemeralResponse(raw, first, fetcher);
+  for (const card of remaining) await postDiscordEphemeral(raw, card, fetcher);
 }
 
 function readDiscordFollowupContext(raw: unknown) {
