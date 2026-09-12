@@ -80,6 +80,12 @@ export class LivePixClient {
   }
 
   async getPaymentByReference(reference: string): Promise<LivePixPayment> {
+    const payment = await this.findPaymentByReference(reference);
+    if (!payment) throw new Error("A LivePix não retornou um pagamento único para a referência.");
+    return payment;
+  }
+
+  async findPaymentByReference(reference: string): Promise<LivePixPayment | null> {
     const normalizedReference = reference.trim();
     if (!normalizedReference || normalizedReference.length > 255) {
       throw new Error("Referência de pagamento LivePix inválida.");
@@ -105,6 +111,7 @@ export class LivePixClient {
     const matches = data.map(readPayment).filter(
       (payment) => payment.reference === normalizedReference,
     );
+    if (matches.length === 0) return null;
     if (matches.length !== 1) {
       throw new Error("A LivePix não retornou um pagamento único para a referência.");
     }

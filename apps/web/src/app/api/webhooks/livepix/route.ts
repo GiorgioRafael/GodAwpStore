@@ -38,10 +38,18 @@ export async function POST(request: Request) {
 
   const payments = getLivePixPaymentService();
   try {
-    const confirmation = await payments.reconcilePayment({
-      providerPaymentId: event.resource.id,
-      providerReference: event.resource.reference,
-    });
+    let confirmation;
+    let itemPaymentError: unknown;
+    try {
+      confirmation = await payments.reconcilePayment({
+        providerPaymentId: event.resource.id,
+        providerReference: event.resource.reference,
+      });
+    } catch (error) {
+      // An unavailable item checkout query must not block a verified Robux
+      // payment. Preserve the error if this reference is not a Robux order.
+      itemPaymentError = error;
+    }
     if (!confirmation) {
       const robux = await getRobuxPaymentService().reconcilePayment({
         providerPaymentId: event.resource.id,
@@ -50,6 +58,7 @@ export async function POST(request: Request) {
       if (robux) {
         return await openRobuxDeliveryTicket(robux);
       }
+      if (itemPaymentError) throw itemPaymentError;
 
       // A reference that belongs to no order is either a roulette coin purchase
       // or an event for another integration.

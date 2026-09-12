@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   reconcileLeadRecoveryOffers: vi.fn(),
   reconcileRouletteRedemptionTickets: vi.fn(),
   reconcileLatePaidOrderTickets: vi.fn(),
+  reconcileRobuxOrders: vi.fn(),
 }));
 
 vi.mock("@/lib/bot/discord-ticket-close-reconciliation", () => ({
@@ -34,6 +35,8 @@ vi.mock("@/lib/roulette/redemptions", () => ({
 }));
 
 import { GET } from "./route";
+
+vi.mock("@/lib/robux/reconciliation", () => ({ reconcileRobuxOrders: mocks.reconcileRobuxOrders }));
 
 const result = {
   scanned: 2,
@@ -87,6 +90,7 @@ beforeEach(() => {
   mocks.reconcileLeadRecoveryOffers.mockResolvedValue(leadRecoveryResult);
   mocks.reconcileRouletteRedemptionTickets.mockResolvedValue(rouletteRedemptionResult);
   mocks.reconcileLatePaidOrderTickets.mockResolvedValue(latePaymentResult);
+  mocks.reconcileRobuxOrders.mockResolvedValue({ checked: 2, opened: 2, pending: 0, skipped: 0, failed: 0 });
 });
 
 afterEach(() => {
@@ -134,6 +138,7 @@ describe("Discord ticket close reconciliation cron", () => {
       leadRecovery: leadRecoveryResult,
       rouletteRedemptions: rouletteRedemptionResult,
       latePayments: latePaymentResult,
+      robux: { checked: 2, opened: 2, pending: 0, skipped: 0, failed: 0 },
     });
     expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
     expect(mocks.reconcileDeliveredDiscordTicketAutoCloses).toHaveBeenCalledOnce();

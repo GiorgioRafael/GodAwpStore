@@ -305,9 +305,10 @@ describe("LivePix webhook route", () => {
     expect(mocks.claimTicket).not.toHaveBeenCalled();
   });
 
-  it("abre ticket privado para uma venda de Robux confirmada", async () => {
+  it.each([false, true])("abre Robux confirmado mesmo com falha na consulta de itens: %s", async (itemQueryFails) => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
     mocks.reconcilePayment.mockResolvedValue(null);
+    if (itemQueryFails) mocks.reconcilePayment.mockRejectedValue(new Error("Gateway Timeout"));
     mocks.reconcileRobuxPayment.mockResolvedValue({
       orderId,
       discordGuildId: "123456789012345678",

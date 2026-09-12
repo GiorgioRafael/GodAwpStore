@@ -142,6 +142,16 @@ export class RobuxPaymentService {
     return readTicketClaim(row);
   }
 
+  async reconcileStoredCheckout(providerReference: string) {
+    const checkout = await this.rpcRowOrNull("find_robux_livepix_checkout_by_reference", {
+      p_provider_reference: providerReference,
+    });
+    if (!checkout) return null;
+    const payment = await getLivePixClient().findPaymentByReference(providerReference);
+    if (!payment) return null;
+    return this.confirmPayment(payment);
+  }
+
   async completeTicket(orderId: string, channelId: string) {
     assertUuid(orderId);
     assertSnowflake(channelId, "canal do ticket");

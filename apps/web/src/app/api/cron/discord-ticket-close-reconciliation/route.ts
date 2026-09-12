@@ -4,6 +4,7 @@ import { reconcileGiveaways } from "@/lib/giveaways/reconciliation";
 import { reconcileLeadRecoveryOffers } from "@/lib/bot/lead-recovery";
 import { reconcileLatePaidOrderTickets } from "@/lib/bot/late-payment-ticket";
 import { reconcileRouletteRedemptionTickets } from "@/lib/roulette/redemptions";
+import { reconcileRobuxOrders } from "@/lib/robux/reconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,18 @@ export async function GET(request: Request) {
   }
 
   try {
+    const outcomes = await Promise.allSettled([
+      reconcileDiscordTicketCloseClaims(),
+      reconcileDeliveredDiscordTicketAutoCloses(),
+      reconcileGiveaways(),
+      reconcileLeadRecoveryOffers(),
+      reconcileRouletteRedemptionTickets(),
+      reconcileLatePaidOrderTickets(),
+      reconcileRobuxOrders(),
+    ]);
+    // Finish independent recovery work before returning, even if another queue fails.
+    const failure = outcomes.find((outcome) => outcome.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
     const [
       tickets,
       deliveredTicketAutoClose,
@@ -26,15 +39,8 @@ export async function GET(request: Request) {
       leadRecovery,
       rouletteRedemptions,
       latePayments,
-    ] =
-      await Promise.all([
-        reconcileDiscordTicketCloseClaims(),
-        reconcileDeliveredDiscordTicketAutoCloses(),
-        reconcileGiveaways(),
-        reconcileLeadRecoveryOffers(),
-        reconcileRouletteRedemptionTickets(),
-        reconcileLatePaidOrderTickets(),
-      ]);
+      robux,
+    ] = outcomes.map((outcome) => outcome.status === "fulfilled" ? outcome.value : null);
     return Response.json(
       {
         ok: true,
@@ -44,6 +50,7 @@ export async function GET(request: Request) {
         leadRecovery,
         rouletteRedemptions,
         latePayments,
+        robux,
       },
       { headers: { "Cache-Control": "no-store" } },
     );
