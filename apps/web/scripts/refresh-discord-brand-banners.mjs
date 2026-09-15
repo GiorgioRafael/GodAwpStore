@@ -182,7 +182,7 @@ function replacePaymentCopy(value) {
   if (!value || typeof value !== "object") return value;
   return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
     typeof item === "string" && ["content", "description", "text", "value", "label"].includes(key)
-      ? item.replace(/\blivepix\b/gi, "EclipsePay") : replacePaymentCopy(item),
+      ? item.replace(/\b(?:LivePix ou EclipsePay|LivePix|EclipsePay)\b/gi, "LivePix ou EclipsePay") : replacePaymentCopy(item),
   ]));
 }
 

@@ -5,6 +5,8 @@ import { getLivePixClient, type LivePixPayment } from "@/lib/livepix/client";
 import { eclipseCheckoutSchema, eclipseDatabase, eclipsePayEnabled, getEclipsePayClient } from "@/lib/eclipsepay/runtime";
 
 const referenceSchema = z.string().regex(/^ep:[0-9a-f-]{36}$/);
+// Final charge amount, in integer cents (after discounts).
+const LIVEPIX_MAX_AMOUNT_CENTS = 1_000;
 
 async function findEclipsePayment(reference: string): Promise<LivePixPayment | null> {
   referenceSchema.parse(reference);
@@ -39,14 +41,26 @@ async function findEclipsePayment(reference: string): Promise<LivePixPayment | n
 export function getPaymentClient() {
   return {
     async createPayment(input: { amountCents: number; redirectUrl: string }) {
+      if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
+        throw new Error("Valor Pix inválido.");
+      }
       if (!eclipsePayEnabled()) return getLivePixClient().createPayment(input);
-      if (!process.env.ECLIPSEPAY_WEBHOOK_SECRET) throw new Error("Webhook EclipsePay não configurado.");
       const url = new URL(input.redirectUrl);
       const id = z.uuid().parse(url.searchParams.get("compra") ?? url.pathname.split("/").at(-1));
+      const db = eclipseDatabase();
+      if (input.amountCents <= LIVEPIX_MAX_AMOUNT_CENTS) {
+        // A pre-cutover EclipsePay intent may already have issued a charge even
+        // when its API response timed out. Never switch that retry to LivePix.
+        const { data: existing, error: lookupError } = await db.from("eclipsepay_checkouts")
+          .select("order_id,amount_cents").eq("order_id", id).maybeSingle();
+        if (lookupError) throw new Error("Não foi possível verificar o Pix existente. Tente novamente.");
+        if (!existing) return getLivePixClient().createPayment(input);
+        if (Number(existing.amount_cents) !== input.amountCents) throw new Error("Valor Pix divergente do pedido.");
+      }
+      if (!process.env.ECLIPSEPAY_WEBHOOK_SECRET) throw new Error("Webhook EclipsePay não configurado.");
       if (input.amountCents < 80 || input.amountCents > 100_000 || !Number.isSafeInteger(input.amountCents)) {
         throw new Error("O Pix EclipsePay aceita até R$ 1.000,00 por pedido. Ajuste a quantidade ou fale com a loja.");
       }
-      const db = eclipseDatabase();
       const { data, error } = await db.rpc("prepare_eclipsepay_checkout", { p_order_id: id, p_amount_cents: input.amountCents }).single();
       if (error || !data) throw new Error("Não foi possível preparar o Pix.");
       const checkout = eclipseCheckoutSchema.parse(data);

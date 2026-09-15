@@ -19,12 +19,69 @@ const input = { amountCents: 4000, redirectUrl: `https://gwstore.vercel.app/paga
 beforeEach(() => {
   vi.clearAllMocks(); mocks.brand.IS_GWSTORE = true; mocks.enabled = true;
   vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "test-only");
+  mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) });
   mocks.db.rpc.mockImplementation((name) => name === "prepare_eclipsepay_checkout"
     ? { single: async () => ({ data: { order_id: id, order_kind: "robux", amount_cents: 4000, checkout_token: token, operation_id: null }, error: null }) }
     : Promise.resolve({ error: null }));
   mocks.eclipse.createCharge.mockResolvedValue({ id: operation, status: "pending", amountCents: 4000, brCode: "code", expiresAt: null });
 });
 describe("isolated payment provider routing", () => {
+  it.each([1, 79, 80, 500, 999, 1000])("usa LivePix para uma cobrança nova de %i centavos", async (amountCents) => {
+    const small = { ...input, amountCents };
+    await getPaymentClient().createPayment(small);
+    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(small);
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+    expect(mocks.db.rpc).not.toHaveBeenCalled();
+  });
+  it.each([1001, 1050, 4000, 100000])("usa EclipsePay acima de R$10 (%i centavos)", async (amountCents) => {
+    await getPaymentClient().createPayment({ ...input, amountCents });
+    expect(mocks.eclipse.createCharge).toHaveBeenCalledWith(id, { amountCents, description: `GWStore ${id}` });
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+  });
+  it.each([0, -1, 999.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])("rejeita valor inválido %s antes de chamar qualquer gateway", async (amountCents) => {
+    await expect(getPaymentClient().createPayment({ ...input, amountCents })).rejects.toThrow("Valor Pix inválido");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("preserva intenção EclipsePay antiga de R$10 mesmo após timeout", async () => {
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { order_id: id, amount_cents: 1000 }, error: null }) });
+    mocks.eclipse.createCharge.mockRejectedValueOnce(new Error("timeout"));
+    await expect(getPaymentClient().createPayment({ ...input, amountCents: 1000 })).rejects.toThrow("timeout");
+    await getPaymentClient().createPayment({ ...input, amountCents: 1000 });
+    expect(mocks.eclipse.createCharge.mock.calls[0]).toEqual(mocks.eclipse.createCharge.mock.calls[1]);
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+  });
+  it("não troca de gateway quando a consulta de intenção falha", async () => {
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: "unavailable" } }) });
+    await expect(getPaymentClient().createPayment({ ...input, amountCents: 1000 })).rejects.toThrow("verificar");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("não migra intenção antiga cujo valor diverge", async () => {
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { order_id: id, amount_cents: 500 }, error: null }) });
+    await expect(getPaymentClient().createPayment({ ...input, amountCents: 1000 })).rejects.toThrow("divergente");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("usa LivePix até R$10 sem depender da chave do webhook EclipsePay", async () => {
+    vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "");
+    await getPaymentClient().createPayment({ ...input, amountCents: 1000 });
+    expect(mocks.legacy.createPayment).toHaveBeenCalled();
+  });
+  it("mantém LivePix quando EclipsePay não está habilitada", async () => {
+    mocks.enabled = false;
+    await getPaymentClient().createPayment(input);
+    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(input);
+    expect(mocks.db.from).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("aplica o mesmo limite às compras de moedas da roleta", async () => {
+    const roulette = { amountCents: 1000, redirectUrl: `https://gwstore.vercel.app/roleta?compra=${id}` };
+    await getPaymentClient().createPayment(roulette);
+    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(roulette);
+    await getPaymentClient().createPayment({ ...roulette, amountCents: 1001 });
+    expect(mocks.eclipse.createCharge).toHaveBeenCalledWith(id, { amountCents: 1001, description: `GWStore ${id}` });
+  });
   it("mantém THStore no LivePix mesmo se a flag for copiada por engano", async () => {
     mocks.brand.IS_GWSTORE = false;
     await getPaymentClient().createPayment(input);
