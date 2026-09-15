@@ -42,6 +42,7 @@ type DiscordChannel = {
 
 type DiscordUser = {
   id: string;
+  username?: string;
 };
 
 type DiscordMessage = {
@@ -148,8 +149,20 @@ async function ensurePaidOrderTicketInternal(
   let channel = channels.find((candidate) => candidate.type === 0 && candidate.topic?.startsWith(marker));
   let created = false;
   let permissionsRepaired = false;
+  let channelName = input.controls === "robux"
+    ? robuxTicketChannelName(input.buyerDiscordId)
+    : ticketChannelName(input.orderId);
 
   if (!channel) {
+    if (input.controls === "robux") {
+      // A profile lookup must never prevent delivery of an already-paid order.
+      const buyer = await discordJson<DiscordUser>(
+        config.apiUrl, `/users/${input.buyerDiscordId}`, { headers }, fetcher,
+      ).catch(() => null);
+      if (buyer?.id === input.buyerDiscordId) {
+        channelName = robuxTicketChannelName(input.buyerDiscordId, buyer.username);
+      }
+    }
     channel = await discordJson<DiscordChannel>(
       config.apiUrl,
       `/guilds/${input.guildId}/channels`,
@@ -160,7 +173,7 @@ async function ensurePaidOrderTicketInternal(
           "X-Audit-Log-Reason": `${STORE_NAME} paid order ${input.orderId}`,
         },
         body: JSON.stringify({
-          name: ticketChannelName(input.orderId),
+          name: channelName,
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
@@ -230,7 +243,7 @@ async function ensurePaidOrderTicketInternal(
 
   return {
     channelId: channel.id,
-    channelName: channel.name || ticketChannelName(input.orderId),
+    channelName: channel.name || channelName,
     created,
     welcomeMessageCreated,
     permissionsRepaired,
@@ -406,6 +419,14 @@ function readRetryAfterMs(payload: unknown) {
 
 function ticketChannelName(orderId: string) {
   return `ticket-${orderId.replaceAll("-", "").slice(0, 12)}`;
+}
+
+function robuxTicketChannelName(buyerDiscordId: string, username?: string) {
+  const slug = typeof username === "string"
+    ? username.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 94)
+    : "";
+  return `robux-${slug || buyerDiscordId}`;
 }
 
 function messageNonce(orderId: string) {

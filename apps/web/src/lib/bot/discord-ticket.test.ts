@@ -49,6 +49,47 @@ afterEach(() => {
 });
 
 describe("Discord paid-order ticket", () => {
+  it.each([
+    ["João.Comprador", "robux-joao-comprador"],
+    ["speedy_123", "robux-speedy_123"],
+    ["🔥", `robux-${order.buyerDiscordId}`],
+    [null, `robux-${order.buyerDiscordId}`],
+    ["a".repeat(120), `robux-${"a".repeat(94)}`],
+  ])("nomeia ticket de Robux pelo comprador (%s), sem duplicar em reenvios", async (username, expectedName) => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "secret-ticket-token");
+    let channel: ReturnType<typeof channelResponse> | null = null;
+    const creates: Array<{ name: string; topic: string }> = [];
+    let profileReads = 0;
+    const fetcher = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      if (url.endsWith(`/guilds/${order.guildId}/channels`) && method === "GET") return Response.json(channel ? [channel] : []);
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      if (url.endsWith(`/users/${order.buyerDiscordId}`)) {
+        profileReads += 1;
+        return username === null ? Response.json({}, { status: 503 }) : Response.json({ id: order.buyerDiscordId, username });
+      }
+      if (url.endsWith(`/guilds/${order.guildId}/channels`) && method === "POST") {
+        creates.push(body);
+        channel = { ...channelResponse(body.topic, body.permission_overwrites), name: body.name };
+        return Response.json(channel, { status: 201 });
+      }
+      if (url.endsWith(`/channels/${channelId}/messages`) && method === "POST") return Response.json({ id: "723456789012345678" });
+      if (url.endsWith(`/channels/${channelId}`) && method === "PATCH") {
+        channel = { ...channel!, ...body };
+        return Response.json(channel);
+      }
+      throw new Error(`unexpected request ${method} ${url}`);
+    }) as unknown as typeof fetch;
+    const robuxOrder = { ...order, productName: "Robux", controls: "robux" as const };
+    expect(await ticket.ensurePaidOrderTicket(robuxOrder, { fetcher })).toMatchObject({ channelName: expectedName, created: true });
+    expect(await ticket.ensurePaidOrderTicket(robuxOrder, { fetcher })).toMatchObject({ channelName: expectedName, created: false });
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toMatchObject({ name: expectedName, topic: `gwstore-order:${order.orderId}` });
+    expect(profileReads).toBe(1);
+  });
+
   it("nega @everyone e libera somente comprador e bot; administradores ignoram overwrites", () => {
     const overwrites = ticket.buildTicketPermissionOverwrites({
       guildId: order.guildId,
