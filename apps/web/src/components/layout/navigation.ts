@@ -20,6 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
+import { IS_GWSTORE } from "@/lib/brand";
 
 export interface NavigationItem {
   label: string;
@@ -59,6 +60,7 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { label: "Pedidos", href: "/pedidos", icon: ClipboardList },
       { label: "Entregas", href: "/entregas", icon: PackageCheck },
+      ...(IS_GWSTORE ? [{ label: "Pagamentos Pix", href: "/pagamentos-pix", icon: WalletCards }] : []),
       { label: "Saldos", href: "/saldos", icon: Coins },
       { label: "Saques", href: "/saques", icon: Landmark },
     ],

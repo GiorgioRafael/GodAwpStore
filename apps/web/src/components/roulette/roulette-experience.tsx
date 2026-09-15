@@ -752,7 +752,7 @@ export function RouletteExperience({
                     Aguardando a confirmação do Pix
                   </p>
                   <p className="mt-2 text-xs leading-5 text-[var(--rlt-text-muted)]">
-                    As moedas caem no seu saldo assim que a LivePix confirmar.
+                    As moedas caem no seu saldo assim que o provedor confirmar o Pix.
                   </p>
                   {checkoutUrl ? (
                     <a

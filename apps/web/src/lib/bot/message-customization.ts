@@ -1,4 +1,5 @@
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
+import { currentPaymentCopy } from "@/lib/payments/label";
 import {
   STORE_CATALOG_LABEL,
   STORE_NAME,
@@ -507,7 +508,7 @@ export function interpolateBotMessage(
   template: string,
   tokens: Record<string, string | number>,
 ): string {
-  return template.replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (match, name: string) =>
+  return currentPaymentCopy(template).replace(/\{([A-Za-z][A-Za-z0-9_]*)\}/g, (match, name: string) =>
     Object.prototype.hasOwnProperty.call(tokens, name) ? String(tokens[name]) : match,
   );
 }
@@ -536,7 +537,9 @@ function normalizeSection<T extends Record<string, string>>(value: unknown, defa
   return Object.fromEntries(
     Object.entries(defaults).map(([key, fallback]) => [
       key,
-      typeof record[key] === "string" ? record[key] : fallback,
+      key.toLowerCase().endsWith("url")
+        ? typeof record[key] === "string" ? record[key] : fallback
+        : currentPaymentCopy(typeof record[key] === "string" ? record[key] : fallback),
     ]),
   ) as T;
 }

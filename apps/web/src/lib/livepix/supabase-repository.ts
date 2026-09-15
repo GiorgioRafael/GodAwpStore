@@ -20,7 +20,7 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
       .from("orders")
       .select("id,payment_provider_reference,payment_checkout_url")
       .eq("id", orderId)
-      .eq("payment_provider", "livepix")
+      .in("payment_provider", ["livepix", "eclipsepay"])
       .eq("status", "awaiting_payment")
       .in("payment_status", ["uninitialized", "pending"])
       .gt("payment_expires_at", new Date().toISOString())
@@ -33,7 +33,7 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
     const { data, error } = await this.client
       .from("orders")
       .select("id,payment_provider_reference,payment_checkout_url")
-      .eq("payment_provider", "livepix")
+      .in("payment_provider", ["livepix", "eclipsepay"])
       .eq("payment_provider_reference", providerReference)
       .maybeSingle();
     assertQuery(error, "checkout da LivePix");

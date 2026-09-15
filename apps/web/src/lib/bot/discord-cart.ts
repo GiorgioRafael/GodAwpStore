@@ -3,7 +3,7 @@ import "server-only";
 import { decodeDiscordCustomId } from "@chat-adapter/discord";
 
 import { getSiteUrl } from "@/lib/env";
-import { getLivePixClient } from "@/lib/livepix/client";
+import { getPaymentClient as getLivePixClient } from "@/lib/payments/client";
 import { MAXIMUM_ORDER_QUANTITY } from "@/lib/livepix/limits";
 import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";

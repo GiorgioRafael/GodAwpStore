@@ -1,7 +1,8 @@
 import "server-only";
 import { IS_THSTORE } from "@/lib/brand";
 
-import { getLivePixClient, type LivePixPayment } from "@/lib/livepix/client";
+import type { LivePixPayment } from "@/lib/livepix/client";
+import { getPaymentClient as getLivePixClient } from "@/lib/payments/client";
 import { reconciliationDigest } from "@/lib/livepix/payment-service";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import {

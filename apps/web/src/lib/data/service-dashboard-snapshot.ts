@@ -91,7 +91,7 @@ async function readPaidOrders(client: AdminClient, since: string): Promise<PaidO
     const result = await client
       .from("orders")
       .select("guild_id,sale_price_cents,paid_at")
-      .eq("payment_provider", "livepix")
+      .in("payment_provider", ["livepix", "eclipsepay"])
       .eq("payment_status", "paid")
       .not("paid_at", "is", null)
       .is("stock_released_at", null)

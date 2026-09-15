@@ -1,6 +1,7 @@
 import "server-only";
 import { IS_THSTORE, STORE_NAME } from "@/lib/brand";
 import { ROBUX_PRICE_LABEL } from "@/lib/robux/pricing";
+import { paymentProviderLabel } from "@/lib/payments/label";
 
 import type { Json, JsonObject } from "@/lib/supabase/database.types";
 import {
@@ -117,7 +118,7 @@ export function createDiscordRobuxStorefrontPayload(
           },
         ],
         image: { url: botMessageBannerUrl(customization, "robuxUrl") },
-        footer: { text: `${STORE_NAME} · Pagamento via LivePix` },
+        footer: { text: `${STORE_NAME} · Pagamento via ${paymentProviderLabel()}` },
       },
     ],
     components: [

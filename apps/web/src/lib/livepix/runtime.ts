@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getLivePixClient } from "./client";
+import { getPaymentClient as getLivePixClient } from "@/lib/payments/client";
 import { LivePixPaymentService } from "./payment-service";
 import { SupabaseLivePixPaymentRepository } from "./supabase-repository";
 

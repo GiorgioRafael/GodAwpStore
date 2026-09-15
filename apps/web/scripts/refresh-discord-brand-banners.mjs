@@ -162,6 +162,10 @@ async function getDiscordMessage(channelId, messageId) {
 }
 
 async function patchDiscordMessage(channelId, messageId, payload) {
+  const store = (process.env.NEXT_PUBLIC_STORE_NAME || "GWStore").toLowerCase().replace(/\s+/g, "");
+  if (["gwstore", "godawpstore"].includes(store) && process.env.PAYMENT_PROVIDER === "eclipsepay") {
+    payload = replacePaymentCopy(payload);
+  }
   const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
     method: "PATCH",
     headers: {
@@ -171,6 +175,15 @@ async function patchDiscordMessage(channelId, messageId, payload) {
     body: JSON.stringify(payload),
   });
   if (!response.ok) throw new Error(`Discord recusou a atualização da mensagem (${response.status}).`);
+}
+
+function replacePaymentCopy(value) {
+  if (Array.isArray(value)) return value.map(replacePaymentCopy);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+    typeof item === "string" && ["content", "description", "text", "value", "label"].includes(key)
+      ? item.replace(/\blivepix\b/gi, "EclipsePay") : replacePaymentCopy(item),
+  ]));
 }
 
 async function refreshBanner(label, update) {

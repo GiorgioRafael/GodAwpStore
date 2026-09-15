@@ -5,6 +5,7 @@ import { reconcileLeadRecoveryOffers } from "@/lib/bot/lead-recovery";
 import { reconcileLatePaidOrderTickets } from "@/lib/bot/late-payment-ticket";
 import { reconcileRouletteRedemptionTickets } from "@/lib/roulette/redemptions";
 import { reconcileRobuxOrders } from "@/lib/robux/reconciliation";
+import { reconcileEclipsePayments } from "@/lib/eclipsepay/reconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ export async function GET(request: Request) {
       reconcileRouletteRedemptionTickets(),
       reconcileLatePaidOrderTickets(),
       reconcileRobuxOrders(),
+      reconcileEclipsePayments(10),
     ]);
     // Finish independent recovery work before returning, even if another queue fails.
     const failure = outcomes.find((outcome) => outcome.status === "rejected");
@@ -40,6 +42,7 @@ export async function GET(request: Request) {
       rouletteRedemptions,
       latePayments,
       robux,
+      eclipsepay,
     ] = outcomes.map((outcome) => outcome.status === "fulfilled" ? outcome.value : null);
     return Response.json(
       {
@@ -51,6 +54,7 @@ export async function GET(request: Request) {
         rouletteRedemptions,
         latePayments,
         robux,
+        eclipsepay,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

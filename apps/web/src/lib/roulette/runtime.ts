@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getLivePixClient } from "@/lib/livepix/client";
+import { getPaymentClient as getLivePixClient } from "@/lib/payments/client";
 
 import { SupabaseRouletteCoinPurchaseRepository } from "./coin-purchase-repository";
 import { RouletteCoinPurchaseService } from "./coin-purchase";

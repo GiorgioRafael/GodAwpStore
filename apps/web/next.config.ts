@@ -21,6 +21,13 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/pagamento/pix/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "Cache-Control", value: "private, no-store" },
+        ],
+      },
     ];
   },
   images: {

@@ -25,7 +25,7 @@ import {
 } from "chat";
 
 import { getSiteUrl } from "@/lib/env";
-import { getLivePixClient } from "@/lib/livepix/client";
+import { getPaymentClient as getLivePixClient } from "@/lib/payments/client";
 import {
   LIVEPIX_MINIMUM_BRL_CENTS,
   MAXIMUM_ORDER_QUANTITY,

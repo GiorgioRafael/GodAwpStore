@@ -19,7 +19,7 @@ export class SupabaseRouletteCoinPurchaseRepository implements RouletteCoinPurch
     const { data, error } = await this.client
       .from("roulette_coin_purchases")
       .select("id,payment_provider_reference,payment_checkout_url")
-      .eq("payment_provider", "livepix")
+      .in("payment_provider", ["livepix", "eclipsepay"])
       .eq("payment_provider_reference", providerReference)
       .maybeSingle();
     assertQuery(error, "busca da compra pela referência LivePix");
@@ -31,7 +31,7 @@ export class SupabaseRouletteCoinPurchaseRepository implements RouletteCoinPurch
       .from("roulette_coin_purchases")
       .select("id,payment_provider_reference,payment_checkout_url")
       .eq("id", purchaseId)
-      .eq("payment_provider", "livepix")
+      .in("payment_provider", ["livepix", "eclipsepay"])
       .maybeSingle();
     assertQuery(error, "busca do checkout da compra");
     return toStoredCheckout(data);

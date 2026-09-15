@@ -29,14 +29,14 @@ export default async function PaymentReturnPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-background px-5 py-12 text-foreground">
       <Card className="w-full max-w-xl p-7 text-center sm:p-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">{STORE_NAME} · LivePix</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">{STORE_NAME} · Pix</p>
         <h1 className="mt-4 text-2xl font-semibold sm:text-3xl">{content.title}</h1>
         <p className="mt-4 text-sm leading-6 text-muted">{content.description}</p>
         <div className="mt-7 flex flex-wrap justify-center gap-3">
           <LinkButton href={`/pagamento/${encodeURIComponent(orderId)}`}>Atualizar status</LinkButton>
           <LinkButton href="/" variant="secondary">Abrir {STORE_NAME}</LinkButton>
         </div>
-        <p className="mt-6 text-xs text-muted">A confirmação válida vem diretamente da LivePix.</p>
+        <p className="mt-6 text-xs text-muted">A confirmação válida vem diretamente do provedor de pagamento.</p>
       </Card>
     </main>
   );

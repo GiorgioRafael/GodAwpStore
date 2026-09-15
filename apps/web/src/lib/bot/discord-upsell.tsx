@@ -2,7 +2,7 @@ import "server-only";
 
 import { decodeDiscordCustomId } from "@chat-adapter/discord";
 import { getSiteUrl } from "@/lib/env";
-import { getLivePixClient } from "@/lib/livepix/client";
+import { getPaymentClient as getLivePixClient } from "@/lib/payments/client";
 import { LivePixPaymentService } from "@/lib/livepix/payment-service";
 import { SupabaseLivePixPaymentRepository } from "@/lib/livepix/supabase-repository";
 import { BotCommerceService } from "./commerce-service";
