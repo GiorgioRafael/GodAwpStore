@@ -9,6 +9,7 @@ import {
 } from "@/lib/bot/discord-storefront-sync-queue";
 import { getLivePixPaymentService } from "@/lib/livepix/runtime";
 import { getRobuxPaymentService } from "@/lib/robux/payment-service";
+import { synchronizeRobuxCustomerRankRole } from "@/lib/robux/customer-rank-role-sync";
 import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
 
 export async function fulfillVerifiedPayment(input: { providerPaymentId: string; providerReference: string }) {
@@ -139,6 +140,15 @@ async function openRobuxDeliveryTicket(confirmation: {
   ticketStatus: string;
 }) {
   const robux = getRobuxPaymentService();
+  try {
+    await synchronizeRobuxCustomerRankRole({
+      discordGuildId: confirmation.discordGuildId,
+      buyerDiscordId: confirmation.buyerDiscordId,
+    });
+  } catch (error) {
+    // Never hold a paid buyer's ticket hostage to Discord role permissions.
+    logWebhookError("robux_customer_rank_role", error);
+  }
   const claim = await robux.claimTicket(confirmation.orderId);
   if (!claim.claimed) {
     if (claim.ticketStatus === "creating") {

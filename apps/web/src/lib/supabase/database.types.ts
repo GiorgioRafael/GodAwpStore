@@ -509,6 +509,8 @@ type RobuxOrderRow = {
   payment_status: Database["public"]["Enums"]["payment_status"];
   payment_provider_created_at: string | null;
   paid_at: string | null;
+  customer_rank_role_sync_attempted_at: string | null;
+  customer_rank_role_synced_at: string | null;
   livepix_checkout_claim_token: string | null;
   livepix_checkout_claimed_at: string | null;
   discord_ticket_channel_id: string | null;

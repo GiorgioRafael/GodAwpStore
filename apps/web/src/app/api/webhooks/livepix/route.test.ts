@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   drainDiscordStorefrontSyncQueue: vi.fn(),
   reconcileRouletteSpin: vi.fn(),
   reconcileRobuxPayment: vi.fn(),
+  synchronizeRobuxCustomerRankRole: vi.fn(),
   claimRobuxTicket: vi.fn(),
   completeRobuxTicket: vi.fn(),
   failRobuxTicket: vi.fn(),
@@ -57,6 +58,9 @@ vi.mock("@/lib/robux/payment-service", () => ({
     completeTicket: mocks.completeRobuxTicket,
     failTicket: mocks.failRobuxTicket,
   }),
+}));
+vi.mock("@/lib/robux/customer-rank-role-sync", () => ({
+  synchronizeRobuxCustomerRankRole: mocks.synchronizeRobuxCustomerRankRole,
 }));
 
 import { POST } from "./route";
@@ -343,7 +347,38 @@ describe("LivePix webhook route", () => {
       controls: "robux",
     });
     expect(mocks.completeRobuxTicket).toHaveBeenCalledWith(orderId, "323456789012345678");
+    expect(mocks.synchronizeRobuxCustomerRankRole).toHaveBeenCalledWith({
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+    });
     expect(mocks.reconcileRouletteSpin).not.toHaveBeenCalled();
+  });
+
+  it("mantém o ticket de Robux quando a atualização do cargo falha", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue(null);
+    mocks.reconcileRobuxPayment.mockResolvedValue({
+      orderId,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+      robuxQuantity: 1_000,
+      paidAmountCents: 4_000,
+      ticketStatus: "not_created",
+    });
+    mocks.synchronizeRobuxCustomerRankRole.mockRejectedValue(new Error("Discord indisponível"));
+    mocks.claimRobuxTicket.mockResolvedValue({
+      orderId,
+      claimed: true,
+      discordGuildId: "123456789012345678",
+      buyerDiscordId: "223456789012345678",
+      robuxQuantity: 1_000,
+      paidAmountCents: 4_000,
+    });
+    mocks.ensurePaidOrderTicket.mockResolvedValue({ channelId: "323456789012345678" });
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ received: true, robux: "paid", ticket: "open" });
+    expect(mocks.completeRobuxTicket).toHaveBeenCalledOnce();
   });
 
   it("ignora a referência que não pertence a pedido nem a compra de moedas", async () => {
