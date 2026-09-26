@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 
 import { IS_GWSTORE } from "@/lib/brand";
 import { PublicPaymentForm } from "./payment-form";
+import { PaymentBrand } from "./payment-brand";
+import styles from "./payment-link.module.css";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -24,11 +26,13 @@ export default async function PublicPaymentPage({
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(i)) {
     redirect(`/pagar?i=${crypto.randomUUID()}`);
   }
-  return <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
-    <section className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-panel sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-widest text-primary">GWStore · Pix</p>
-      <h1 className="mt-3 text-2xl font-semibold">Pague com Pix</h1>
-      <p className="mt-2 text-sm leading-6 text-muted">Informe o valor e uma mensagem. Você verá o QR Code e o código copia e cola antes de pagar.</p>
+  return <main className={styles.page}>
+    <section className={`${styles.card} ${styles.formCard}`}>
+      <div className={styles.intro}>
+        <PaymentBrand />
+        <h1 className={styles.title}>Pague com <span className={styles.titleAccent}>Pix</span></h1>
+        <p className={styles.description}>Informe o valor e uma mensagem. Você verá o QR Code e o código copia e cola antes de pagar.</p>
+      </div>
       <PublicPaymentForm intentId={i} />
     </section>
   </main>;

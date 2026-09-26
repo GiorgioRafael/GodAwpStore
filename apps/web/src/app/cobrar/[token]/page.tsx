@@ -3,12 +3,15 @@ import Image from "next/image";
 import { after } from "next/server";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
+import { CircleAlert, CircleCheck, Clock3, LockKeyhole } from "lucide-react";
 
 import { IS_GWSTORE } from "@/lib/brand";
 import { eclipseDatabase } from "@/lib/eclipsepay/runtime";
 import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reconciliation";
-import { PixControls } from "@/app/pagamento/pix/[token]/controls";
+import { PaymentBrand } from "@/app/pagar/payment-brand";
+import styles from "@/app/pagar/payment-link.module.css";
 import { retryPaymentLink } from "../actions";
+import { PublicPixControls } from "./controls";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
@@ -28,38 +31,42 @@ export default async function PaymentLinkPage({ params }: { params: Promise<{ to
 
   const status = link.operation_status as string;
   const pending = status === "pending";
-  const expired = isExpired(link.expires_at);
+  const expired = pending && isExpired(link.expires_at);
   const brCode = pending && !expired ? link.br_code as string | null : null;
   const qr = brCode ? await QRCode.toDataURL(brCode, { width: 280, margin: 2, errorCorrectionLevel: "M" }) : null;
   if (pending && link.operation_id) {
     after(async () => { await reconcileEclipsePaymentLinks(1).catch(() => undefined); });
   }
-  return <main className="flex min-h-screen items-center justify-center bg-background px-4 py-10 text-foreground">
-    <section className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-panel sm:p-8">
-      <p className="text-xs font-semibold uppercase tracking-widest text-primary">GWStore · Pix</p>
-      <h1 className="mt-3 text-2xl font-semibold">
-        {status === "completed" ? "Pagamento confirmado" : status === "refunded" ? "Pagamento estornado" : pending ? "Pague com Pix" : "Link indisponível"}
+  return <main className={styles.page}>
+    <section className={styles.card}>
+      <PaymentBrand />
+      <p className={`${styles.status} ${status === "completed" ? styles.statusSuccess : ""} ${expired || status === "failed" || status === "refunded" ? styles.statusError : ""}`}>
+        {status === "completed" ? <CircleCheck aria-hidden="true" size={16} /> : expired || status === "failed" || status === "refunded" ? <CircleAlert aria-hidden="true" size={16} /> : <Clock3 aria-hidden="true" size={16} />}
+        {status === "completed" ? "Confirmado" : status === "refunded" ? "Estornado" : expired ? "Código vencido" : pending ? "Aguardando pagamento" : "Não concluído"}
+      </p>
+      <h1 className={styles.title}>
+        {status === "completed" ? "Pagamento confirmado" : status === "refunded" ? "Pagamento estornado" : expired ? "Código Pix vencido" : pending ? "Pague com Pix" : "Link indisponível"}
       </h1>
+      <p className={styles.amount}>{money(link.amount_cents)}</p>
       {pending && !link.operation_id && <>
-        <p className="mt-2 text-sm text-muted">A cobrança ainda está sendo preparada. Você pode tentar novamente sem gerar outra cobrança.</p>
-        <form action={retryPaymentLink.bind(null, token)} className="mt-4">
-          <button className="w-full rounded-xl bg-primary px-5 py-3 font-semibold text-black">Tentar gerar o Pix novamente</button>
+        <p className={styles.description}>A cobrança ainda está sendo preparada. Você pode tentar novamente sem gerar outra cobrança.</p>
+        <form action={retryPaymentLink.bind(null, token)} className={styles.receiptActions}>
+          <button className={styles.primaryButton}>Tentar gerar o Pix novamente</button>
         </form>
       </>}
-      <p className="mt-4 text-3xl font-bold">{money(link.amount_cents)}</p>
-      {pending && link.operation_id && <>
+      {pending && link.operation_id && <div className={styles.receiptBody}>
         {qr && <>
-          <p className="mt-4 text-sm text-muted">Escaneie o QR Code com seu banco ou copie o código Pix. Confira o valor antes de pagar.</p>
-          <Image className="mx-auto mt-5 rounded-xl" unoptimized src={qr} alt="QR Code do pagamento Pix" width={280} height={280} />
+          <p className={styles.description}>Escaneie o QR Code com seu banco ou copie o código Pix. Confira o valor antes de pagar.</p>
+          <div className={styles.qrFrame}><Image unoptimized src={qr} alt="QR Code do pagamento Pix" width={280} height={280} /></div>
         </>}
-        {!qr && !expired && <p className="mt-4 text-sm text-muted">Preparando seu código Pix. A página atualiza automaticamente.</p>}
-        {expired && <p className="mt-4 text-sm text-red-400">Este código Pix venceu. Peça um novo link à loja; não pague um código vencido.</p>}
-        <PixControls code={brCode} pending={!expired} />
-      </>}
-      {status === "completed" && <p className="mt-4 text-sm text-muted">Recebemos a confirmação do provedor. Obrigado pelo pagamento.</p>}
-      {status === "refunded" && <p className="mt-4 text-sm text-muted">O provedor informou estorno desta cobrança. Fale com a loja se precisar de ajuda.</p>}
-      {status === "failed" && <p className="mt-4 text-sm text-muted">Este Pix não pode mais ser pago. Abra o link público novamente para gerar outro.</p>}
-      <p className="mt-6 text-xs leading-5 text-muted">A confirmação depende do estado da cobrança na EclipsePay. Não envie comprovantes ou dados bancários por mensagem.</p>
+        {!qr && !expired && <p className={styles.description}>Preparando seu código Pix. A página atualiza automaticamente.</p>}
+        {expired && <p className={styles.error}>Este código Pix venceu. Peça um novo link à loja; não pague um código vencido.</p>}
+        <PublicPixControls code={brCode} pending={!expired} />
+      </div>}
+      {status === "completed" && <p className={styles.description}>Recebemos a confirmação do provedor. Obrigado pelo pagamento.</p>}
+      {status === "refunded" && <p className={styles.description}>O provedor informou estorno desta cobrança. Fale com a loja se precisar de ajuda.</p>}
+      {status === "failed" && <p className={styles.description}>Este Pix não pode mais ser pago. Abra o link público novamente para gerar outro.</p>}
+      <p className={styles.receiptNote}><LockKeyhole aria-hidden="true" size={16} className={styles.finePrintIcon} /> A confirmação depende do estado da cobrança na EclipsePay. Não envie comprovantes ou dados bancários por mensagem.</p>
     </section>
   </main>;
 }
