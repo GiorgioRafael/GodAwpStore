@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/eclipsepay/reconciliation", () => ({ reconcileEclipsePayments: vi.fn().mockResolvedValue({ processed: 0, failed: 0 }) }));
+vi.mock("@/lib/eclipsepay/payment-link-reconciliation", () => ({ reconcileEclipsePaymentLinks: vi.fn().mockResolvedValue({ processed: 0, failed: 0 }) }));
 
 const mocks = vi.hoisted(() => ({
   reconcileDiscordTicketCloseClaims: vi.fn(),
@@ -145,6 +146,7 @@ describe("Discord ticket close reconciliation cron", () => {
       robux: { checked: 2, opened: 2, pending: 0, skipped: 0, failed: 0 },
       robuxRanks: { checked: 2, synced: 2, failed: 0 },
       eclipsepay: { processed: 0, failed: 0 },
+      eclipsepayLinks: { processed: 0, failed: 0 },
     });
     expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
     expect(mocks.reconcileDeliveredDiscordTicketAutoCloses).toHaveBeenCalledOnce();

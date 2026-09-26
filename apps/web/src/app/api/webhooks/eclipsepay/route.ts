@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { eclipseDatabase } from "@/lib/eclipsepay/runtime";
 import { reconcileEclipsePayments } from "@/lib/eclipsepay/reconciliation";
+import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,7 +47,16 @@ export async function POST(request: Request) {
     const { error: wakeError } = await db.from("eclipsepay_checkouts").update({ next_check_at: new Date().toISOString() })
       .eq("operation_id", event.data.operationId);
     if (wakeError) throw new Error("Queue wake failed");
-    after(async () => { await reconcileEclipsePayments().catch(() => console.error("[eclipsepay] Reconciliação pendente no cron.")); });
+    const { error: linkWakeError } = await db.from("eclipsepay_payment_links")
+      .update({ next_check_at: new Date().toISOString() })
+      .eq("operation_id", event.data.operationId);
+    if (linkWakeError) throw new Error("Payment link queue wake failed");
+    after(async () => {
+      const results = await Promise.allSettled([reconcileEclipsePayments(), reconcileEclipsePaymentLinks()]);
+      if (results.some((result) => result.status === "rejected")) {
+        console.error("[eclipsepay] Reconciliação pendente no cron.");
+      }
+    });
     return Response.json({ received: true });
   } catch {
     return Response.json({ error: "Notificação será repetida." }, { status: 503, headers: { "Retry-After": "60" } });

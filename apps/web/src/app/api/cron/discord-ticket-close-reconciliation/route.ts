@@ -7,6 +7,7 @@ import { reconcileRouletteRedemptionTickets } from "@/lib/roulette/redemptions";
 import { reconcileRobuxOrders } from "@/lib/robux/reconciliation";
 import { reconcileRobuxCustomerRankRoles } from "@/lib/robux/customer-rank-role-sync";
 import { reconcileEclipsePayments } from "@/lib/eclipsepay/reconciliation";
+import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
       reconcileRobuxOrders(),
       reconcileRobuxCustomerRankRoles(),
       reconcileEclipsePayments(10),
+      reconcileEclipsePaymentLinks(5),
     ]);
     // Finish independent recovery work before returning, even if another queue fails.
     const failure = outcomes.find((outcome) => outcome.status === "rejected");
@@ -46,6 +48,7 @@ export async function GET(request: Request) {
       robux,
       robuxRanks,
       eclipsepay,
+      eclipsepayLinks,
     ] = outcomes.map((outcome) => outcome.status === "fulfilled" ? outcome.value : null);
     return Response.json(
       {
@@ -59,6 +62,7 @@ export async function GET(request: Request) {
         robux,
         robuxRanks,
         eclipsepay,
+        eclipsepayLinks,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

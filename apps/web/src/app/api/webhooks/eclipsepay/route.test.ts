@@ -6,6 +6,7 @@ vi.mock("@/lib/brand", () => brand);
 const database = vi.hoisted(() => ({ from: vi.fn() }));
 vi.mock("@/lib/eclipsepay/runtime", () => ({ eclipseDatabase: () => database }));
 vi.mock("@/lib/eclipsepay/reconciliation", () => ({ reconcileEclipsePayments: vi.fn() }));
+vi.mock("@/lib/eclipsepay/payment-link-reconciliation", () => ({ reconcileEclipsePaymentLinks: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 import { POST } from "./route";
 
@@ -55,5 +56,27 @@ describe("EclipsePay setup route", () => {
     }, 1));
     expect(result.status).toBe(503);
     expect(result.headers.get("retry-after")).toBe("60");
+  });
+  it("acorda também uma cobrança criada pelo link público", async () => {
+    vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", secret);
+    const update = vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) });
+    database.from.mockImplementation((table: string) => table === "eclipsepay_webhook_inbox"
+      ? { upsert: vi.fn().mockResolvedValue({ error: null }), select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: { body_sha256: "valid" }, error: null }) }) }) }
+      : { update });
+    // The digest is verified against the exact raw body; patch the inbox mock
+    // rather than bypassing the webhook signature validator.
+    const req = request("charge.paid", {
+      operationId: "550e8400-e29b-41d4-a716-446655440001", kind: "deposit",
+      status: "completed", currency: "BRL", amountCents: 4000,
+    }, 2);
+    const raw = await req.clone().text();
+    const digest = (await import("node:crypto")).createHash("sha256").update(raw).digest("hex");
+    database.from.mockImplementation((table: string) => table === "eclipsepay_webhook_inbox"
+      ? { upsert: vi.fn().mockResolvedValue({ error: null }), select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: { body_sha256: digest }, error: null }) }) }) }
+      : { update });
+    const result = await POST(req);
+    expect(result.status).toBe(200);
+    expect(database.from).toHaveBeenCalledWith("eclipsepay_payment_links");
+    expect(update).toHaveBeenCalled();
   });
 });

@@ -13,6 +13,15 @@ export const eclipseCheckoutSchema = z.object({
   operation_id: z.uuid().nullable(),
 });
 
+export const eclipsePaymentLinkSchema = z.object({
+  id: z.uuid(),
+  link_token: z.string().regex(/^[0-9a-f]{64}$/),
+  amount_cents: z.coerce.number().int().min(80).max(100_000),
+  operation_id: z.uuid().nullable(),
+  operation_status: z.enum(["pending", "completed", "failed", "refunded"]),
+  confirmed_at: z.string().nullable(),
+});
+
 export function eclipsePayEnabled() {
   return IS_GWSTORE && process.env.PAYMENT_PROVIDER === "eclipsepay";
 }
