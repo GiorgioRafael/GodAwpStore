@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, QrCode } from "lucide-react";
+import { QrCode } from "lucide-react";
 import { startPaymentLink, type PaymentLinkResult } from "@/app/cobrar/actions";
 import styles from "./payment-link.module.css";
 
@@ -30,7 +30,7 @@ export function PublicPaymentForm({ intentId }: { intentId: string }) {
           placeholder="Ex.: 25,00" aria-describedby="payment-limits"
           className={`${styles.input} ${styles.amountInput}`} />
       </div>
-      <p id="payment-limits" className={styles.hint}>De R$ 0,80 a R$ 1.000,00 por cobrança.</p>
+      <p id="payment-limits" className={styles.hint}>De R$ 0,80 a R$ 1.000,00 por Pix — limite da EclipsePay.</p>
     </div>
     <div className={styles.field}>
       <label className={styles.label} htmlFor="payment-details">Detalhes ou mensagem <span className={styles.optional}>(opcional)</span></label>
@@ -42,9 +42,5 @@ export function PublicPaymentForm({ intentId }: { intentId: string }) {
       <QrCode aria-hidden="true" size={20} strokeWidth={2.2} />
       {pending ? "Gerando Pix…" : "Gerar QR Code Pix"}
     </button>
-    <p className={styles.finePrint}>
-      <LockKeyhole className={styles.finePrintIcon} aria-hidden="true" size={16} strokeWidth={1.8} />
-      <span>O nome e a mensagem são informados por você e ficam visíveis apenas para a equipe da loja. O pagamento só é confirmado após a resposta do provedor.</span>
-    </p>
   </form>;
 }

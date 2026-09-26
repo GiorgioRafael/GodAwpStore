@@ -39,7 +39,28 @@
 }
 
 .formCard {
-  width: min(100%, 940px);
+  width: min(100%, 620px);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.formCard .brand {
+  justify-content: center;
+  padding-bottom: 28px;
+}
+
+.formCard .form {
+  margin-top: 28px;
 }
 
 .brand {
@@ -84,10 +105,6 @@
   line-height: 1.08;
 }
 
-.titleAccent {
-  color: #f05eb9;
-}
-
 .description {
   margin-top: 13px;
   color: var(--pay-muted);
@@ -108,16 +125,16 @@
 
 .label {
   color: #f1eaf8;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: 700;
   line-height: 1.4;
 }
 
 .optional {
   margin-left: 5px;
   color: #aa91ba;
-  font-size: 12px;
-  font-weight: 450;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .input,
@@ -234,16 +251,6 @@
 .secondaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.65;
-}
-
-.finePrint {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-top: 2px;
-  color: #a997b6;
-  font-size: 12px;
-  line-height: 1.6;
 }
 
 .finePrintIcon {
@@ -365,27 +372,6 @@
   color: #cfabeb;
   font-size: 12px;
   line-height: 1.5;
-}
-
-@media (min-width: 900px) {
-  .formCard {
-    display: grid;
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-    align-items: center;
-    gap: 52px;
-  }
-
-  .formCard .brand {
-    border: 0;
-  }
-
-  .formCard .title {
-    margin-top: 36px;
-  }
-
-  .formCard .form {
-    margin-top: 0;
-  }
 }
 
 @media (max-width: 600px) {

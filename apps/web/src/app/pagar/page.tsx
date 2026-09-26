@@ -28,11 +28,8 @@ export default async function PublicPaymentPage({
   }
   return <main className={styles.page}>
     <section className={`${styles.card} ${styles.formCard}`}>
-      <div className={styles.intro}>
-        <PaymentBrand />
-        <h1 className={styles.title}>Pague com <span className={styles.titleAccent}>Pix</span></h1>
-        <p className={styles.description}>Informe o valor e uma mensagem. Você verá o QR Code e o código copia e cola antes de pagar.</p>
-      </div>
+      <PaymentBrand />
+      <h1 className={styles.srOnly}>Pagamento via Pix na GWStore</h1>
       <PublicPaymentForm intentId={i} />
     </section>
   </main>;
