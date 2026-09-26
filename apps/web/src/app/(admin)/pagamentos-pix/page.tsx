@@ -26,7 +26,7 @@ export default async function PixPaymentsPage() {
     <Card className="space-y-3 p-5">
       <h2 className="text-lg font-semibold">Link público de pagamento</h2>
       <p className="text-sm text-muted">Compartilhe este endereço. Cada pessoa informa nome, valor e mensagem e recebe um QR Code próprio. O nome é informado pelo cliente, não verificado pelo banco.</p>
-      <input aria-label="Link público para receber Pix" readOnly onFocus={(event) => event.currentTarget.select()}
+      <input aria-label="Link público para receber Pix" readOnly
         value={`${getSiteUrl()}/pagar`} className="w-full rounded-xl border border-border bg-background px-4 py-3 font-mono text-sm" />
       <p className="text-xs text-muted">Por segurança, o link aceita até 5 novas cobranças por hora e preserva parte do limite do provedor para os pedidos da loja.</p>
     </Card>
