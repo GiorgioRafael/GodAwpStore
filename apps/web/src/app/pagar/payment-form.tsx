@@ -30,7 +30,7 @@ export function PublicPaymentForm({ intentId }: { intentId: string }) {
           placeholder="Ex.: 25,00" aria-describedby="payment-limits"
           className={`${styles.input} ${styles.amountInput}`} />
       </div>
-      <p id="payment-limits" className={styles.hint}>De R$ 0,80 a R$ 1.000,00 por Pix — limite da EclipsePay.</p>
+      <p id="payment-limits" className={styles.hint}>Escolha um valor entre R$ 0,80 e R$ 1.000,00.</p>
     </div>
     <div className={styles.field}>
       <label className={styles.label} htmlFor="payment-details">Detalhes ou mensagem <span className={styles.optional}>(opcional)</span></label>
