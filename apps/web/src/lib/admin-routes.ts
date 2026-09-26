@@ -23,6 +23,7 @@ const PUBLIC_PREFIXES = [
 
 /** Exact paths that are public even though their prefix is not. */
 const PUBLIC_EXACT = new Set([
+  "/pagar",
   "/favicon.ico",
   "/icon.png",
   "/robots.txt",
@@ -39,10 +40,15 @@ function isPublicGiveawayPage(pathname: string) {
   return pathname.startsWith("/sorteios/") && pathname.length > "/sorteios/".length;
 }
 
+function isPublicPaymentReceipt(pathname: string) {
+  return /^\/cobrar\/[0-9a-f]{64}$/.test(pathname);
+}
+
 export function isPublicAdminPanelPath(pathname: string): boolean {
   const path = normalize(pathname);
   if (PUBLIC_EXACT.has(path)) return true;
   if (isPublicGiveawayPage(path)) return true;
+  if (isPublicPaymentReceipt(path)) return true;
   // The prefix has to end on a segment boundary: "/roleta" opens the roulette
   // and its overlay, never a panel page that merely starts with those letters.
   return PUBLIC_PREFIXES.some((entry) => {

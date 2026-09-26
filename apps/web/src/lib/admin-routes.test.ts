@@ -32,6 +32,8 @@ const PUBLIC_PATHS = [
   "/roleta",
   "/roleta/overlay",
   "/pagamento/9c000000-0000-4000-8000-000000000001",
+  "/pagar",
+  `/cobrar/${"a".repeat(64)}`,
   "/sorteios/promo-de-julho",
   "/auth/callback",
   "/auth/login",
@@ -81,6 +83,8 @@ describe("portaria do painel", () => {
     expect(isPublicAdminPanelPath("/loginhistorico")).toBe(false);
     expect(isPublicAdminPanelPath("/apisecreta")).toBe(false);
     expect(isPublicAdminPanelPath("/admin/discordbots/login-historico")).toBe(false);
+    expect(isPublicAdminPanelPath("/pagar/administracao")).toBe(false);
+    expect(isPublicAdminPanelPath("/cobrar/nao-e-um-token")).toBe(false);
   });
 
   it("uma página de painel que ninguém lembrou de listar nasce protegida", () => {
