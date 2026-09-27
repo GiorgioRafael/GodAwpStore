@@ -17,6 +17,7 @@ const ADMIN_PATHS = [
   "/dashboard",
   "/estoque",
   "/metricas-roleta",
+  "/pagamentos-pix",
   "/pedidos",
   "/resgates",
   "/saldos",

@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth";
 import { eclipseDatabase } from "@/lib/eclipsepay/runtime";
 import { getSiteUrl } from "@/lib/env";
 import { PageHeader } from "@/components/admin/page-header";
+import { PublicPaymentLink } from "@/components/admin/public-payment-link";
 import { Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,9 @@ export default async function PixPaymentsPage() {
     <PageHeader eyebrow="Operação" title="Pagamentos Pix" description="Cobranças do link público e da loja confirmadas pela EclipsePay. Pedidos LivePix antigos permanecem em Pedidos." />
     <Card className="space-y-3 p-5">
       <h2 className="text-lg font-semibold">Link público de pagamento</h2>
-      <p className="text-sm text-muted">Compartilhe este endereço. Cada pessoa informa nome, valor e mensagem e recebe um QR Code próprio. O nome é informado pelo cliente, não verificado pelo banco.</p>
-      <input aria-label="Link público para receber Pix" readOnly
-        value={`${getSiteUrl()}/pagar`} className="w-full rounded-xl border border-border bg-background px-4 py-3 font-mono text-sm" />
+      <p className="text-sm text-muted">Envie aos compradores apenas o link abaixo. O endereço <span className="font-mono text-foreground">/pagamentos-pix</span> é deste relatório administrativo. Cada pessoa informa nome, valor e mensagem e recebe um QR Code próprio.</p>
+      <PublicPaymentLink url={`${getSiteUrl()}/pagar`} />
+      <p className="text-xs text-muted">O nome é informado pelo cliente, não verificado pelo banco.</p>
       <p className="text-xs text-muted">Por segurança, o link aceita até 5 novas cobranças por hora e preserva parte do limite do provedor para os pedidos da loja.</p>
     </Card>
     <Card className="overflow-x-auto p-5">

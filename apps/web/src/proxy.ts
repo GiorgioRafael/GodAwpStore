@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isPublicAdminPanelPath } from "@/lib/admin-routes";
+import { IS_GWSTORE } from "@/lib/brand";
 import {
   extractDiscordIdentity,
   extractGoogleIdentity,
@@ -60,10 +61,22 @@ export async function proxy(request: NextRequest) {
     }
 
     const identity = data.user ? extractDiscordIdentity(data.user) : null;
+    const isAdmin = identity ? parseAdminDiscordIds().has(identity.discordId) : false;
+
+    // O endereço deste relatório já foi compartilhado com compradores. Para
+    // eles, abre o checkout público; o relatório continua acessível só a admins.
+    if (
+      IS_GWSTORE &&
+      request.method === "GET" &&
+      request.nextUrl.pathname.replace(/\/$/, "") === "/pagamentos-pix" &&
+      !isAdmin
+    ) {
+      return redirectPreservingSession(request, response, "/pagar");
+    }
     if (!identity) {
       return redirectPreservingSession(request, response, "/login", { next });
     }
-    if (!parseAdminDiscordIds().has(identity.discordId)) {
+    if (!isAdmin) {
       return redirectPreservingSession(request, response, "/acesso-negado");
     }
   }
