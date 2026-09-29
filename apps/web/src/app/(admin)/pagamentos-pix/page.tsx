@@ -29,7 +29,7 @@ export default async function PixPaymentsPage() {
       <p className="text-sm text-muted">Envie aos compradores apenas o link abaixo. O endereço <span className="font-mono text-foreground">/pagamentos-pix</span> é deste relatório administrativo. Cada pessoa informa nome, valor e mensagem e recebe um QR Code próprio.</p>
       <PublicPaymentLink url={`${getSiteUrl()}/pagar`} />
       <p className="text-xs text-muted">O nome é informado pelo cliente, não verificado pelo banco.</p>
-      <p className="text-xs text-muted">Por segurança, o link aceita até 5 novas cobranças por hora e preserva parte do limite do provedor para os pedidos da loja.</p>
+      <p className="text-xs text-muted">O link aceita até 8 novas cobranças por hora. O limite é compartilhado com os pedidos da loja e pode ser menor se a cota da EclipsePay já tiver sido usada.</p>
     </Card>
     <Card className="overflow-x-auto p-5">
       <h2 className="mb-4 text-lg font-semibold">Pagamentos do link público</h2>

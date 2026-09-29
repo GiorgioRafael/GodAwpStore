@@ -42,7 +42,11 @@ export async function startPaymentLink(
     p_amount_cents: amountCents,
   }).single();
   if (error || !data) {
-    return { ok: false, message: "Não foi possível criar o Pix. O limite temporário de cobranças pode ter sido atingido; tente mais tarde." };
+    if (error?.message === "Payment link hourly limit reached") {
+      return { ok: false, message: "O limite temporário de cobranças Pix foi atingido. Tente novamente mais tarde." };
+    }
+    console.error("[payment-link:prepare] Não foi possível preparar a cobrança Pix.", error?.code ?? "missing_data");
+    return { ok: false, message: "Não foi possível criar o Pix agora. Tente novamente em instantes." };
   }
   const link = eclipsePaymentLinkSchema.safeParse(data);
   if (!link.success) {

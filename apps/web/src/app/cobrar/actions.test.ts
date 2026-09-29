@@ -75,4 +75,25 @@ describe("link público Pix", () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.createCharge).not.toHaveBeenCalled();
   });
+
+  it("avisa sobre o limite apenas quando o banco confirma que a cota foi atingida", async () => {
+    mocks.rpc.mockReturnValue({ single: async () => ({ data: null, error: { message: "Payment link hourly limit reached" } }) });
+    expect(await startPaymentLink(intentId, { ok: false, message: "" }, form())).toEqual({
+      ok: false,
+      message: "O limite temporário de cobranças Pix foi atingido. Tente novamente mais tarde.",
+    });
+    expect(mocks.createCharge).not.toHaveBeenCalled();
+  });
+
+  it("não atribui outras falhas do banco ao limite de cobranças", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.rpc.mockReturnValue({ single: async () => ({ data: null, error: { message: "Database unavailable" } }) });
+    expect(await startPaymentLink(intentId, { ok: false, message: "" }, form())).toEqual({
+      ok: false,
+      message: "Não foi possível criar o Pix agora. Tente novamente em instantes.",
+    });
+    expect(mocks.createCharge).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
 });
