@@ -201,7 +201,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         <MetricCard
           label="Receita hoje"
           value={formatBrl(metrics.revenueTodayCents)}
-          detail="LivePix confirmado pela data do pagamento."
+          detail="Pix de itens e Robux confirmado pela data do pagamento."
           tone="revenue"
         />
         <MetricCard
@@ -339,7 +339,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                       ))}
                     </ul>
                   ) : (
-                    <span className="font-mono" title={row.product_id}>{row.product_id.slice(0, 8)}…</span>
+                    <span className="font-mono" title={row.product_id ?? undefined}>{row.product_id ? `${row.product_id.slice(0, 8)}…` : "Robux"}</span>
                   )}
                 </td>
                 <td className="px-5 py-4 text-sm font-medium">{row.quantity.toLocaleString("pt-BR")}</td>

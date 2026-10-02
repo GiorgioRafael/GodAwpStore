@@ -37,7 +37,7 @@ export function Brand({
             {STORE_NAME}
           </span>
           <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-300">
-            Admin console
+            Painel da loja
           </span>
         </span>
       ) : null}

@@ -35,6 +35,8 @@ import type {
   DiscordIntegratedStorefrontConfiguration,
 } from "@/lib/bot/discord-storefront";
 import type { DiscordRobuxStorefrontConfiguration } from "@/lib/bot/discord-robux-storefront";
+import { IS_GWSTORE } from "@/lib/brand";
+import { isOperationalStorefrontChannel } from "@/lib/bot/storefront-channel-policy";
 
 export type DiscordStorefrontGameOption = {
   id: string;
@@ -72,7 +74,9 @@ export function DiscordStorefrontForm({
   const [selectedGuildId, setSelectedGuildId] = useState(initialGuild?.id ?? "");
   const [selectedGameId, setSelectedGameId] = useState(initialGameId);
   const [selectedChannelId, setSelectedChannelId] = useState(
-    preferredChannelId(initialGuild, initialGameId),
+    initialGuild?.integrated && initialGuild.current.length === 0
+      ? validChannelId(initialGuild, initialGuild.integrated.channel_id)
+      : preferredChannelId(initialGuild, initialGameId),
   );
   const initialDiscount = discountFormValues(initialGuild);
   const [boosterDiscountEnabled, setBoosterDiscountEnabled] = useState(initialDiscount.enabled);
@@ -122,7 +126,9 @@ export function DiscordStorefrontForm({
     const gameId = preferredGameId(guild, games);
     setSelectedGuildId(guildId);
     setSelectedGameId(gameId);
-    setSelectedChannelId(preferredChannelId(guild, gameId));
+    setSelectedChannelId(guild?.integrated && guild.current.length === 0
+      ? validChannelId(guild, guild.integrated.channel_id)
+      : preferredChannelId(guild, gameId));
     setMode(guild?.integrated && guild.current.length === 0 ? "integrated" : "separate");
     const discount = discountFormValues(guild);
     setBoosterDiscountEnabled(discount.enabled);
@@ -141,18 +147,19 @@ export function DiscordStorefrontForm({
       (store) => store.gameId === storefront.game_id,
     )?.id ?? games[0]?.id ?? "";
     setSelectedGameId(gameId);
-    setSelectedChannelId(storefront.channel_id);
+    setSelectedChannelId(validChannelId(selectedGuild, storefront.channel_id));
   }
 
   function editIntegratedStorefront(storefront: DiscordIntegratedStorefrontConfiguration) {
     setMode("integrated");
-    setSelectedChannelId(storefront.channel_id);
+    setSelectedChannelId(validChannelId(selectedGuild, storefront.channel_id));
   }
 
   const canPublish = Boolean(
     selectedGuild &&
       (mode === "integrated" || selectedGame) &&
-      selectedChannelId &&
+      selectedChannel &&
+      (!IS_GWSTORE || !isOperationalStorefrontChannel(selectedChannel.name)) &&
       !selectedGuild.channelLoadError,
   );
 
@@ -261,6 +268,11 @@ export function DiscordStorefrontForm({
                           <p className="mt-1 truncate font-mono text-[11px] text-muted">
                             Canal ID: {storefront.channel_id}
                           </p>
+                          {!selectedGuild.channelLoadError && !validChannelId(selectedGuild, storefront.channel_id) ? (
+                            <p className="mt-1 text-xs font-medium text-warning">
+                              Canal indisponível ou de operação. Configure um canal de compras.
+                            </p>
+                          ) : null}
                           {!storefront.game_id ? (
                             <p className="mt-1 text-xs font-medium text-warning">
                               Escolha um jogo para separar os produtos desta vitrine.
@@ -305,7 +317,10 @@ export function DiscordStorefrontForm({
                   type="button"
                   role="radio"
                   aria-checked={mode === "separate"}
-                  onClick={() => setMode("separate")}
+                  onClick={() => {
+                    setMode("separate");
+                    setSelectedChannelId(preferredChannelId(selectedGuild, selectedGameId));
+                  }}
                   className={`rounded-xl border p-4 text-left transition ${mode === "separate" ? "border-gold/50 bg-gold/[0.07]" : "border-border bg-surface-muted hover:border-gold/30"}`}
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -318,7 +333,10 @@ export function DiscordStorefrontForm({
                   type="button"
                   role="radio"
                   aria-checked={mode === "integrated"}
-                  onClick={() => setMode("integrated")}
+                  onClick={() => {
+                    setMode("integrated");
+                    setSelectedChannelId(validChannelId(selectedGuild, selectedGuild?.integrated?.channel_id ?? ""));
+                  }}
                   className={`rounded-xl border p-4 text-left transition ${mode === "integrated" ? "border-gold/50 bg-gold/[0.07]" : "border-border bg-surface-muted hover:border-gold/30"}`}
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -392,6 +410,7 @@ export function DiscordStorefrontForm({
                     >
                       <option value="">Selecione um canal</option>
                       {selectedGuild?.channels.map((channel) => {
+                        if (IS_GWSTORE && isOperationalStorefrontChannel(channel.name)) return null;
                         const usedBy = selectedGuild.current.find(
                           (storefront) =>
                             Boolean(storefront.catalog_store_id) &&
@@ -610,15 +629,10 @@ function preferredChannelId(
     (guild.current.length === 1 && guild.current[0]?.game_id === null
       ? guild.current[0]
       : null);
-  return guild.channels.some((channel) => channel.id === current?.channel_id)
-    ? current?.channel_id ?? ""
-    : guild.channels.find(
-        (channel) =>
-          !guild.current.some(
-            (storefront) =>
-              Boolean(storefront.catalog_store_id) &&
-              storefront.catalog_store_id !== gameId &&
-              storefront.channel_id === channel.id,
-          ),
-      )?.id ?? "";
+  return validChannelId(guild, current?.channel_id ?? "");
+}
+
+function validChannelId(guild: DiscordStorefrontGuildOption | null, id: string) {
+  const channel = guild?.channels.find((item) => item.id === id);
+  return channel && (!IS_GWSTORE || !isOperationalStorefrontChannel(channel.name)) ? id : "";
 }

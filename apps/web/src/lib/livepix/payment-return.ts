@@ -1,6 +1,7 @@
 export type PaymentReturnStatus =
   | "ticket_open"
   | "paid"
+  | "delivered"
   | "pending"
   | "expired"
   | "late_payment"
@@ -19,9 +20,11 @@ type PaymentStatusRow = {
 
 export function resolvePaymentReturnStatus(row: PaymentStatusRow): PaymentReturnStatus {
   if (row.status === "refunded" || row.payment_status === "refunded") return "refunded";
+  if (row.payment_status === "failed" || row.status === "failed") return "failed";
+  if (["cancelled", "expired"].includes(row.payment_status)) return "expired";
+  if (row.status === "delivered") return "delivered";
   if (row.discord_ticket_status === "open") return "ticket_open";
   if (["paid", "processing", "delivered"].includes(row.status)) return "paid";
-  if (row.payment_status === "failed" || row.status === "failed") return "failed";
   if (row.stock_commit_failure_reason === "insufficient_stock_after_payment") {
     return "stock_unavailable";
   }
@@ -41,6 +44,12 @@ export function resolvePaymentReturnStatus(row: PaymentStatusRow): PaymentReturn
 }
 
 export function paymentReturnCopy(status: PaymentReturnStatus) {
+  if (status === "delivered") {
+    return {
+      title: "Pedido entregue",
+      description: "O pagamento foi confirmado e a equipe concluiu sua entrega no Discord.",
+    };
+  }
   if (status === "ticket_open") {
     return {
       title: "Pagamento confirmado",

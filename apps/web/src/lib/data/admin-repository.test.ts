@@ -160,7 +160,7 @@ describe("listOrders", () => {
     itemQuery.select.mockReturnValue(itemQuery);
     itemQuery.in.mockReturnValue(itemQuery);
     itemQuery.order.mockResolvedValue({ data: [], error: null });
-    mocks.from.mockImplementation((table: string) => table === "orders" ? orderQuery : itemQuery);
+    mocks.from.mockImplementation((table: string) => table === "admin_order_report" ? orderQuery : itemQuery);
 
     const result = await listOrders({
       period: { from: "2026-07-01T03:00:00.000Z", to: "2026-08-01T03:00:00.000Z" },
@@ -188,12 +188,41 @@ describe("listOrders", () => {
     await listOrders({ period: { from: null, to: null }, status: "cancelled", page: 1, pageSize: 50 });
     expect(query.in).toHaveBeenCalledWith("status", ["cancelled", "expired"]);
   });
+
+  it("exibe Robux sem consultar itens de catálogo e conserva a paginação unificada", async () => {
+    const query = { select: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(), range: vi.fn() };
+    query.range.mockResolvedValue({
+      data: [{ id: "71000000-0000-4000-8000-000000000009", order_kind: "robux", product_id: null, quantity: 1000 }],
+      count: 101, error: null,
+    });
+    mocks.from.mockReturnValue(query);
+    const result = await listOrders({ period: { from: null, to: null }, status: "all", page: 3, pageSize: 50 });
+    expect(mocks.from).toHaveBeenCalledExactlyOnceWith("admin_order_report");
+    expect(result).toMatchObject({
+      total: 101, totalPages: 3, page: 3,
+      rows: [{ items: [{ productName: "Robux", quantity: 1000 }] }],
+    });
+    expect(query.range).toHaveBeenCalledWith(100, 149);
+  });
 });
 
 describe("listDeliveryLog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createServerSupabaseClient.mockResolvedValue({ from: mocks.from, rpc: mocks.rpc });
+  });
+
+  it("inclui a entrega de Robux sem procurar um produto de catálogo", async () => {
+    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(), range: vi.fn() };
+    query.range.mockResolvedValue({
+      data: [{ id: "71000000-0000-4000-8000-000000000009", order_kind: "robux", product_id: null, quantity: 1000 }],
+      count: 1, error: null,
+    });
+    mocks.from.mockReturnValue(query);
+    await expect(listDeliveryLog({ page: 1, pageSize: 50 })).resolves.toMatchObject({
+      total: 1, rows: [{ product_id: null, items: [{ productName: "Robux", quantity: 1000 }] }],
+    });
+    expect(mocks.from).toHaveBeenCalledExactlyOnceWith("admin_order_report");
   });
 
   it("lista somente pedidos entregues, trazendo seus itens em ordem", async () => {
@@ -230,7 +259,7 @@ describe("listDeliveryLog", () => {
       }],
       error: null,
     });
-    mocks.from.mockImplementation((table: string) => table === "orders" ? orderQuery : itemQuery);
+    mocks.from.mockImplementation((table: string) => table === "admin_order_report" ? orderQuery : itemQuery);
 
     await expect(listDeliveryLog({ page: 1, pageSize: 50 })).resolves.toMatchObject({
       total: 1,

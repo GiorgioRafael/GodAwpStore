@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Plus, Search, SearchX } from "lucide-react";
+import { Plus, RotateCcw, Search, SearchX } from "lucide-react";
 
 import { PageHeader } from "@/components/admin/page-header";
 import { Button } from "@/components/ui/button";
@@ -67,6 +67,10 @@ export function ResourceManagerShell({
 }: ResourceManagerShellProps) {
   const hasQuery = Boolean(search.trim()) || filter !== "all";
   const countLabel = totalCount === 1 ? "1 registro" : `${totalCount} registros`;
+  function clearFilters() {
+    onSearchChange("");
+    onFilterChange("all");
+  }
 
   return (
     <div className="space-y-7">
@@ -89,9 +93,15 @@ export function ResourceManagerShell({
         }
       />
 
+      {createDisabled && createDisabledReason ? (
+        <p className="rounded-xl border border-warning/20 bg-warning/[0.05] px-4 py-3 text-sm text-muted-strong">
+          {createDisabledReason}
+        </p>
+      ) : null}
+
       <Card className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="relative flex-1 sm:min-w-64">
             <Search
               aria-hidden="true"
               className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted"
@@ -118,9 +128,15 @@ export function ResourceManagerShell({
             ))}
           </Select>
           {extraFilters}
+          {hasQuery ? (
+            <Button variant="ghost" onClick={clearFilters} className="self-start sm:self-auto">
+              <RotateCcw aria-hidden="true" className="size-4" />
+              Limpar busca e estado
+            </Button>
+          ) : null}
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-xs text-muted">
-          <span>
+          <span role="status" aria-live="polite" aria-atomic="true">
             {hasQuery
               ? `${visibleCount} de ${totalCount} encontrados`
               : `${totalCount} no total`}
@@ -142,6 +158,9 @@ export function ResourceManagerShell({
                   ? "Ajuste a busca ou o filtro de estado para ver outros registros."
                   : emptyDescription
               }
+              action={hasQuery ? (
+                <Button variant="secondary" onClick={clearFilters}>Limpar busca e estado</Button>
+              ) : undefined}
               compact
             />
           </TableEmptyRow>

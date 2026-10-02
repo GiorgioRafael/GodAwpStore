@@ -276,6 +276,27 @@ psql postgresql://postgres@127.0.0.1:54322/postgres --set ON_ERROR_STOP=1 --file
 O GitHub Actions executa as verificações da aplicação e os testes transacionais
 do banco a cada push para `main` e em pull requests.
 
+### Relatórios de Robux e correção de vitrines
+
+A migração `20261001000100_include_robux_in_admin_reports.sql` deve ser aplicada
+nos bancos da GWStore e da THStore antes de publicar esta versão do painel.
+Ela reúne itens e Robux na paginação, receitas, gráficos e entregas, mantendo
+RLS e excluindo pagamentos pendentes, reembolsados ou invalidados da receita.
+
+Nas compras da GWStore, valores finais até R$10 ou acima de R$1.000 usam
+LivePix; de R$10,01 até R$1.000 usam EclipsePay quando habilitada.
+Tentativas com cobrança já preparada preservam o provedor para evitar duplicação.
+
+O deploy de produção da GWStore verifica as vitrines: referências a canais
+inexistentes, tickets e `chat-admin` saem da sincronização e ficam guardadas
+em `guilds.configuration.retired_storefronts`. Mensagens antigas não são apagadas.
+Os botões antigos desses canais deixam de oferecer o catálogo de compras.
+Para executar novamente com as credenciais da GWStore:
+
+```sh
+npm run discord:storefronts:repair --workspace @godawp/web
+```
+
 ## Segurança
 
 - IDs Discord são strings; não são convertidos para `number`.

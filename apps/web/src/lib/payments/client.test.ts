@@ -33,7 +33,7 @@ describe("isolated payment provider routing", () => {
     expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
     expect(mocks.db.rpc).not.toHaveBeenCalled();
   });
-  it.each([1001, 1050, 4000, 100000])("usa EclipsePay acima de R$10 (%i centavos)", async (amountCents) => {
+  it.each([1001, 1050, 4000, 100000])("usa EclipsePay entre R$10,01 e R$1.000 (%i centavos)", async (amountCents) => {
     await getPaymentClient().createPayment({ ...input, amountCents });
     expect(mocks.eclipse.createCharge).toHaveBeenCalledWith(id, { amountCents, description: `GWStore ${id}` });
     expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
@@ -107,8 +107,20 @@ describe("isolated payment provider routing", () => {
     expect(mocks.eclipse.createCharge.mock.calls[0]).toEqual(mocks.eclipse.createCharge.mock.calls[1]);
     expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
   });
-  it("não cria checkout acima do limite nem sem webhook secret", async () => {
-    await expect(getPaymentClient().createPayment({ ...input, amountCents: 100001 })).rejects.toThrow("1.000");
+  it.each([100001, 120000, 2000000])("usa LivePix acima de R$1.000 (%i centavos), sem depender do webhook EclipsePay", async (amountCents) => {
+    vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "");
+    const large = { ...input, amountCents };
+    await getPaymentClient().createPayment(large);
+    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(large);
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+    expect(mocks.db.rpc).not.toHaveBeenCalled();
+  });
+  it("não troca uma intenção existente quando o valor acima de R$1.000 diverge", async () => {
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { order_id: id, amount_cents: 4000 }, error: null }) });
+    await expect(getPaymentClient().createPayment({ ...input, amountCents: 120000 })).rejects.toThrow("divergente");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+  });
+  it("não gera EclipsePay sem webhook secret", async () => {
     vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "");
     await expect(getPaymentClient().createPayment(input)).rejects.toThrow("Webhook");
     expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();

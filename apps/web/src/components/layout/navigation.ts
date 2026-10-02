@@ -93,15 +93,34 @@ export const mobileNavigation: NavigationItem[] = [
   { label: "Pedidos", href: "/pedidos", icon: WalletCards },
 ];
 
-export function isNavigationItemActive(pathname: string, href: string) {
-  return href === "/" ? pathname === "/" : pathname.startsWith(href);
+export function isNavigationItemActive(pathname: string, href: string, hash = "") {
+  const [route, anchor] = href.split("#");
+  const matches = route === "/" ? pathname === "/" : pathname === route || pathname.startsWith(`${route}/`);
+  if (!matches) return false;
+  if (anchor) return hash === `#${anchor}`;
+  const anchoredPage = navigationGroups.some((group) => group.items.some((item) =>
+    item.href === `${pathname}${hash}` && item.href.includes("#"),
+  ));
+  return !anchoredPage;
 }
 
-export function getCurrentPageLabel(pathname: string) {
+export function getCurrentPageLabel(pathname: string, hash = "") {
   const items = navigationGroups.flatMap((group) => group.items);
   const match = items
-    .filter((item) => isNavigationItemActive(pathname, item.href))
+    .filter((item) => isNavigationItemActive(pathname, item.href, hash))
     .sort((a, b) => b.href.length - a.href.length)[0];
 
   return match?.label ?? "Painel";
+}
+
+export function filterNavigationGroups(query: string): NavigationGroup[] {
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const terms = normalize(query).trim().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return navigationGroups;
+  return navigationGroups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => terms.every((term) =>
+      normalize(`${group.label ?? ""} ${item.label}`).includes(term),
+    )),
+  })).filter((group) => group.items.length > 0);
 }

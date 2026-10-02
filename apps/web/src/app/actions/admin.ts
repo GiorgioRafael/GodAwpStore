@@ -32,12 +32,13 @@ import {
   withStorefrontConfigurations,
 } from "@/lib/bot/discord-storefront";
 import { integratedStorefrontGames } from "@/lib/bot/discord-bot";
+import { isOperationalStorefrontChannel } from "@/lib/bot/storefront-channel-policy";
 import {
   publishDiscordRobuxStorefront,
   readRobuxStorefrontConfiguration,
   withRobuxStorefrontConfiguration,
 } from "@/lib/bot/discord-robux-storefront";
-import { ROBUX_SALES_ENABLED } from "@/lib/brand";
+import { IS_GWSTORE, ROBUX_SALES_ENABLED } from "@/lib/brand";
 import { ROBUX_PRICE_LABEL } from "@/lib/robux/pricing";
 import { synchronizeAllOpenDiscordTicketControls } from "@/lib/bot/discord-ticket-controls-sync";
 import { botMessageCustomizationToJson } from "@/lib/bot/message-customization";
@@ -1348,6 +1349,13 @@ export async function publishDiscordStorefrontAction(
       };
     }
 
+    if (IS_GWSTORE && isOperationalStorefrontChannel(channel.name)) {
+      return {
+        ok: false,
+        message: "Chats administrativos e tickets não podem receber vitrines de compra.",
+        fieldErrors: { channelId: ["Escolha um canal de compras."] },
+      };
+    }
     const emojiSync = await synchronizeDiscordProductEmojisForStorefront(supabase);
     const [catalog, customization] = await Promise.all([
       new BotCommerceService(new SupabaseBotCommerceRepository()).listCatalog(),

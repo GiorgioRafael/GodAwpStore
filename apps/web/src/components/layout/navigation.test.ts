@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getCurrentPageLabel,
+  filterNavigationGroups,
   isNavigationItemActive,
   navigationGroups,
 } from "./navigation";
@@ -38,5 +39,20 @@ describe("navegação da customização do bot", () => {
     expect(isNavigationItemActive("/customizacao-bot", "/customizacao-bot")).toBe(true);
     expect(isNavigationItemActive("/customizacao-bot/preview", "/customizacao-bot")).toBe(true);
     expect(getCurrentPageLabel("/customizacao-bot")).toBe("Customização do bot");
+  });
+
+  it("distingue vitrines de configurações e evita marcar rotas de nome parecido", () => {
+    expect(isNavigationItemActive("/configuracoes", "/configuracoes#vitrines", "#vitrines")).toBe(true);
+    expect(isNavigationItemActive("/configuracoes", "/configuracoes", "#vitrines")).toBe(false);
+    expect(getCurrentPageLabel("/configuracoes", "#vitrines")).toBe("Vitrines do Discord");
+    expect(getCurrentPageLabel("/configuracoes")).toBe("Configurações");
+    expect(isNavigationItemActive("/pedidos-antigos", "/pedidos")).toBe(false);
+  });
+
+  it("encontra áreas por nome ou grupo sem depender de acentos", () => {
+    expect(filterNavigationGroups("operacao pedidos").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/pedidos"]);
+    expect(filterNavigationGroups("configuracoes").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/configuracoes"]);
+    expect(filterNavigationGroups("área inexistente")).toEqual([]);
+    expect(filterNavigationGroups(" ")).toEqual(navigationGroups);
   });
 });

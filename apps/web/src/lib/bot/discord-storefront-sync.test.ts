@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createAdminSupabaseClient: vi.fn(),
   deleteDiscordStorefrontMessages: vi.fn(),
+  listDiscordTextChannels: vi.fn(),
+  isGWStore: true,
   catalogStoresForIntegratedStorefront: vi.fn(),
   listCatalog: vi.fn(),
   publishDiscordIntegratedStorefront: vi.fn(),
@@ -16,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/brand", () => ({ get IS_GWSTORE() { return mocks.isGWStore; } }));
 vi.mock("@/lib/supabase/admin", () => ({
   createAdminSupabaseClient: mocks.createAdminSupabaseClient,
 }));
@@ -29,6 +32,7 @@ vi.mock("./supabase-repository", () => ({
 }));
 vi.mock("./discord-storefront", () => ({
   deleteDiscordStorefrontMessages: mocks.deleteDiscordStorefrontMessages,
+  listDiscordTextChannels: mocks.listDiscordTextChannels,
   catalogStoresForIntegratedStorefront: mocks.catalogStoresForIntegratedStorefront,
   publishDiscordIntegratedStorefront: mocks.publishDiscordIntegratedStorefront,
   publishDiscordStorefront: mocks.publishDiscordStorefront,
@@ -60,6 +64,11 @@ const defaultStoreId = "c5b82d6f-a324-47fa-a861-a046559e3a11";
 describe("sincronização automática da vitrine Discord", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isGWStore = true;
+    mocks.listDiscordTextChannels.mockResolvedValue([
+      { id: storefront.channel_id, name: storefront.channel_name },
+      { id: "423456789012345678", name: "outro-jogo" },
+    ]);
     mocks.listCatalog.mockResolvedValue([
       {
         id: storefront.game_id,
@@ -77,6 +86,69 @@ describe("sincronização automática da vitrine Discord", () => {
     mocks.publishDiscordStorefront.mockResolvedValue({ configuration: storefront });
     mocks.synchronizeDiscordProductEmojis.mockResolvedValue({ failed: 0 });
     mocks.deleteDiscordStorefrontMessages.mockResolvedValue(undefined);
+  });
+
+  it.each(["missing", "ticket-123", "🔒┊chat-admin"])("arquiva a referência %s sem publicar nem apagar mensagens", async (name) => {
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.listDiscordTextChannels.mockResolvedValue(
+      name === "missing" ? [] : [{ id: storefront.channel_id, name }],
+    );
+    mocks.withStorefrontConfigurations.mockReturnValue({ storefronts: [] });
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
+      published: 0, failed: 0, productEmojiFailures: 0,
+    });
+    expect(mocks.publishDiscordStorefront).not.toHaveBeenCalled();
+    expect(mocks.deleteDiscordStorefrontMessages).not.toHaveBeenCalled();
+    expect(client.update).toHaveBeenCalledWith({
+      configuration: {
+        storefronts: [],
+        retired_storefronts: [expect.objectContaining({
+          channel_id: storefront.channel_id,
+          retired_reason: name === "missing" ? "channel_unavailable" : "operational_channel",
+        })],
+      },
+    });
+  });
+
+  it("preserva as referências se a consulta de canais falha", async () => {
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.listDiscordTextChannels.mockRejectedValueOnce(new Error("Discord indisponível"));
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toMatchObject({ published: 0, failed: 1 });
+    expect(client.update).not.toHaveBeenCalled();
+    expect(mocks.publishDiscordStorefront).not.toHaveBeenCalled();
+  });
+
+  it("preserva a vitrine única válida ao arquivar vitrines antigas do mesmo servidor", async () => {
+    const integrated = {
+      channel_id: "423456789012345678", channel_name: "todas-as-lojas",
+      message_id: "523456789012345678", published_at: "2026-10-01T12:00:00.000Z",
+    };
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.listDiscordTextChannels.mockResolvedValue([{ id: integrated.channel_id, name: integrated.channel_name }]);
+    mocks.readDiscordIntegratedStorefrontConfiguration.mockReturnValue(integrated);
+    mocks.publishDiscordIntegratedStorefront.mockResolvedValue({ configuration: integrated });
+    mocks.withStorefrontConfigurations.mockReturnValue({ storefronts: [] });
+    mocks.withDiscordIntegratedStorefrontConfiguration.mockReturnValue({
+      storefronts: [], integrated_storefront: integrated,
+    });
+
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toMatchObject({ published: 1, failed: 0 });
+    expect(mocks.publishDiscordStorefront).not.toHaveBeenCalled();
+    expect(client.update).toHaveBeenCalledWith({ configuration: {
+      storefronts: [], integrated_storefront: integrated,
+      retired_storefronts: [expect.objectContaining({ channel_id: storefront.channel_id })],
+    } });
+  });
+
+  it("mantém a sincronização da THStore sem aplicar a limpeza específica da GW", async () => {
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    mocks.isGWStore = false;
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toMatchObject({ published: 1, failed: 0 });
+    expect(mocks.listDiscordTextChannels).not.toHaveBeenCalled();
   });
 
   it("edita a vitrine já publicada e persiste os IDs rastreados", async () => {
@@ -243,7 +315,7 @@ function clientMock() {
   const guildQuery = {
     eq: vi.fn(),
     is: vi.fn(async () => ({
-      data: [{ id: "guild-row", configuration: { storefronts: [storefront] } }],
+      data: [{ id: "guild-row", discord_guild_id: "123456789012345678", configuration: { storefronts: [storefront] } }],
       error: null,
     })),
   };

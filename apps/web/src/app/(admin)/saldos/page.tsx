@@ -18,13 +18,14 @@ export default async function BalancesPage() {
     <ResourcePage
       eyebrow="Financeiro"
       title="Saldos"
-      description="Consulte valores pendentes e disponíveis derivados do livro-razão imutável da plataforma."
+      description="Consulte os valores pendentes, disponíveis e pagos para cada vendedor."
       columns={["Discord ID", "Pendente", "Disponível", "Saldo", "Lucro total", "Pago"]}
       emptyIcon={WalletCards}
       emptyTitle="Nenhum saldo calculado"
       emptyDescription="Os saldos serão derivados exclusivamente de vendas e movimentações registradas no livro-razão."
       readOnly
       recordCount={rows.length}
+      searchValues={rows.map((row) => `${row.discord_id} ${cents(row.pending_balance_cents)} ${cents(row.available_balance_cents)} ${cents(row.balance_cents)} ${cents(row.total_profit_cents)} ${cents(row.total_paid_out_cents)}`)}
       rows={rows.map((row) => (
         <tr key={String(row.whitelist_entry_id)} className="border-b border-border/70 last:border-b-0">
           <td className="px-5 py-4 font-mono text-xs text-muted-strong">{String(row.discord_id)}</td>

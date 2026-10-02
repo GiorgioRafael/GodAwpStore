@@ -34,7 +34,7 @@ export type PaidOrderSummary = {
   totalReceivedCents: number;
 };
 
-export type AdminOrder = Tables<"orders"> & {
+export type AdminOrder = Views<"admin_order_report"> & {
   items: Array<{
     productId: string;
     productName: string;
@@ -51,7 +51,7 @@ export type PaginatedOrders = {
 };
 
 export type DeliveryLogRow = Pick<
-  Tables<"orders">,
+  Views<"admin_order_report">,
   | "id"
   | "buyer_discord_id"
   | "sale_price_cents"
@@ -320,7 +320,7 @@ export async function listOrders(
   const page = Math.max(1, Math.trunc(options.page));
   const pageSize = Math.min(Math.max(Math.trunc(options.pageSize), 1), 100);
   const offset = (page - 1) * pageSize;
-  let query = supabase.from("orders").select("*", { count: "exact" });
+  let query = supabase.from("admin_order_report").select("*", { count: "exact" });
 
   if (options.period.from) query = query.gte("created_at", options.period.from);
   if (options.period.to) query = query.lt("created_at", options.period.to);
@@ -351,28 +351,14 @@ export async function listOrders(
     return { rows: [], total, page, pageSize, totalPages };
   }
 
-  const { data: itemRows, error: itemError } = await supabase
-    .from("order_items")
-    .select("order_id,position,product_id,quantity,products(name)")
-    .in("order_id", orders.map((order) => order.id))
-    .order("position");
-  assertQuerySucceeded(itemError, "carregar os itens dos pedidos");
-
-  const itemsByOrder = new Map<string, AdminOrder["items"]>();
-  for (const item of itemRows ?? []) {
-    const items = itemsByOrder.get(item.order_id) ?? [];
-    items.push({
-      productId: item.product_id,
-      productName: item.products?.name ?? "Produto",
-      quantity: toSafeNumber(item.quantity),
-    });
-    itemsByOrder.set(item.order_id, items);
-  }
+  const itemsByOrder = await loadReportItems(supabase, orders);
 
   return {
     rows: orders.map((order) => ({
       ...order,
-      items: itemsByOrder.get(order.id) ?? [],
+      items: order.order_kind === "robux"
+        ? [{ productId: "robux", productName: "Robux", quantity: toSafeNumber(order.quantity) }]
+        : itemsByOrder.get(order.id) ?? [],
     })),
     total,
     page,
@@ -395,7 +381,7 @@ export async function listDeliveryLog(options: {
   const pageSize = Math.min(Math.max(Math.trunc(options.pageSize), 1), 100);
   const offset = (page - 1) * pageSize;
   const { data, error, count } = await supabase
-    .from("orders")
+    .from("admin_order_report")
     .select("*", { count: "exact" })
     .eq("status", "delivered")
     .order("discord_ticket_delivery_completed_at", { ascending: false, nullsFirst: false })
@@ -409,23 +395,7 @@ export async function listDeliveryLog(options: {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   if (orders.length === 0) return { rows: [], total, page, pageSize, totalPages };
 
-  const { data: itemRows, error: itemError } = await supabase
-    .from("order_items")
-    .select("order_id,position,product_id,quantity,products(name)")
-    .in("order_id", orders.map((order) => order.id))
-    .order("position");
-  assertQuerySucceeded(itemError, "carregar os itens entregues");
-
-  const itemsByOrder = new Map<string, AdminOrder["items"]>();
-  for (const item of itemRows ?? []) {
-    const items = itemsByOrder.get(item.order_id) ?? [];
-    items.push({
-      productId: item.product_id,
-      productName: item.products?.name ?? "Produto",
-      quantity: toSafeNumber(item.quantity),
-    });
-    itemsByOrder.set(item.order_id, items);
-  }
+  const itemsByOrder = await loadReportItems(supabase, orders);
 
   return {
     rows: orders.map((order) => ({
@@ -440,13 +410,41 @@ export async function listDeliveryLog(options: {
         order.discord_ticket_delivery_completed_by_discord_user_id,
       delivered_at: order.delivered_at,
       created_at: order.created_at,
-      items: itemsByOrder.get(order.id) ?? [],
+      items: order.order_kind === "robux"
+        ? [{ productId: "robux", productName: "Robux", quantity: toSafeNumber(order.quantity) }]
+        : itemsByOrder.get(order.id) ?? [],
     })),
     total,
     page,
     pageSize,
     totalPages,
   };
+}
+
+async function loadReportItems(
+  supabase: Awaited<ReturnType<typeof client>>,
+  orders: Views<"admin_order_report">[],
+): Promise<Map<string, AdminOrder["items"]>> {
+  const itemsByOrder = new Map<string, AdminOrder["items"]>();
+  const itemOrderIds = orders.filter((order) => order.order_kind !== "robux").map((order) => order.id);
+  if (itemOrderIds.length === 0) return itemsByOrder;
+
+  const { data, error } = await supabase
+    .from("order_items")
+    .select("order_id,position,product_id,quantity,products(name)")
+    .in("order_id", itemOrderIds)
+    .order("position");
+  assertQuerySucceeded(error, "carregar os itens dos pedidos");
+  for (const item of data ?? []) {
+    const items = itemsByOrder.get(item.order_id) ?? [];
+    items.push({
+      productId: item.product_id,
+      productName: item.products?.name ?? "Produto",
+      quantity: toSafeNumber(item.quantity),
+    });
+    itemsByOrder.set(item.order_id, items);
+  }
+  return itemsByOrder;
 }
 
 export async function listGames(): Promise<GameRow[]> {

@@ -52,6 +52,20 @@ async function readPaymentStatus(orderId: string) {
     .select("status,payment_status,discord_ticket_status,late_payment_detected_at,stock_commit_failure_reason")
     .eq("id", orderId)
     .maybeSingle();
-  if (error || !data) return "unknown" as const;
-  return resolvePaymentReturnStatus(data);
+  if (error) return "unknown" as const;
+  if (data) return resolvePaymentReturnStatus(data);
+
+  const { data: robux, error: robuxError } = await client
+    .from("robux_orders")
+    .select("status,payment_status,discord_ticket_status,discord_ticket_delivery_completed_at")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (robuxError || !robux) return "unknown" as const;
+  return resolvePaymentReturnStatus({
+    ...robux,
+    status: robux.payment_status === "paid" && robux.discord_ticket_delivery_completed_at
+      ? "delivered" : robux.status,
+    late_payment_detected_at: null,
+    stock_commit_failure_reason: null,
+  });
 }

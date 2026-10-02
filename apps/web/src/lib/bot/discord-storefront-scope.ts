@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { readStorefrontConfigurations } from "./discord-storefront";
+import { readDiscordIntegratedStorefrontConfiguration, readStorefrontConfigurations } from "./discord-storefront";
 import type { BotCatalogGame } from "./types";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
@@ -14,11 +14,23 @@ export function filterCatalogForDiscordChannel(
   const storefront = readStorefrontConfigurations(configuration).find(
     (item) => item.channel_id === channelId,
   );
+  const integrated = readDiscordIntegratedStorefrontConfiguration(configuration);
+  if (!storefront && integrated?.channel_id !== channelId && isRetiredChannel(configuration, channelId)) {
+    return [];
+  }
   if (!storefront?.game_id) return catalog;
   const store = storefront.catalog_store_id
     ? catalog.find((item) => item.catalogStoreId === storefront.catalog_store_id)
     : catalog.find((item) => item.id === storefront.game_id && item.isDefaultStore);
   return store ? [store] : [];
+}
+
+function isRetiredChannel(configuration: Parameters<typeof readStorefrontConfigurations>[0], channelId: string) {
+  if (!configuration || typeof configuration !== "object" || Array.isArray(configuration)) return false;
+  const retired = configuration.retired_storefronts;
+  return Array.isArray(retired) && retired.some((entry) =>
+    entry && typeof entry === "object" && !Array.isArray(entry) && entry.channel_id === channelId,
+  );
 }
 
 export async function scopeCatalogToDiscordChannel(

@@ -11,6 +11,13 @@ const pending = {
 };
 
 describe("retorno de pagamento", () => {
+  it("mostra a entrega concluída, incluindo quando o ticket ainda está aberto", () => {
+    const status = resolvePaymentReturnStatus({
+      ...pending, status: "delivered", payment_status: "paid", discord_ticket_status: "open",
+    });
+    expect(status).toBe("delivered");
+    expect(paymentReturnCopy(status).title).toBe("Pedido entregue");
+  });
   it("explica o cancelamento sem baixa de estoque depois de trinta minutos", () => {
     const status = resolvePaymentReturnStatus({
       ...pending,

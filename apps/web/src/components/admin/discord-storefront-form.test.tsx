@@ -98,7 +98,8 @@ describe("configuração de vitrines do Discord", () => {
     ).toBeInTheDocument();
 
     const channelSelect = screen.getByRole("combobox", { name: "2. Canal da vitrine" });
-    expect(channelSelect).toHaveValue(channels[1].id);
+    expect(channelSelect).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Publicar nova vitrine" })).toBeDisabled();
     expect(screen.getByRole("option", { name: "COMPRAR / #comprar-gag2 · usado por Mundo 1" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "COMPRAR / #comprar-script" })).toBeInTheDocument();
     await user.selectOptions(channelSelect, channels[0].id);
@@ -165,6 +166,8 @@ describe("configuração de vitrines do Discord", () => {
 
     expect(screen.getByText(/O comprador verá 1 jogo para escolher/i)).toBeInTheDocument();
     expect(screen.getByText(/aparecem apenas os produtos daquele jogo/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publicar vitrine única" })).toBeDisabled();
+    await user.selectOptions(screen.getByRole("combobox", { name: "2. Canal da vitrine única" }), channels[0].id);
     expect(screen.getByRole("button", { name: "Publicar vitrine única" })).toBeEnabled();
   });
 });

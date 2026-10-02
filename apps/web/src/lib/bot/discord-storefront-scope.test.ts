@@ -30,6 +30,24 @@ const catalog: BotCatalogGame[] = [
 ];
 
 describe("escopo da vitrine pelo canal", () => {
+  it("impede que botões antigos de um canal aposentado ofereçam o catálogo completo", () => {
+    expect(filterCatalogForDiscordChannel(catalog, {
+      storefronts: [],
+      retired_storefronts: [{ channel_id: "223456789012345678", retired_reason: "operational_channel" }],
+    }, "223456789012345678")).toEqual([]);
+  });
+
+  it("permite um canal aposentado depois de reconfigurado com uma vitrine válida", () => {
+    expect(filterCatalogForDiscordChannel(catalog, {
+      storefronts: [],
+      retired_storefronts: [{ channel_id: "223456789012345678" }],
+      integrated_storefront: {
+        channel_id: "223456789012345678", channel_name: "compras",
+        message_id: "323456789012345678", published_at: "2026-10-01T12:00:00.000Z",
+      },
+    }, "223456789012345678")).toEqual(catalog);
+  });
+
   it("mostra somente a loja configurada para o canal da vitrine", () => {
     const result = filterCatalogForDiscordChannel(
       catalog,

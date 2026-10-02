@@ -24,6 +24,7 @@ export default async function AuditPage() {
       readOnly
       toolbarHint="Datas exibidas no fuso de São Paulo."
       recordCount={events.length}
+      searchValues={events.map((event) => `${date(event.created_at)} ${event.actor_discord_user_id ?? "Sistema"} ${event.action} ${event.entity_type} ${event.entity_id ?? ""}`)}
       rows={events.map((event) => (
         <tr key={event.id} className="border-b border-border/70 last:border-b-0">
           <td className="px-5 py-4 whitespace-nowrap text-xs text-muted">{date(event.created_at)}</td>

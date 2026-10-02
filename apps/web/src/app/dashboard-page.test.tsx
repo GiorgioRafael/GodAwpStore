@@ -43,7 +43,7 @@ describe("painel de métricas", () => {
     expect(screen.getByRole("heading", { name: "Vendas confirmadas" })).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*123,45/)).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*41,15/)).toBeInTheDocument();
-    expect(screen.getByText("Somente pagamentos LivePix confirmados")).toBeInTheDocument();
+    expect(screen.getByText("Pix confirmados de itens e Robux")).toBeInTheDocument();
     expect(screen.getByText("Pedidos únicos, sem pendentes ou reembolsos")).toBeInTheDocument();
     expect(screen.getByText("Hoje")).toBeInTheDocument();
     expect(screen.getByText("Últimos 7 dias")).toBeInTheDocument();

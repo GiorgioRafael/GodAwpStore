@@ -1,9 +1,13 @@
 import "server-only";
 
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { IS_GWSTORE } from "@/lib/brand";
+import type { Json } from "@/lib/supabase/database.types";
+import { isOperationalStorefrontChannel } from "./storefront-channel-policy";
 import { BotCommerceService } from "./commerce-service";
 import {
   deleteDiscordStorefrontMessages,
+  listDiscordTextChannels,
   catalogStoresForIntegratedStorefront,
   publishDiscordIntegratedStorefront,
   publishDiscordStorefront,
@@ -32,7 +36,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
 
   const { data: guilds, error } = await client
     .from("guilds")
-    .select("id,configuration")
+    .select("id,discord_guild_id,configuration")
     .eq("status", "active")
     .is("archived_at", null);
   if (error) throw new Error("Não foi possível consultar as vitrines publicadas.");
@@ -69,9 +73,32 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
   ]);
   const results = await Promise.all(
     publishedGuilds.map(async ({ guild, storefronts, integratedStorefront }) => {
+      // Retire stale GW publications without deleting Discord messages or
+      // guessing a replacement channel. Keep the old configuration recoverable.
+      const retired: Json[] = [];
+      let channels: Awaited<ReturnType<typeof listDiscordTextChannels>> | null = null;
+      if (IS_GWSTORE) {
+        try {
+          channels = await listDiscordTextChannels(guild.discord_guild_id);
+        } catch {
+          return { published: 0, failed: storefronts.length + (integratedStorefront ? 1 : 0) };
+        }
+      }
+      const activeChannel = (id: string) => channels?.find((channel) => channel.id === id);
+      const retireReason = (id: string) => {
+        if (!channels) return null;
+        const channel = activeChannel(id);
+        return !channel ? "channel_unavailable"
+          : isOperationalStorefrontChannel(channel.name) ? "operational_channel" : null;
+      };
       const publicationResults = await Promise.all(
         storefronts.map(async (storefront) => {
           try {
+            const reason = retireReason(storefront.channel_id);
+            if (reason) {
+              retired.push({ ...storefront, retired_at: new Date().toISOString(), retired_reason: reason });
+              return { ok: true as const, configuration: null };
+            }
             const game = storefront.catalog_store_id
               ? catalog.find((item) => item.catalogStoreId === storefront.catalog_store_id) ?? null
                 : storefront.game_id
@@ -82,7 +109,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
               return { ok: true as const, configuration: null };
             }
             const publication = await publishDiscordStorefront({
-              channel: { id: storefront.channel_id, name: storefront.channel_name },
+              channel: { id: storefront.channel_id, name: activeChannel(storefront.channel_id)?.name ?? storefront.channel_name },
               catalog: storefront.game_id ? (game ? [game] : []) : catalog,
               customization,
               previous: storefront,
@@ -117,16 +144,22 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
         | null = null;
       if (integratedStorefront) {
         try {
-          const publication = await publishDiscordIntegratedStorefront({
-            channel: {
-              id: integratedStorefront.channel_id,
-              name: integratedStorefront.channel_name,
-            },
-            catalog: catalogStoresForIntegratedStorefront(catalog),
-            customization,
-            previous: integratedStorefront,
-          });
-          integratedResult = { ok: true, configuration: publication.configuration };
+          const reason = retireReason(integratedStorefront.channel_id);
+          if (reason) {
+            retired.push({ ...integratedStorefront, retired_at: new Date().toISOString(), retired_reason: reason });
+            integratedResult = { ok: true, configuration: null };
+          } else {
+            const publication = await publishDiscordIntegratedStorefront({
+              channel: {
+                id: integratedStorefront.channel_id,
+                name: activeChannel(integratedStorefront.channel_id)?.name ?? integratedStorefront.channel_name,
+              },
+              catalog: catalogStoresForIntegratedStorefront(catalog),
+              customization,
+              previous: integratedStorefront,
+            });
+            integratedResult = { ok: true, configuration: publication.configuration };
+          }
         } catch (syncError) {
           const message = syncError instanceof Error ? syncError.message : "erro desconhecido";
           console.error(`[discord-integrated-storefront:sync:${guild.id}] ${message}`);
@@ -152,6 +185,13 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
             integratedResult.configuration,
           );
         }
+        if (retired.length > 0) {
+          const previous = nextConfiguration.retired_storefronts;
+          nextConfiguration.retired_storefronts = [
+            ...(Array.isArray(previous) ? previous : []),
+            ...retired,
+          ];
+        }
         const { data: updated, error: updateError } = await client
           .from("guilds")
           .update({
@@ -164,7 +204,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
         return {
           published: publicationResults.filter(
             (result) => result.ok && result.configuration !== null,
-          ).length + (integratedResult?.ok ? 1 : 0),
+          ).length + (integratedResult?.ok && integratedResult.configuration ? 1 : 0),
           failed: attempted - succeeded,
         };
       } catch (syncError) {

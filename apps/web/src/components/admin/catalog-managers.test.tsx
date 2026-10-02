@@ -175,6 +175,14 @@ describe("gestores do catálogo", () => {
     expect(within(table).getByText(activeGame.name)).toBeInTheDocument();
     expect(within(table).queryByText(archivedGame.name)).not.toBeInTheDocument();
 
+    await user.type(screen.getByRole("searchbox", { name: "Buscar em jogos" }), "inexistente");
+    expect(screen.getByText("Nenhum resultado encontrado")).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Limpar busca e estado" })[0]);
+    expect(screen.getByRole("searchbox", { name: "Buscar em jogos" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Filtrar jogos por estado" })).toHaveValue("all");
+    expect(within(table).getByText(activeGame.name)).toBeInTheDocument();
+    expect(within(table).getByText(archivedGame.name)).toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "Novo jogo" }));
     expect(screen.getByRole("heading", { name: "Novo jogo" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Nome" })).toBeRequired();

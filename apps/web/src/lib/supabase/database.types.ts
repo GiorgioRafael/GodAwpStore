@@ -516,6 +516,8 @@ type RobuxOrderRow = {
   discord_ticket_channel_id: string | null;
   discord_ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
   discord_ticket_claimed_at: string | null;
+  discord_ticket_delivery_completed_at: string | null;
+  discord_ticket_delivery_completed_by_discord_user_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -1690,6 +1692,31 @@ export type Database = {
           delivered_orders_count: number;
           ledger_balance_cents: number;
           pending_payouts_cents: number;
+        };
+        Relationships: [];
+      };
+      admin_order_report: {
+        Row: {
+          id: string;
+          guild_id: string;
+          order_kind: "items" | "robux";
+          product_id: string | null;
+          buyer_discord_id: string;
+          quantity: number;
+          sale_price_cents: number;
+          status: Database["public"]["Enums"]["order_status"];
+          payment_provider: string;
+          payment_status: Database["public"]["Enums"]["payment_status"];
+          paid_at: string | null;
+          stock_released_at: string | null;
+          stock_commit_failure_reason: string | null;
+          late_payment_detected_at: string | null;
+          discord_ticket_channel_id: string | null;
+          discord_ticket_delivery_completed_at: string | null;
+          discord_ticket_delivery_completed_by_discord_user_id: string | null;
+          delivered_at: string | null;
+          created_at: string;
+          updated_at: string;
         };
         Relationships: [];
       };

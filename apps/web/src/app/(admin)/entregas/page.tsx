@@ -85,7 +85,7 @@ export default async function DeliveryLogPage({ searchParams }: DeliveryLogPageP
                       ))}
                     </ul>
                   ) : (
-                    <span className="font-mono" title={row.product_id}>{row.product_id.slice(0, 8)}…</span>
+                    <span className="font-mono" title={row.product_id ?? undefined}>{row.product_id ? `${row.product_id.slice(0, 8)}…` : "Robux"}</span>
                   )}
                 </td>
                 <td className="px-5 py-4 text-sm font-medium">{formatBrl(row.sale_price_cents)}</td>

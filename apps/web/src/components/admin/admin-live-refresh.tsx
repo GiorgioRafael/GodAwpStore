@@ -61,6 +61,16 @@ export function AdminLiveRefresh() {
             { event: "UPDATE", schema: "public", table: "orders" },
             scheduleRefresh,
           )
+          .on(
+            "postgres_changes",
+            { event: "INSERT", schema: "public", table: "robux_orders" },
+            scheduleRefresh,
+          )
+          .on(
+            "postgres_changes",
+            { event: "UPDATE", schema: "public", table: "robux_orders" },
+            scheduleRefresh,
+          )
           .subscribe((status) => {
             if (!active) return;
             if (status === "SUBSCRIBED") {

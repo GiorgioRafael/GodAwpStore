@@ -5,14 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node --conditions=react-server --import tsx scripts/reconcile-robux-orders.ts --deployment && node scripts/register-discord-commands.mjs --deployment && node scripts/refresh-discord-brand-banners.mjs --deployment && node --conditions=react-server --import tsx scripts/refresh-discord-product-emojis.ts --deployment && node scripts/refresh-discord-product-option-emojis.mjs --deployment",
+    "postbuild": "node --conditions=react-server --import tsx scripts/reconcile-robux-orders.ts --deployment && node scripts/register-discord-commands.mjs --deployment && node --conditions=react-server --import tsx scripts/repair-discord-storefronts.ts --deployment && node scripts/refresh-discord-brand-banners.mjs --deployment && node --conditions=react-server --import tsx scripts/refresh-discord-product-emojis.ts --deployment && node scripts/refresh-discord-product-option-emojis.mjs --deployment",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
     "discord:commands": "node --env-file-if-exists=.env.local scripts/register-discord-commands.mjs",
     "discord:tickets:sync": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/sync-open-ticket-controls.ts",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "discord:storefronts:repair": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/repair-discord-storefronts.ts"
   },
   "dependencies": {
     "@chat-adapter/discord": "^4.34.0",

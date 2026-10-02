@@ -395,7 +395,8 @@ begin
         'product_stock_summary',
         'whitelist_balances',
         'admin_dashboard_summary',
-        'admin_paid_pix_metrics'
+        'admin_paid_pix_metrics',
+        'admin_order_report'
       )
       and not ('security_invoker=true' = any(coalesce(relation.reloptions, array[]::text[])))
   ) then
