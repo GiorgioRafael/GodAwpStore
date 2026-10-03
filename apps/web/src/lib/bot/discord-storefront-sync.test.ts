@@ -88,6 +88,16 @@ describe("sincronização automática da vitrine Discord", () => {
     mocks.deleteDiscordStorefrontMessages.mockResolvedValue(undefined);
   });
 
+  it("não restaura uma vitrine desativada enquanto a sincronização estava em andamento", async () => {
+    const client = clientMock();
+    mocks.createAdminSupabaseClient.mockReturnValue(client);
+    client.updateQuery.maybeSingle.mockResolvedValueOnce({ data: null, error: null });
+    await expect(synchronizePublishedDiscordStorefronts()).resolves.toEqual({
+      published: 0, failed: 1, productEmojiFailures: 0,
+    });
+    expect(client.updateQuery.eq).toHaveBeenCalledWith("updated_at", "2026-10-03T12:00:00.000Z");
+  });
+
   it.each(["missing", "ticket-123", "🔒┊chat-admin"])("arquiva a referência %s sem publicar nem apagar mensagens", async (name) => {
     const client = clientMock();
     mocks.createAdminSupabaseClient.mockReturnValue(client);
@@ -315,7 +325,7 @@ function clientMock() {
   const guildQuery = {
     eq: vi.fn(),
     is: vi.fn(async () => ({
-      data: [{ id: "guild-row", discord_guild_id: "123456789012345678", configuration: { storefronts: [storefront] } }],
+      data: [{ id: "guild-row", discord_guild_id: "123456789012345678", configuration: { storefronts: [storefront] }, updated_at: "2026-10-03T12:00:00.000Z" }],
       error: null,
     })),
   };
@@ -324,12 +334,13 @@ function clientMock() {
   const updateQuery = {
     eq: vi.fn(),
     select: vi.fn(),
-    maybeSingle: vi.fn(async () => ({ data: { id: "guild-row" }, error: null })),
+    maybeSingle: vi.fn(async (): Promise<{ data: { id: string } | null; error: null }> => ({ data: { id: "guild-row" }, error: null })),
   };
   updateQuery.eq.mockReturnValue(updateQuery);
   updateQuery.select.mockReturnValue(updateQuery);
 
   const client = {
+    updateQuery,
     update: vi.fn(() => updateQuery),
     from: vi.fn(),
   };

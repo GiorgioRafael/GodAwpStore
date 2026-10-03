@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DiscordStorefrontForm } from "./discord-storefront-form";
 
 const actionMocks = vi.hoisted(() => ({
+  disableDiscordStorefrontAction: vi.fn(async () => ({ ok: true, message: "Vitrine desativada." })),
   publishDiscordStorefrontAction: vi.fn(async () => ({
     ok: true,
     message: "Vitrine publicada.",
@@ -51,6 +52,21 @@ const channels = [
 afterEach(() => cleanup());
 
 describe("configuração de vitrines do Discord", () => {
+  it("permite desativar somente a vitrine única selecionada sem submeter a publicação", async () => {
+    const user = userEvent.setup();
+    const guildId = "c5b82d6f-a324-47fa-a861-a046559e3a11";
+    render(<DiscordStorefrontForm games={[firstGame]} guilds={[{
+      id: guildId, discordGuildId: "123456789012345678", name: "Loja", channels, current: [],
+      integrated: { channel_id: channels[0].id, channel_name: channels[0].name, message_id: "423456789012345678", published_at: "2026-10-03T12:00:00.000Z" },
+      boosterDiscount: { enabled: false, discount_bps: 0, minimum_subtotal_cents: 0 }, channelLoadError: null,
+    }]} />);
+    actionMocks.publishDiscordStorefrontAction.mockClear();
+    await user.click(screen.getByRole("button", { name: "Desativar vitrine única" }));
+    expect(actionMocks.disableDiscordStorefrontAction).toHaveBeenCalledWith(guildId, channels[0].id);
+    expect(actionMocks.publishDiscordStorefrontAction).not.toHaveBeenCalled();
+    expect(await screen.findByText("Vitrine desativada.")).toBeInTheDocument();
+  });
+
   it("explica a separação e permite configurar um canal diferente para cada jogo", async () => {
     const user = userEvent.setup();
     render(

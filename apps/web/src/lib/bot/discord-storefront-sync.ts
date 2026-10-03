@@ -36,7 +36,7 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
 
   const { data: guilds, error } = await client
     .from("guilds")
-    .select("id,discord_guild_id,configuration")
+    .select("id,discord_guild_id,configuration,updated_at")
     .eq("status", "active")
     .is("archived_at", null);
   if (error) throw new Error("Não foi possível consultar as vitrines publicadas.");
@@ -198,6 +198,9 @@ export async function synchronizePublishedDiscordStorefronts(): Promise<DiscordS
             configuration: nextConfiguration,
           })
           .eq("id", guild.id)
+          // An admin may disable a storefront while Discord requests are in flight.
+          // Never write the old publication back over that newer configuration.
+          .eq("updated_at", guild.updated_at)
           .select("id")
           .maybeSingle();
         if (updateError || !updated) throw new Error("Configuração da vitrine não foi salva.");

@@ -320,6 +320,75 @@ export function withDiscordIntegratedStorefrontConfiguration(
   return next;
 }
 
+/** Keep a recoverable publication record and block old controls in this channel. */
+export function retireDiscordStorefrontConfiguration(
+  configuration: Json,
+  channelId: string,
+  retiredAt = new Date().toISOString(),
+): JsonObject {
+  assertSnowflake(channelId, "canal");
+  const storefronts = readStorefrontConfigurations(configuration);
+  const integrated = readDiscordIntegratedStorefrontConfiguration(configuration);
+  const retired = [
+    ...storefronts.filter((storefront) => storefront.channel_id === channelId),
+    ...(integrated?.channel_id === channelId ? [integrated] : []),
+  ];
+  let next = withStorefrontConfigurations(
+    configuration,
+    storefronts.filter((storefront) => storefront.channel_id !== channelId),
+  );
+  if (integrated?.channel_id === channelId) {
+    next = withDiscordIntegratedStorefrontConfiguration(next, null);
+  }
+  const previous = next.retired_storefronts;
+  next.retired_storefronts = [
+    ...(Array.isArray(previous) ? previous : []),
+    ...retired.map((storefront) => ({
+      ...storefront,
+      retired_at: retiredAt,
+      retired_reason: "admin_disabled",
+    })),
+  ];
+  return next;
+}
+
+/** Replace purchase controls with a notice, without deleting messages or channels. */
+export async function disableDiscordStorefrontMessages(
+  storefront: Pick<DiscordStorefrontConfiguration, "channel_id" | "message_ids">,
+  destinations: Pick<DiscordStorefrontChannel, "id">[] = [],
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  assertSnowflake(storefront.channel_id, "canal");
+  const destinationIds = [...new Set(destinations.map((channel) => channel.id))];
+  for (const id of destinationIds) assertSnowflake(id, "canal");
+  const notice = "## Vitrine desativada\n" + (destinationIds.length > 0
+    ? `Escolha o que deseja comprar nos canais abaixo:\n${destinationIds.map((id) => `• <#${id}>`).join("\n")}`
+    : "Esta vitrine não recebe mais compras. Consulte os canais de compras da loja.");
+  for (const messageId of storefront.message_ids) {
+    assertSnowflake(messageId, "mensagem");
+    const url = `${discordApiUrl()}/channels/${storefront.channel_id}/messages/${messageId}`;
+    const existing = await fetcher(url, { headers: discordHeaders(), cache: "no-store" });
+    if (existing.status === 404) continue;
+    if (!existing.ok) throw new Error(`Discord recusou a leitura da vitrine (${existing.status}).`);
+    const message: unknown = await existing.json();
+    if (!isObject(message)) throw new Error("Resposta de mensagem inválida do Discord.");
+    // Discord cannot remove the Components V2 flag from an existing message.
+    const componentsV2 = (Number(message.flags) & 32768) !== 0;
+    const payload = componentsV2
+      ? { flags: 32768, components: [{ type: 17, components: [{ type: 10, content: notice }] }] }
+      : { content: notice, embeds: [], components: [] };
+    const response = await fetcher(url, {
+      method: "PATCH",
+      headers: discordJsonHeaders(),
+      body: JSON.stringify({ ...payload, allowed_mentions: { parse: [] } }),
+      cache: "no-store",
+    });
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`Discord recusou a desativação da vitrine (${response.status}).`);
+    }
+  }
+}
+
 export async function deleteDiscordStorefrontMessages(
   storefront: DiscordStorefrontConfiguration,
   fetcher: typeof fetch = fetch,

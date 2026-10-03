@@ -14,6 +14,8 @@ let readStorefrontConfigurations: typeof import("./discord-storefront").readStor
 let readDiscordIntegratedStorefrontConfiguration: typeof import("./discord-storefront").readDiscordIntegratedStorefrontConfiguration;
 let withStorefrontConfiguration: typeof import("./discord-storefront").withStorefrontConfiguration;
 let withDiscordIntegratedStorefrontConfiguration: typeof import("./discord-storefront").withDiscordIntegratedStorefrontConfiguration;
+let retireDiscordStorefrontConfiguration: typeof import("./discord-storefront").retireDiscordStorefrontConfiguration;
+let disableDiscordStorefrontMessages: typeof import("./discord-storefront").disableDiscordStorefrontMessages;
 
 const guildId = "123456789012345678";
 const channelId = "223456789012345678";
@@ -30,6 +32,8 @@ beforeAll(async () => {
     readStorefrontConfigurations,
     withStorefrontConfiguration,
     withDiscordIntegratedStorefrontConfiguration,
+    retireDiscordStorefrontConfiguration,
+    disableDiscordStorefrontMessages,
   } = await import("./discord-storefront"));
 });
 
@@ -39,6 +43,56 @@ afterEach(() => {
 });
 
 describe("Discord storefront", () => {
+  it("desativa a vitrine única, preservando as vitrines separadas e seu registro recuperável", () => {
+    const integrated = { channel_id: channelId, channel_name: "todas-as-lojas", message_id: messageId, published_at: "2026-09-01T12:00:00.000Z" };
+    const separate = { game_id: "a5b82d6f-a324-47fa-a861-a046559e3a11", game_name: "Blox Fruits", channel_id: "423456789012345678", channel_name: "frutas-fisicas", message_ids: ["523456789012345678"], published_at: integrated.published_at };
+    const result = retireDiscordStorefrontConfiguration({
+      storefronts: [separate], integrated_storefront: integrated,
+      retired_storefronts: [{ channel_id: "623456789012345678" }],
+      booster_discount: { enabled: true },
+    }, channelId, "2026-10-03T12:00:00.000Z");
+    expect(readDiscordIntegratedStorefrontConfiguration(result)).toBeNull();
+    expect(readStorefrontConfigurations(result)).toHaveLength(1);
+    expect(result.booster_discount).toEqual({ enabled: true });
+    expect(result.retired_storefronts).toEqual([
+      { channel_id: "623456789012345678" },
+      { ...integrated, retired_at: "2026-10-03T12:00:00.000Z", retired_reason: "admin_disabled" },
+    ]);
+    expect(retireDiscordStorefrontConfiguration(result, channelId).retired_storefronts).toEqual(result.retired_storefronts);
+  });
+
+  it("substitui controles V2 por links para as novas vitrines sem apagar mensagens", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ flags: 32768 }))
+      .mockResolvedValueOnce(jsonResponse({ id: messageId }));
+    await disableDiscordStorefrontMessages({ channel_id: channelId, message_ids: [messageId] }, [{ id: "423456789012345678" }], fetcher);
+    const payload = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
+    expect(payload.flags).toBe(32768);
+    expect(payload.allowed_mentions).toEqual({ parse: [] });
+    expect(JSON.stringify(payload.components)).toContain("<#423456789012345678>");
+    expect(JSON.stringify(payload)).not.toContain("custom_id");
+    expect(fetcher.mock.calls[1][1]?.method).toBe("PATCH");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("não recria uma mensagem antiga que já foi removida", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
+    await disableDiscordStorefrontMessages({ channel_id: channelId, message_ids: [messageId] }, [], fetcher);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0][1]?.method).toBeUndefined();
+  });
+
+  it("limpa seletores e embeds de uma publicação anterior ao Components V2", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ flags: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ id: messageId }));
+    await disableDiscordStorefrontMessages({ channel_id: channelId, message_ids: [messageId] }, [], fetcher);
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toMatchObject({ content: expect.stringContaining("Vitrine desativada"), embeds: [], components: [] });
+  });
+
   it("cria um canal de texto com nome seguro para a nova loja", async () => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token-for-test");
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(

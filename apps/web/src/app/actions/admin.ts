@@ -22,11 +22,13 @@ import {
   catalogStoresForIntegratedStorefront,
   createDiscordTextChannel,
   deleteDiscordStorefrontMessages,
+  disableDiscordStorefrontMessages,
   listDiscordTextChannels,
   publishDiscordIntegratedStorefront,
   publishDiscordStorefront,
   readDiscordIntegratedStorefrontConfiguration,
   readStorefrontConfigurations,
+  retireDiscordStorefrontConfiguration,
   withDiscordIntegratedStorefrontConfiguration,
   withStorefrontConfiguration,
   withStorefrontConfigurations,
@@ -1501,6 +1503,65 @@ export async function publishDiscordStorefrontAction(
       ok: false,
       message: storefrontActionError(message),
     };
+  }
+}
+
+export async function disableDiscordStorefrontAction(
+  guildId: string,
+  channelId: string,
+): Promise<AdminActionState> {
+  const parsed = z.object({
+    guildId: uuidSchema,
+    channelId: z.string().regex(/^[0-9]{15,22}$/),
+  }).safeParse({ guildId, channelId });
+  if (!parsed.success) return { ok: false, message: "Vitrine inválida." };
+  try {
+    await requireAdmin();
+  } catch {
+    return { ok: false, message: "Sua sessão de administrador expirou. Entre novamente e repita." };
+  }
+  try {
+    const supabase = createAdminSupabaseClient();
+    if (!supabase) throw new Error("Supabase server-only não configurado.");
+    const { data: guild, error } = await supabase.from("guilds")
+      .select("id,discord_guild_id,configuration,updated_at")
+      .eq("id", parsed.data.guildId).eq("status", "active").is("archived_at", null).maybeSingle();
+    if (error) return databaseFailure(error.code);
+    if (!guild) return { ok: false, message: "Servidor Discord ativo não encontrado." };
+    const current = readStorefrontConfigurations(guild.configuration);
+    const integrated = readDiscordIntegratedStorefrontConfiguration(guild.configuration);
+    const target = current.find((storefront) => storefront.channel_id === parsed.data.channelId);
+    const integratedTarget = integrated?.channel_id === parsed.data.channelId ? integrated : null;
+    if (!target && !integratedTarget) return { ok: true, message: "Esta vitrine já está desativada." };
+    const { data: updated, error: updateError } = await supabase.from("guilds")
+      .update({ configuration: retireDiscordStorefrontConfiguration(guild.configuration, parsed.data.channelId) })
+      .eq("id", guild.id).eq("updated_at", guild.updated_at).select("id").maybeSingle();
+    if (updateError) return databaseFailure(updateError.code);
+    if (!updated) return { ok: false, message: "A configuração mudou durante a operação. Atualize o painel e tente novamente." };
+    revalidatePath("/configuracoes");
+    try {
+      const channels = await listDiscordTextChannels(guild.discord_guild_id);
+      if (channels.some((channel) => channel.id === parsed.data.channelId)) {
+        const destinations = current.filter((storefront) => storefront.channel_id !== parsed.data.channelId)
+          .flatMap((storefront) => channels.filter((channel) => channel.id === storefront.channel_id && !isOperationalStorefrontChannel(channel.name)));
+        await disableDiscordStorefrontMessages({
+          channel_id: parsed.data.channelId,
+          message_ids: [...new Set([
+            ...current.filter((storefront) => storefront.channel_id === parsed.data.channelId).flatMap((storefront) => storefront.message_ids),
+            ...(integratedTarget ? [integratedTarget.message_id] : []),
+          ])],
+        }, destinations);
+      }
+    } catch {
+      return {
+        ok: true,
+        message: "Vitrine desativada. A sincronização não voltará a publicá-la.",
+        warning: "O aviso no Discord não pôde ser atualizado. Os controles antigos já estão bloqueados.",
+      };
+    }
+    return { ok: true, message: "Vitrine desativada. O canal e o histórico foram preservados." };
+  } catch (error) {
+    return { ok: false, message: storefrontActionError(error instanceof Error ? error.message : "Erro desconhecido.") };
   }
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId, useMemo, useState } from "react";
+import { useActionState, useId, useMemo, useState, useTransition } from "react";
 import {
   CheckCircle2,
   ChevronDown,
@@ -12,7 +12,7 @@ import {
   StoreIcon,
 } from "lucide-react";
 
-import { publishDiscordStorefrontAction } from "@/app/actions/admin";
+import { disableDiscordStorefrontAction, publishDiscordStorefrontAction } from "@/app/actions/admin";
 import {
   ActionFeedback,
   fieldError,
@@ -87,6 +87,8 @@ export function DiscordStorefrontForm({
     initialAdminActionState,
   );
   const formId = useId();
+  const [disableState, setDisableState] = useState(initialAdminActionState);
+  const [disabling, startDisable] = useTransition();
   const selectedGuild = useMemo(
     () => guilds.find((guild) => guild.id === selectedGuildId) ?? null,
     [guilds, selectedGuildId],
@@ -155,6 +157,17 @@ export function DiscordStorefrontForm({
     setSelectedChannelId(validChannelId(selectedGuild, storefront.channel_id));
   }
 
+  function disableStorefront(channelId: string) {
+    if (!selectedGuild) return;
+    startDisable(async () => {
+      try {
+        setDisableState(await disableDiscordStorefrontAction(selectedGuild.id, channelId));
+      } catch {
+        setDisableState({ ok: false, message: "Não foi possível desativar a vitrine. Tente novamente." });
+      }
+    });
+  }
+
   const canPublish = Boolean(
     selectedGuild &&
       (mode === "integrated" || selectedGame) &&
@@ -200,6 +213,7 @@ export function DiscordStorefrontForm({
         <form action={formAction}>
           <CardContent className="space-y-6 pt-5">
             <ActionFeedback state={state} />
+            <ActionFeedback state={disableState} />
             <input type="hidden" name="guildId" value={selectedGuildId} />
             <input type="hidden" name="mode" value={mode} />
             <input type="hidden" name="storeId" value={selectedGameId} />
@@ -221,7 +235,8 @@ export function DiscordStorefrontForm({
                   </h3>
                   <p className="mt-1 text-xs leading-5 text-muted">
                     Você pode manter os dois formatos em canais diferentes. Clique em Configurar
-                    para atualizar uma mensagem já publicada.
+                    para atualizar uma mensagem já publicada. Desativar remove os controles de compra
+                    e preserva o canal e o histórico.
                   </p>
                 </div>
                 <div className="grid gap-3 lg:grid-cols-2">
@@ -239,9 +254,16 @@ export function DiscordStorefrontForm({
                           <p className="mt-1 text-xs text-muted">O comprador escolhe o jogo antes de ver os itens.</p>
                         </div>
                       </div>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => editIntegratedStorefront(selectedGuild.integrated!)}>
-                        Configurar
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="ghost" size="sm" disabled={pending || disabling} onClick={() => editIntegratedStorefront(selectedGuild.integrated!)}>
+                          Configurar
+                        </Button>
+                        <Button type="button" variant="secondary" size="sm" disabled={pending || disabling}
+                          aria-label="Desativar vitrine única"
+                          onClick={() => disableStorefront(selectedGuild.integrated!.channel_id)}>
+                          Desativar
+                        </Button>
+                      </div>
                     </div>
                   ) : null}
                   {selectedGuild.current.map((storefront) => (
@@ -280,14 +302,22 @@ export function DiscordStorefrontForm({
                           ) : null}
                         </div>
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => editStorefront(storefront)}
-                      >
-                        Configurar
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={pending || disabling}
+                          onClick={() => editStorefront(storefront)}
+                        >
+                          Configurar
+                        </Button>
+                        <Button type="button" variant="secondary" size="sm" disabled={pending || disabling}
+                          aria-label={`Desativar vitrine ${storefront.catalog_store_name ?? storefront.game_name}`}
+                          onClick={() => disableStorefront(storefront.channel_id)}>
+                          Desativar
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -558,7 +588,7 @@ export function DiscordStorefrontForm({
             <p className="text-xs leading-5 text-muted">
               O comando <strong>/loja</strong> continua disponível como alternativa.
             </p>
-            <Button type="submit" disabled={pending || !canPublish}>
+            <Button type="submit" disabled={pending || disabling || !canPublish}>
               {pending ? (
                 <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
               ) : (
