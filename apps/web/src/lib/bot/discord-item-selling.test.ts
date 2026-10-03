@@ -1,0 +1,47 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
+import { GODAWP_DISCORD_USER_ID, GWSTORE_SELLING_GUILD_ID, SELLING_COMPLETE_PREFIX, SELLING_OPEN_ID,
+  SELLING_SUBMIT_ID, escapeSellingText, itemSellingResponse, parseItemSellingInteraction } from "./discord-item-selling";
+
+const appId = "123456789012345678";
+const channelId = "223456789012345678";
+const sellerId = "323456789012345678";
+const settings = { customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION, ticketCloseAdminDiscordUserIds: [], ticketNotificationDiscordUserIds: [] };
+const raw = (type = 3, customId = SELLING_OPEN_ID, userId = sellerId) => ({
+  type, id: "423456789012345678", application_id: appId, token: "abcdefghijklmnopqrstuvwxyz0123456789",
+  guild_id: GWSTORE_SELLING_GUILD_ID, channel_id: channelId, member: { user: { id: userId } }, data: { custom_id: customId },
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe("venda de itens para a GWStore", () => {
+  it("abre formulário nativo sem depender do banco", () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", appId);
+    expect(itemSellingResponse(raw())).toMatchObject({ type: 9, data: {
+      custom_id: SELLING_SUBMIT_ID, components: [{ type: 18, component: { custom_id: "item_name", required: true, max_length: 120 } }],
+    } });
+  });
+  it("lê o campo Label e o formulário legado e rejeita branco ou texto longo", () => {
+    for (const components of [
+      [{ type: 18, component: { custom_id: "item_name", value: "  Dragon\n Fisica  " } }],
+      [{ type: 1, components: [{ custom_id: "item_name", value: "  Dragon\n Fisica  " }] }],
+    ]) expect(parseItemSellingInteraction({ ...raw(5, SELLING_SUBMIT_ID), data: { custom_id: SELLING_SUBMIT_ID, components } })).toEqual({ kind: "submit", itemName: "Dragon Fisica" });
+    for (const value of ["  ", "x".repeat(121)]) expect(parseItemSellingInteraction({ ...raw(5, SELLING_SUBMIT_ID), data: { custom_id: SELLING_SUBMIT_ID, components: [{ component: { custom_id: "item_name", value } }] } })).toEqual({ kind: "submit", itemName: null });
+  });
+  it("restringe o atendimento ao servidor e ao aplicativo da GWStore", () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", appId);
+    expect(itemSellingResponse({ ...raw(), guild_id: channelId }).type).toBe(4);
+    expect(itemSellingResponse({ ...raw(), application_id: channelId }).type).toBe(4);
+    expect(itemSellingResponse({ ...raw(), member: undefined }).type).toBe(4);
+  });
+  it("somente GodAwp ou os responsáveis dos outros tickets podem concluir, no próprio canal", () => {
+    vi.stubEnv("DISCORD_APPLICATION_ID", appId);
+    const completeId = `${SELLING_COMPLETE_PREFIX}${channelId}`;
+    expect(itemSellingResponse(raw(3, completeId), settings).type).toBe(4);
+    expect(itemSellingResponse(raw(3, completeId, GODAWP_DISCORD_USER_ID), settings).type).toBe(5);
+    expect(itemSellingResponse(raw(3, completeId), { ...settings, ticketCloseAdminDiscordUserIds: [sellerId] }).type).toBe(5);
+    expect(itemSellingResponse(raw(3, `${SELLING_COMPLETE_PREFIX}${sellerId}`, GODAWP_DISCORD_USER_ID), settings).type).toBe(4);
+  });
+  it("escapa nomes de itens sem transformar menções e Markdown em conteúdo ativo", () => {
+    expect(escapeSellingText("**Dragon** <@123> [x](url)")).toBe("\\*\\*Dragon\\*\\* \\<@123\\> \\[x\\]\\(url\\)");
+  });
+});

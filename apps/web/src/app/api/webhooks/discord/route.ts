@@ -1,5 +1,7 @@
 import { after } from "next/server";
 import { verifyKey } from "discord-interactions";
+import { itemSellingResponse, parseItemSellingInteraction } from "@/lib/bot/discord-item-selling";
+import { completeItemSellingInteraction } from "@/lib/bot/discord-item-selling-server";
 
 import {
   completeDiscordQuantityPurchase,
@@ -111,6 +113,7 @@ export async function POST(request: Request) {
       if (
         (
           native.scope === "ticket_close" ||
+          native.scope === "item_selling" ||
           native.scope === "ticket_delivery" ||
           native.scope === "roulette_delivery" ||
           native.scope === "robux" ||
@@ -141,6 +144,15 @@ export async function POST(request: Request) {
         // Create a separate private response; never defer an update to the
         // public Top 5 message, even while the database lookup is running.
         return Response.json({ type: 5, data: { flags: 64 } });
+      }
+
+      if (native.scope === "item_selling") {
+        const settings = native.interaction.kind === "complete" ? await loadBotRuntimeSettingsQuickly() : undefined;
+        const response = itemSellingResponse(native.raw, settings);
+        if (response.type === 5) after(async () => {
+          await completeItemSellingInteraction(native.raw);
+        });
+        return Response.json(response);
       }
 
       if (native.scope === "integrated_storefront") {
@@ -496,6 +508,8 @@ async function readNativeDiscordInteraction(request: Request) {
   } catch {
     return null;
   }
+  const itemSelling = parseItemSellingInteraction(raw);
+  if (itemSelling) return { body, raw, scope: "item_selling" as const, interaction: itemSelling };
   const ticketClose = parseNativeDiscordTicketCloseInteraction(raw);
   if (ticketClose) {
     return { body, raw, scope: "ticket_close" as const, interaction: ticketClose };
