@@ -154,7 +154,6 @@ describe("Discord ticket close reconciliation cron", () => {
       robuxRanks: { checked: 2, synced: 2, failed: 0 },
       eclipsepay: { processed: 0, failed: 0 },
       eclipsepayLinks: { processed: 0, failed: 0 },
-      topSpenders: { status: "updated", customers: 5 },
     });
     expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
     expect(mocks.reconcileDeliveredDiscordTicketAutoCloses).toHaveBeenCalledOnce();
@@ -162,9 +161,8 @@ describe("Discord ticket close reconciliation cron", () => {
     expect(mocks.reconcileLeadRecoveryOffers).toHaveBeenCalledOnce();
     // A cada cinco minutos, ninguém que pagou fica sem canal.
     expect(mocks.reconcileLatePaidOrderTickets).toHaveBeenCalledOnce();
-    expect(mocks.synchronizeGwStoreTopSpenders).toHaveBeenCalledOnce();
-    expect(mocks.synchronizeGwStoreTopSpenders.mock.invocationCallOrder[0])
-      .toBeGreaterThan(mocks.reconcileRobuxCustomerRankRoles.mock.invocationCallOrder[0]!);
+    // O Top 5 tem seu próprio agendamento de três horas.
+    expect(mocks.synchronizeGwStoreTopSpenders).not.toHaveBeenCalled();
   });
 
   it("retorna 503 sem expor detalhes internos quando o job falha", async () => {

@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/discord-ticket-close-reconciliation",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/discord-top-spenders",
+      "schedule": "2 */3 * * *"
     }
   ]
 }

@@ -64,7 +64,7 @@ export function topSpendersMessage(leaders: TopSpender[]) {
         "",
         "Use **/rank** em outro canal para consultar seu total e seus descontos.",
       ].join("\n"),
-      footer: { text: "GWStore • Atualização automática a cada 5 minutos" },
+      footer: { text: "GWStore • Atualização automática a cada 3 horas" },
     }],
     allowed_mentions: { parse: [] },
   };

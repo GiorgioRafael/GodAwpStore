@@ -317,7 +317,9 @@ Consulte também [SECURITY.md](SECURITY.md) antes de tratar dados reais.
 
 O Top 5 da GWStore usa o canal `🏅┊top-clientes` (`1556055233937940614`) no
 servidor `1401264061101899820`. Uma única mensagem do bot é fixada e editada
-pelo cron existente a cada cinco minutos. O cálculo inclui pagamentos
+pelo cron `/api/cron/discord-top-spenders` a cada três horas. Ele roda no
+minuto 02 para evitar a execução simultânea com a reconciliação de pagamentos
+e tickets, que continua a cada cinco minutos. O cálculo inclui pagamentos
 LivePix/EclipsePay confirmados de produtos e Robux, sem pedidos pendentes,
 cancelados ou reembolsados. Os valores individuais não aparecem no post.
 Empates seguem a data da primeira compra confirmada e o ID Discord.
