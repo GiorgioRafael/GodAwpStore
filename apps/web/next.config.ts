@@ -50,8 +50,11 @@ const isGwStoreDeployment =
   (process.env.NEXT_PUBLIC_STORE_NAME?.trim().toLocaleLowerCase("en-US") || "gwstore") ===
   "gwstore";
 
-// Vercel injects the group's microfrontends configuration during GWStore
-// builds. Local commands and standalone store deployments do not use it.
-export default process.env.VERCEL === "1" && isGwStoreDeployment
+// Type generation only scans this application's routes. Vercel's native
+// typecheck sandbox does not receive the group's routing configuration.
+const isTypeGeneration = process.argv[2] === "typegen";
+
+// Keep the group's asset routing for actual GWStore builds and servers.
+export default process.env.VERCEL === "1" && isGwStoreDeployment && !isTypeGeneration
   ? withMicrofrontends(nextConfig)
   : nextConfig;
