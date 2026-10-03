@@ -315,6 +315,20 @@ Consulte também [SECURITY.md](SECURITY.md) antes de tratar dados reais.
 
 ## Deploy na Vercel
 
+O Top 5 da GWStore usa o canal `🏅┊top-clientes` (`1556055233937940614`) no
+servidor `1401264061101899820`. Uma única mensagem do bot é fixada e editada
+pelo cron existente a cada cinco minutos. O cálculo inclui pagamentos
+LivePix/EclipsePay confirmados de produtos e Robux, sem pedidos pendentes,
+cancelados ou reembolsados. Os valores individuais não aparecem no post.
+Empates seguem a data da primeira compra confirmada e o ID Discord.
+
+O primeiro deployment de produção publica a mensagem; também é possível
+executar `npm run discord:ranking:sync --workspace @godawp/web` com as variáveis
+do bot e do Supabase configuradas. O bot precisa de **Send Messages**,
+**Embed Links**, **Read Message History** e **Pin Messages** no canal.
+O ID da mensagem fica em `guilds.configuration.customer_top_spenders_message_id`.
+A THStore não executa esse sincronizador. Não há migração nova de banco.
+
 Com a integração Git ativa, cada push na branch `main` inicia um deployment de produção.
 
 Ao criar ou atualizar o deploy:

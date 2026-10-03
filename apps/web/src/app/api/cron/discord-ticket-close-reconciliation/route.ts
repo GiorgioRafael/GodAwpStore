@@ -8,6 +8,7 @@ import { reconcileRobuxOrders } from "@/lib/robux/reconciliation";
 import { reconcileRobuxCustomerRankRoles } from "@/lib/robux/customer-rank-role-sync";
 import { reconcileEclipsePayments } from "@/lib/eclipsepay/reconciliation";
 import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reconciliation";
+import { synchronizeGwStoreTopSpenders } from "@/lib/bot/discord-top-spenders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const outcomes = await Promise.allSettled([
+    const recoveryOutcomes = await Promise.allSettled([
       reconcileDiscordTicketCloseClaims(),
       reconcileDeliveredDiscordTicketAutoCloses(),
       reconcileGiveaways(),
@@ -35,6 +36,10 @@ export async function GET(request: Request) {
       reconcileEclipsePayments(10),
       reconcileEclipsePaymentLinks(5),
     ]);
+    // Rank paid purchases after reconciliation and role workers release the
+    // guild lease, so this pass includes payments confirmed in the same run.
+    const [topSpendersOutcome] = await Promise.allSettled([synchronizeGwStoreTopSpenders()]);
+    const outcomes = [...recoveryOutcomes, topSpendersOutcome];
     // Finish independent recovery work before returning, even if another queue fails.
     const failure = outcomes.find((outcome) => outcome.status === "rejected");
     if (failure?.status === "rejected") throw failure.reason;
@@ -49,6 +54,7 @@ export async function GET(request: Request) {
       robuxRanks,
       eclipsepay,
       eclipsepayLinks,
+      topSpenders,
     ] = outcomes.map((outcome) => outcome.status === "fulfilled" ? outcome.value : null);
     return Response.json(
       {
@@ -63,6 +69,7 @@ export async function GET(request: Request) {
         robuxRanks,
         eclipsepay,
         eclipsepayLinks,
+        topSpenders,
       },
       { headers: { "Cache-Control": "no-store" } },
     );

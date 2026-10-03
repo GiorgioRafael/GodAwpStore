@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   reconcileLatePaidOrderTickets: vi.fn(),
   reconcileRobuxOrders: vi.fn(),
   reconcileRobuxCustomerRankRoles: vi.fn(),
+  synchronizeGwStoreTopSpenders: vi.fn(),
+}));
+
+vi.mock("@/lib/bot/discord-top-spenders", () => ({
+  synchronizeGwStoreTopSpenders: mocks.synchronizeGwStoreTopSpenders,
 }));
 
 vi.mock("@/lib/bot/discord-ticket-close-reconciliation", () => ({
@@ -96,6 +101,7 @@ beforeEach(() => {
   mocks.reconcileLatePaidOrderTickets.mockResolvedValue(latePaymentResult);
   mocks.reconcileRobuxOrders.mockResolvedValue({ checked: 2, opened: 2, pending: 0, skipped: 0, failed: 0 });
   mocks.reconcileRobuxCustomerRankRoles.mockResolvedValue({ checked: 2, synced: 2, failed: 0 });
+  mocks.synchronizeGwStoreTopSpenders.mockResolvedValue({ status: "updated", customers: 5 });
 });
 
 afterEach(() => {
@@ -122,6 +128,7 @@ describe("Discord ticket close reconciliation cron", () => {
       expect(mocks.reconcileGiveaways).not.toHaveBeenCalled();
       expect(mocks.reconcileLeadRecoveryOffers).not.toHaveBeenCalled();
       expect(mocks.reconcileLatePaidOrderTickets).not.toHaveBeenCalled();
+      expect(mocks.synchronizeGwStoreTopSpenders).not.toHaveBeenCalled();
     },
   );
 
@@ -147,6 +154,7 @@ describe("Discord ticket close reconciliation cron", () => {
       robuxRanks: { checked: 2, synced: 2, failed: 0 },
       eclipsepay: { processed: 0, failed: 0 },
       eclipsepayLinks: { processed: 0, failed: 0 },
+      topSpenders: { status: "updated", customers: 5 },
     });
     expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
     expect(mocks.reconcileDeliveredDiscordTicketAutoCloses).toHaveBeenCalledOnce();
@@ -154,6 +162,9 @@ describe("Discord ticket close reconciliation cron", () => {
     expect(mocks.reconcileLeadRecoveryOffers).toHaveBeenCalledOnce();
     // A cada cinco minutos, ninguém que pagou fica sem canal.
     expect(mocks.reconcileLatePaidOrderTickets).toHaveBeenCalledOnce();
+    expect(mocks.synchronizeGwStoreTopSpenders).toHaveBeenCalledOnce();
+    expect(mocks.synchronizeGwStoreTopSpenders.mock.invocationCallOrder[0])
+      .toBeGreaterThan(mocks.reconcileRobuxCustomerRankRoles.mock.invocationCallOrder[0]!);
   });
 
   it("retorna 503 sem expor detalhes internos quando o job falha", async () => {
