@@ -41,4 +41,10 @@ describe("Top 5 clientes", () => {
     expect(message.allowed_mentions).toEqual({ parse: [] });
     expect(topSpendersMessage([]).embeds[0].description).toContain("primeira compra confirmada");
   });
+
+  it("escapa nomes públicos para não criar links ou formatação no ranking", () => {
+    const message = topSpendersMessage([{ buyerDiscordId: buyer(1), totalSpentCents: 500,
+      displayName: "**Nome** [link](https://example.com)\nnovo" }]);
+    expect(message.embeds[0].description).toContain("\\*\\*Nome\\*\\* \\[link\\]\\(https://example.com\\) novo");
+  });
 });

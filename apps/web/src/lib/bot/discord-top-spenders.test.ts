@@ -27,11 +27,15 @@ function repository(savedId: string | null = messageId): TopSpendersRepository {
 }
 
 function discord(options: { savedStatus?: number; existing?: boolean; pinned?: boolean;
-  wrongGuild?: boolean; foreignAuthor?: boolean; failedPatch?: boolean; notice?: boolean } = {}) {
+  wrongGuild?: boolean; foreignAuthor?: boolean; failedPatch?: boolean; notice?: boolean;
+  profileName?: string } = {}) {
   return vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     if (url.endsWith("/users/@me")) return Response.json({ id: botId, bot: true });
+    if (url.includes("/users/")) return options.profileName
+      ? Response.json({ id: url.split("/").at(-1), global_name: options.profileName, username: "customer" })
+      : new Response(null, { status: 404 });
     if (url.endsWith(`/channels/${channelId}`)) return Response.json({ guild_id: options.wrongGuild ? "other" : guildId, type: 0 });
     if (url.endsWith(`/messages/${messageId}`) && method === "GET") {
       if (options.savedStatus) return Response.json({ code: options.savedStatus === 404 ? 10008 : 50013 }, { status: options.savedStatus });
@@ -94,6 +98,14 @@ describe("mensagem fixa do Top 5", () => {
     expect(patches).toHaveLength(1);
     expect(String(patches[0]![0])).toContain(`/messages/${messageId}`);
     expect(JSON.parse(String(patches[0]![1]!.body)).embeds[0].description).toContain(`<@${noticeId}>`);
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("exibe o nome público inclusive de compradores que saíram do servidor", async () => {
+    const fetcher = discord({ profileName: "Cliente antigo" });
+    await synchronizeGwStoreTopSpenders({ repository: repository(), fetcher });
+    const patch = fetcher.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(JSON.parse(String(patch![1]!.body)).embeds[0].description).toContain("1º lugar** · Cliente antigo");
     expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 

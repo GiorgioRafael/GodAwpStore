@@ -14,6 +14,7 @@ export type PaidCustomerPurchase = {
 export type TopSpender = {
   buyerDiscordId: string;
   totalSpentCents: number;
+  displayName?: string | null;
 };
 
 /** One row per checkout, including carts; never sum joined order-item rows. */
@@ -54,7 +55,8 @@ export function topSpendersMessage(leaders: TopSpender[]) {
         "Os clientes que mais compraram na GWStore:",
         "",
         ...(leaders.length ? leaders.slice(0, 5).map((leader, index) =>
-          `${medals[index]} **${index + 1}º lugar** · <@${leader.buyerDiscordId}>`,
+          `${medals[index]} **${index + 1}º lugar** · ${leader.displayName
+            ? escapeDiscordName(leader.displayName) : `<@${leader.buyerDiscordId}>`}`,
         ) : ["O ranking aparecerá após a primeira compra confirmada."]),
         "",
         "**Como funciona**",
@@ -66,4 +68,9 @@ export function topSpendersMessage(leaders: TopSpender[]) {
     }],
     allowed_mentions: { parse: [] },
   };
+}
+
+function escapeDiscordName(name: string) {
+  return name.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, 80)
+    .replace(/([\\`*_~|<>\[\]()])/g, "\\$1");
 }

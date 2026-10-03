@@ -37,6 +37,16 @@ export async function synchronizeGwStoreTopSpenders(dependencies: {
     if (channel.guild_id !== GWSTORE_RANKING_GUILD_ID || channel.type !== 0) {
       throw new Error("Canal do Top 5 não pertence ao servidor GWStore.");
     }
+    // Mentions of former members render as raw IDs in Discord. Public profile
+    // names keep the historical ranking readable without excluding purchases.
+    const namedLeaders = await Promise.all(leaders.map(async (leader) => {
+      const user = await discordBotJson<{ id: string; global_name?: string | null; username?: string }>(
+        `/users/${leader.buyerDiscordId}`, {}, fetcher,
+      ).catch(() => null);
+      const displayName = user?.id === leader.buyerDiscordId
+        ? user.global_name?.trim() || user.username?.trim() || null : null;
+      return { ...leader, displayName };
+    }));
     const configuration = guild.configuration;
     const savedId = typeof configuration === "object" && configuration !== null &&
       !Array.isArray(configuration) ? configuration.customer_top_spenders_message_id : null;
@@ -52,21 +62,25 @@ export async function synchronizeGwStoreTopSpenders(dependencies: {
     // Recover a successful Discord POST after a timeout or failed database save.
     // Scan the entire channel, or fail closed; never guess that an older post is absent.
     if (!previous) previous = await findRankingMessage(botId, fetcher);
-    const payload = topSpendersMessage(leaders);
+    const payload = topSpendersMessage(namedLeaders);
     let message = previous;
     if (!message) {
       message = await discordBotJson<Message>(`/channels/${GWSTORE_RANKING_CHANNEL_ID}/messages`, {
         method: "POST", body: JSON.stringify({ ...payload, nonce: `top5:${GWSTORE_RANKING_CHANNEL_ID}`, enforce_nonce: true }),
+        signal: AbortSignal.timeout(15_000),
       }, fetcher);
     } else if (!sameRankingContent(message, payload)) {
       message = await discordBotJson<Message>(`/channels/${GWSTORE_RANKING_CHANNEL_ID}/messages/${message.id}`, {
         method: "PATCH", body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15_000),
       }, fetcher);
     }
     if (!isRankingMessage(message, botId)) throw new Error("Discord retornou uma mensagem inválida para o Top 5.");
     if (savedId !== message.id) await repository.saveMessage(guild, message.id);
     if (!message.pinned) {
-      const pin = await discordBotRequest(`/channels/${GWSTORE_RANKING_CHANNEL_ID}/messages/pins/${message.id}`, { method: "PUT" }, fetcher);
+      const pin = await discordBotRequest(`/channels/${GWSTORE_RANKING_CHANNEL_ID}/messages/pins/${message.id}`, {
+        method: "PUT", signal: AbortSignal.timeout(15_000),
+      }, fetcher);
       if (!pin.ok) throw new Error(`Não foi possível fixar o Top 5 (${pin.status}).`);
     }
     // Discord may add a system notice for the pin. Remove only this bot's own
