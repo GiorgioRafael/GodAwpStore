@@ -6,7 +6,7 @@ import { buildTicketPermissionOverwrites, samePermissionOverwrites, type Discord
 import { loadBotRuntimeSettings, type BotRuntimeSettings } from "./message-customization-server";
 import { GODAWP_DISCORD_USER_ID, GWSTORE_SELLING_GUILD_ID, SELLING_ENTRY_TOPIC, SELLING_ENTRY_TITLE,
   SELLING_TICKET_TOPIC, SNOWFLAKE, canCompleteItemSelling, escapeSellingText, itemSellingContext,
-  parseItemSellingInteraction, sellingEntryMessage, sellingTicketComponents, type ItemSellingContext } from "./discord-item-selling";
+  isSellingEntryTopic, parseItemSellingInteraction, sellingEntryMessage, sellingTicketComponents, type ItemSellingContext } from "./discord-item-selling";
 
 type Channel = { id: string; guild_id?: string; name: string; type: number; topic?: string | null;
   parent_id?: string | null; permission_overwrites?: DiscordPermissionOverwrite[] };
@@ -23,7 +23,7 @@ export async function synchronizeGwStoreItemSelling(options: { fetcher?: typeof 
   const fetcher = options.fetcher ?? fetch;
   const botId = await assertConfiguredDiscordBotIdentity(fetcher);
   const channels = await listChannels(fetcher);
-  const matches = channels.filter(channel => channel.type === 0 && channel.topic === SELLING_ENTRY_TOPIC);
+  const matches = channels.filter(channel => channel.type === 0 && isSellingEntryTopic(channel.topic));
   if (matches.length > 1) throw new Error("Há mais de um canal para vender itens à GWStore.");
   const category = channels.find(channel => channel.type === 4 && canonicalName(channel.name) === "comprar");
   const permissions: DiscordPermissionOverwrite[] = [
@@ -38,9 +38,9 @@ export async function synchronizeGwStoreItemSelling(options: { fetcher?: typeof 
         permission_overwrites: permissions, ...(category ? { parent_id: category.id } : {}),
       }),
     }, fetcher);
-  } else if (!samePermissionOverwrites(channel.permission_overwrites ?? [], permissions)) {
+  } else if (channel.topic !== SELLING_ENTRY_TOPIC || !samePermissionOverwrites(channel.permission_overwrites ?? [], permissions)) {
     channel = await discordBotJson<Channel>(`/channels/${channel.id}`, {
-      method: "PATCH", body: JSON.stringify({ permission_overwrites: permissions }),
+      method: "PATCH", body: JSON.stringify({ topic: SELLING_ENTRY_TOPIC, permission_overwrites: permissions }),
     }, fetcher);
   }
   assertChannel(channel);
@@ -95,7 +95,7 @@ export async function completeItemSellingInteraction(raw: unknown, options: {
 async function openOffer(context: ItemSellingContext, itemName: string, botId: string, settings: BotRuntimeSettings, fetcher: typeof fetch) {
   const entry = await discordBotJson<Channel>(`/channels/${context.channelId}`, {}, fetcher);
   assertChannel(entry);
-  if (entry.topic !== SELLING_ENTRY_TOPIC) throw new Error("Este formulário não veio do canal de venda de itens.");
+  if (!isSellingEntryTopic(entry.topic)) throw new Error("Este formulário não veio do canal de venda de itens.");
   const channels = await listChannels(fetcher);
   // Reuse the seller's open conversation instead of creating spam tickets.
   let channel = channels.find(candidate => {

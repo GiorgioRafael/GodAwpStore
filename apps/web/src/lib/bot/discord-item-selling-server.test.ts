@@ -62,6 +62,8 @@ afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 describe("tickets para vendedores", () => {
   it("publica o canal só leitura e reutiliza a mesma mensagem", async () => {
     const discord = fakeDiscord();
+    // Migrate the technical topic from the first deployment without duplicating the channel.
+    discord.channels[0].topic = "gwstore-item-selling:v1";
     await synchronizeGwStoreItemSelling(discord);
     await synchronizeGwStoreItemSelling(discord);
     const permissions = discord.channels[0].permission_overwrites!;
@@ -69,6 +71,8 @@ describe("tickets para vendedores", () => {
     expect(BigInt(everyone.deny) & (1n << 11n)).not.toBe(0n);
     expect(BigInt(permissions.find(row => row.id === botId)!.allow) & (1n << 11n)).not.toBe(0n);
     expect(discord.messages.get(entryId)).toHaveLength(1);
+    expect(discord.channels).toHaveLength(1);
+    expect(discord.channels[0].topic).toBe(SELLING_ENTRY_TOPIC);
     expect(discord.messages.get(entryId)![0].embeds?.[0].title).toBe(SELLING_ENTRY_TITLE);
   });
   it("abre ticket privado com item, marca somente vendedor e GodAwp e evita duplicatas", async () => {

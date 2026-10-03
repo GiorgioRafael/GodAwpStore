@@ -3,7 +3,10 @@ import type { BotRuntimeSettings } from "./message-customization-server";
 
 export const GWSTORE_SELLING_GUILD_ID = "1401264061101899820";
 export const GODAWP_DISCORD_USER_ID = "385924725332901909";
-export const SELLING_ENTRY_TOPIC = "gwstore-item-selling:v1";
+export const SELLING_ENTRY_TOPIC = "Quer vender um item para o GodAwp? Clique em Vender um item e informe o nome para abrir seu ticket privado.";
+export function isSellingEntryTopic(topic: string | null | undefined) {
+  return topic === SELLING_ENTRY_TOPIC || topic === "gwstore-item-selling:v1";
+}
 export const SELLING_ENTRY_TITLE = "📦 VENDA SEU ITEM PARA A GWSTORE";
 export const SELLING_TICKET_TOPIC = "gwstore-item-offer:";
 export const SELLING_OPEN_ID = "gwsell:open";

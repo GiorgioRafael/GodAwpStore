@@ -18,8 +18,13 @@ ranking de compradores.
 
 O estado é persistido no tópico do canal, com marcador `gwstore-item-offer:`.
 Repetições e timeouts recuperam o canal e a mensagem inicial. O sincronizador
-usa `gwstore-item-selling:v1` para recuperar o canal público após novos deploys.
+recupera o canal público pela descrição do atendimento e migra o marcador
+antigo `gwstore-item-selling:v1` sem criar outro canal.
 Não há migração de banco. A THStore não executa esse fluxo.
+
+Após o deploy, conferir o alias legado `gwstore.vercel.app`, usado pelas
+interações do Discord. Ele precisa apontar para o novo deployment de produção,
+conforme documentado em `eclipsepay-gwstore.md`.
 
 Para republicar manualmente com as variáveis do bot configuradas:
 
