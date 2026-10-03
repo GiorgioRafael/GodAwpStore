@@ -10,6 +10,7 @@ import {
 } from "./message-customization";
 import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
 import { loadBotRuntimeSettings } from "./message-customization-server";
+import { resolveGwStoreTicketCategoryId } from "./discord-ticket-categories";
 import {
   buildPaidTicketControlComponents,
   buildTicketPermissionOverwrites,
@@ -37,6 +38,7 @@ type DiscordChannel = {
   type: number;
   name?: string;
   topic?: string | null;
+  parent_id?: string | null;
   permission_overwrites?: DiscordPermissionOverwrite[];
 };
 
@@ -136,6 +138,10 @@ async function ensurePaidOrderTicketInternal(
   if (!SNOWFLAKE_PATTERN.test(botUser.id)) {
     throw new Error("Discord retornou um ID de bot inválido.");
   }
+  const purchaseCategoryId = await resolveGwStoreTicketCategoryId(
+    input.guildId, "purchase", channels, fetcher,
+  );
+  const parentChannelId = purchaseCategoryId ?? input.parentChannelId;
 
   const overwrites = buildTicketPermissionOverwrites({
     guildId: input.guildId,
@@ -177,7 +183,7 @@ async function ensurePaidOrderTicketInternal(
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
-          ...(input.parentChannelId ? { parent_id: input.parentChannelId } : {}),
+          ...(parentChannelId ? { parent_id: parentChannelId } : {}),
         }),
       },
       fetcher,
@@ -202,6 +208,12 @@ async function ensurePaidOrderTicketInternal(
 
   if (!SNOWFLAKE_PATTERN.test(channel.id)) {
     throw new Error("Discord retornou um ID de canal inválido.");
+  }
+  if (!created && purchaseCategoryId && channel.parent_id !== purchaseCategoryId) {
+    channel = await discordJson<DiscordChannel>(config.apiUrl, `/channels/${channel.id}`, {
+      method: "PATCH", headers, signal: AbortSignal.timeout(15_000),
+      body: JSON.stringify({ parent_id: purchaseCategoryId }),
+    }, fetcher);
   }
 
   let welcomeMessageCreated = false;

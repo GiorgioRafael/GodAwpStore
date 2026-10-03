@@ -26,15 +26,15 @@ const INPUT = {
   totalValueCents: 100,
 };
 
-function stub(channels: unknown[], messages: unknown[] = []) {
+function stub(channels: unknown[], messages: unknown[] = [], guildId = GUILD_ID) {
   const calls: Array<{ url: string; method: string; body?: unknown }> = [];
   const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     calls.push({ url, method, body: init?.body });
     if (url.endsWith("/users/@me")) return Response.json({ id: BOT_ID, bot: true });
-    if (url.endsWith(`/guilds/${GUILD_ID}`)) return Response.json({ id: GUILD_ID });
-    if (url.includes(`/guilds/${GUILD_ID}/channels`)) {
+    if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
+    if (url.includes(`/guilds/${guildId}/channels`)) {
       return method === "GET"
         ? Response.json(channels)
         : Response.json({ id: "900000000000000077", type: 0 });
@@ -143,5 +143,27 @@ describe("ticket do resgate", () => {
     });
 
     expect(result).toEqual({ synchronized: false, reason: "welcome-missing" });
+  });
+
+  it.each([false, true])("encaminha resgate GW para Compra (recuperado=%s), respeitando o id persistido e acesso privado", async (existing) => {
+    const guildId = "1401264061101899820";
+    const categoryId = "900000000000000030";
+    const { buildTicketPermissionOverwrites } = await import("@/lib/bot/discord-ticket-controls");
+    const permissions = buildTicketPermissionOverwrites({ guildId, buyerDiscordId: PLAYER_ID, botDiscordId: BOT_ID });
+    const { fetcher, calls } = stub([
+      { id: categoryId, type: 4, name: "🛒┊COMPRA" },
+      ...(existing ? [{ id: STORED_CHANNEL, type: 0, topic: "tópico editado pelo usuário",
+        parent_id: null, permission_overwrites: permissions }] : []),
+    ], [{ id: "900000000000000031", author: { id: BOT_ID },
+      embeds: [{ footer: { text: rouletteWelcomeMessageMarker(REDEMPTION_ID) } }], components: [] }], guildId);
+
+    await expect(ensureRouletteRedemptionTicket({ ...INPUT, guildDiscordId: guildId }, {
+      fetcher, existingChannelId: existing ? STORED_CHANNEL : null, refuseCreate: existing,
+    })).resolves.toMatchObject({ synchronized: true, created: !existing });
+    const creates = calls.filter(call => call.method === "POST" && call.url.endsWith("/channels"));
+    expect(creates).toHaveLength(existing ? 0 : 1);
+    if (!existing) expect(JSON.parse(creates[0]?.body as string)).toMatchObject({ parent_id: categoryId, permission_overwrites: permissions });
+    const moves = calls.filter(call => call.method === "PATCH" && call.url.endsWith(`/channels/${STORED_CHANNEL}`));
+    expect(moves.map(call => JSON.parse(call.body as string))).toEqual(existing ? [{ parent_id: categoryId }] : []);
   });
 });

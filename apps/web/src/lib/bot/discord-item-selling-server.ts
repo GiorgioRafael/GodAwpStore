@@ -2,6 +2,7 @@ import "server-only";
 
 import { IS_GWSTORE } from "@/lib/brand";
 import { assertConfiguredDiscordBotIdentity, discordApiUrl, discordBotJson } from "./discord-api";
+import { resolveGwStoreTicketCategoryId } from "./discord-ticket-categories";
 import { buildTicketPermissionOverwrites, samePermissionOverwrites, type DiscordPermissionOverwrite } from "./discord-ticket-controls";
 import { loadBotRuntimeSettings, type BotRuntimeSettings } from "./message-customization-server";
 import { GODAWP_DISCORD_USER_ID, GWSTORE_SELLING_GUILD_ID, SELLING_ENTRY_TOPIC, SELLING_ENTRY_TITLE,
@@ -102,6 +103,7 @@ async function openOffer(context: ItemSellingContext, itemName: string, botId: s
     const offer = readOffer(candidate.topic);
     return candidate.type === 0 && offer?.sellerId === context.userId && offer.status === "open";
   });
+  const parentId = await resolveGwStoreTicketCategoryId(context.guildId, "sale", channels, fetcher);
   let offer = channel ? readOffer(channel.topic)! : { requestId: context.interactionId, sellerId: context.userId, itemName, status: "open" as const };
   if (!channel) {
     const permissions = buildTicketPermissionOverwrites({ guildId: context.guildId, buyerDiscordId: context.userId,
@@ -112,8 +114,12 @@ async function openOffer(context: ItemSellingContext, itemName: string, botId: s
       method: "POST", signal: AbortSignal.timeout(15_000), body: JSON.stringify({
         name: `venda-${canonicalName(itemName).slice(0, 45) || "item"}-${context.userId.slice(-6)}`,
         type: 0, topic: offerTopic(offer), permission_overwrites: permissions,
-        ...(entry.parent_id ? { parent_id: entry.parent_id } : {}),
+        ...(parentId ? { parent_id: parentId } : {}),
       }),
+    }, fetcher);
+  } else if (parentId && channel.parent_id !== parentId) {
+    channel = await discordBotJson<Channel>(`/channels/${channel.id}`, {
+      method: "PATCH", signal: AbortSignal.timeout(15_000), body: JSON.stringify({ parent_id: parentId }),
     }, fetcher);
   }
   assertChannel(channel);

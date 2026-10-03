@@ -16,6 +16,7 @@ import {
   type DiscordPermissionOverwrite,
 } from "@/lib/bot/discord-ticket-controls";
 import { loadBotRuntimeSettings } from "@/lib/bot/message-customization-server";
+import { resolveGwStoreTicketCategoryId } from "@/lib/bot/discord-ticket-categories";
 import { giveawayParticipationInteractionId } from "@/lib/giveaways/discord-participation";
 import { giveawayViewerUrl } from "@/lib/giveaways/links";
 import type { Enums } from "@/lib/supabase/database.types";
@@ -406,6 +407,10 @@ export async function ensureGiveawayWinnerTicket(
     {},
     fetcher,
   );
+  const purchaseCategoryId = await resolveGwStoreTicketCategoryId(
+    input.guildId, "purchase", channels, fetcher,
+  );
+  const parentChannelId = purchaseCategoryId ?? input.parentChannelId;
   const marker = giveawayTicketMarker(input.giveawayId, input.winnerId);
   const readyMarker = `${marker};welcome=1`;
   const overwrites = buildTicketPermissionOverwrites({
@@ -438,7 +443,7 @@ export async function ensureGiveawayWinnerTicket(
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
-          ...(input.parentChannelId ? { parent_id: input.parentChannelId } : {}),
+          ...(parentChannelId ? { parent_id: parentChannelId } : {}),
         }),
       },
       fetcher,
@@ -457,6 +462,11 @@ export async function ensureGiveawayWinnerTicket(
 
   if (!SNOWFLAKE_PATTERN.test(channel.id)) {
     throw new Error("Discord retornou um canal de prêmio inválido.");
+  }
+  if (!created && purchaseCategoryId && channel.parent_id !== purchaseCategoryId) {
+    channel = await discordBotJson<DiscordChannel>(`/channels/${channel.id}`, {
+      method: "PATCH", signal: AbortSignal.timeout(15_000), body: JSON.stringify({ parent_id: purchaseCategoryId }),
+    }, fetcher);
   }
 
   if (!channel.topic?.includes(";welcome=1")) {
@@ -604,6 +614,7 @@ type DiscordChannel = {
   id: string;
   type: number;
   topic?: string | null;
+  parent_id?: string | null;
   permission_overwrites?: DiscordPermissionOverwrite[];
 };
 

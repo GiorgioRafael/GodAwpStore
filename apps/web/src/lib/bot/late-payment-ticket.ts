@@ -11,6 +11,7 @@ import {
   type DiscordPermissionOverwrite,
 } from "./discord-ticket-controls";
 import { loadBotRuntimeSettings } from "./message-customization-server";
+import { resolveGwStoreTicketCategoryId } from "./discord-ticket-categories";
 import { botMessageBannerUrl } from "./message-customization";
 import { STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -24,6 +25,7 @@ type DiscordChannel = {
   id: string;
   type: number;
   topic?: string | null;
+  parent_id?: string | null;
   permission_overwrites?: DiscordPermissionOverwrite[];
 };
 
@@ -88,6 +90,9 @@ export async function ensureLatePaymentTicket(
     {},
     fetcher,
   );
+  const purchaseCategoryId = await resolveGwStoreTicketCategoryId(
+    input.guildDiscordId, "purchase", channels, fetcher,
+  );
   let channel = channels.find(
     (candidate) => candidate.type === 0 && candidate.topic?.startsWith(marker),
   );
@@ -108,6 +113,7 @@ export async function ensureLatePaymentTicket(
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
+          ...(purchaseCategoryId ? { parent_id: purchaseCategoryId } : {}),
         }),
       },
       fetcher,
@@ -128,6 +134,11 @@ export async function ensureLatePaymentTicket(
 
   if (!SNOWFLAKE_PATTERN.test(channel.id)) {
     throw new Error("Discord retornou um canal inválido.");
+  }
+  if (!created && purchaseCategoryId && channel.parent_id !== purchaseCategoryId) {
+    channel = await discordBotJson<DiscordChannel>(`/channels/${channel.id}`, {
+      method: "PATCH", signal: AbortSignal.timeout(15_000), body: JSON.stringify({ parent_id: purchaseCategoryId }),
+    }, fetcher);
   }
 
   if (created) {

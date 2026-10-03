@@ -34,7 +34,7 @@ type Call = {
   body: Record<string, unknown> | null;
 };
 
-function stubDiscord(existingChannels: unknown[] = []) {
+function stubDiscord(existingChannels: unknown[] = [], guildId = GUILD_ID) {
   const calls: Call[] = [];
   const fetcher = vi.fn(
     async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -48,12 +48,12 @@ function stubDiscord(existingChannels: unknown[] = []) {
 
       if (url.endsWith("/users/@me"))
         return Response.json({ id: BOT_ID, bot: true });
-      if (url.endsWith(`/guilds/${GUILD_ID}`))
-        return Response.json({ id: GUILD_ID });
-      if (url.endsWith(`/guilds/${GUILD_ID}/channels`) && method === "GET") {
+      if (url.endsWith(`/guilds/${guildId}`))
+        return Response.json({ id: guildId });
+      if (url.endsWith(`/guilds/${guildId}/channels`) && method === "GET") {
         return Response.json(existingChannels);
       }
-      if (url.endsWith(`/guilds/${GUILD_ID}/channels`) && method === "POST") {
+      if (url.endsWith(`/guilds/${guildId}/channels`) && method === "POST") {
         return Response.json({ id: CHANNEL_ID, type: 0 });
       }
       if (url.includes("/messages"))
@@ -163,6 +163,28 @@ describe("canal de recuperação de pagamento atrasado", () => {
     await expect(
       ensureLatePaymentTicket({ ...INPUT, orderId: "nao-e-uuid" }, { fetcher }),
     ).rejects.toThrow();
+  });
+
+  it.each([false, true])("encaminha pagamento atrasado GW para Compra (recuperado=%s), sem sincronizar permissões da categoria", async (existing) => {
+    const guildId = "1401264061101899820";
+    const categoryId = "900000000000000030";
+    const { buildTicketPermissionOverwrites } = await import("./discord-ticket-controls");
+    const permissions = buildTicketPermissionOverwrites({ guildId, buyerDiscordId: BUYER_ID,
+      botDiscordId: BOT_ID, closerDiscordUserIds: [STAFF_ID], notificationDiscordUserIds: [STAFF_ID] });
+    const { fetcher, calls } = stubDiscord([
+      { id: categoryId, type: 4, name: "🛒┊COMPRA" },
+      ...(existing ? [{ id: CHANNEL_ID, type: 0, topic: latePaymentTicketMarker(ORDER_ID),
+        parent_id: null, permission_overwrites: permissions }] : []),
+    ], guildId);
+
+    await expect(ensureLatePaymentTicket({ ...INPUT, guildDiscordId: guildId }, { fetcher }))
+      .resolves.toEqual({ channelId: CHANNEL_ID, created: !existing });
+    const creates = calls.filter(call => call.method === "POST" && call.url.endsWith("/channels"));
+    expect(creates).toHaveLength(existing ? 0 : 1);
+    if (!existing) expect(creates[0]?.body).toMatchObject({ parent_id: categoryId, permission_overwrites: permissions });
+    const patches = calls.filter(call => call.method === "PATCH" && call.url.endsWith(`/channels/${CHANNEL_ID}`));
+    expect(patches.map(call => call.body)).toEqual(existing ? [{ parent_id: categoryId }] : []);
+    if (existing) expect(calls.some(call => call.url.includes("/messages"))).toBe(false);
   });
 });
 

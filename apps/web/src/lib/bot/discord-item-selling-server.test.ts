@@ -9,12 +9,18 @@ const botId = "123456789012345678";
 const entryId = "223456789012345678";
 const sellerId = "323456789012345678";
 const ticketId = "423456789012345678";
+const purchaseCategoryId = "823456789012345678";
+const saleCategoryId = "923456789012345678";
 const settings = { customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION, ticketCloseAdminDiscordUserIds: [], ticketNotificationDiscordUserIds: [] };
-type FakeChannel = { id: string; type: number; guild_id: string; name: string; topic?: string; permission_overwrites?: Array<{id:string;type:number;allow:string;deny:string}> };
+type FakeChannel = { id: string; type: number; guild_id: string; name: string; topic?: string; parent_id?: string | null; permission_overwrites?: Array<{id:string;type:number;allow:string;deny:string}> };
 type FakeMessage = { id: string; author: {id:string}; embeds?: Array<{title?: string; footer?: {text?:string}}>; content?: string; components?: unknown };
 
 function fakeDiscord() {
-  const channels: FakeChannel[] = [{ id: entryId, type: 0, guild_id: GWSTORE_SELLING_GUILD_ID, name: "📦┊vender-itens", topic: SELLING_ENTRY_TOPIC }];
+  const channels: FakeChannel[] = [
+    { id: entryId, type: 0, guild_id: GWSTORE_SELLING_GUILD_ID, name: "📦┊vender-itens", topic: SELLING_ENTRY_TOPIC, parent_id: purchaseCategoryId },
+    { id: purchaseCategoryId, type: 4, guild_id: GWSTORE_SELLING_GUILD_ID, name: "🛒┊COMPRA" },
+    { id: saleCategoryId, type: 4, guild_id: GWSTORE_SELLING_GUILD_ID, name: "📦┊VENDA" },
+  ];
   const messages = new Map<string, FakeMessage[]>([[entryId, []]]);
   const calls: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
   let sequence = 523456789012345678n;
@@ -71,7 +77,7 @@ describe("tickets para vendedores", () => {
     expect(BigInt(everyone.deny) & (1n << 11n)).not.toBe(0n);
     expect(BigInt(permissions.find(row => row.id === botId)!.allow) & (1n << 11n)).not.toBe(0n);
     expect(discord.messages.get(entryId)).toHaveLength(1);
-    expect(discord.channels).toHaveLength(1);
+    expect(discord.channels).toHaveLength(3);
     expect(discord.channels[0].topic).toBe(SELLING_ENTRY_TOPIC);
     expect(discord.messages.get(entryId)![0].embeds?.[0].title).toBe(SELLING_ENTRY_TITLE);
   });
@@ -80,6 +86,7 @@ describe("tickets para vendedores", () => {
     await Promise.all([completeItemSellingInteraction(raw(), { ...discord, settings }), completeItemSellingInteraction(raw(), { ...discord, settings })]);
     await completeItemSellingInteraction({ ...raw(), id: "723456789012345678" }, { ...discord, settings });
     const ticket = discord.channels.find(row => row.id === ticketId)!;
+    expect(ticket.parent_id).toBe(saleCategoryId);
     expect(ticket.topic).toContain(SELLING_TICKET_TOPIC);
     expect(ticket.permission_overwrites?.find(row => row.id === GWSTORE_SELLING_GUILD_ID)?.deny).toBe((1n << 10n).toString());
     for (const id of [sellerId, GODAWP_DISCORD_USER_ID, botId]) expect(ticket.permission_overwrites?.some(row => row.id === id && row.type === 1)).toBe(true);
@@ -91,6 +98,21 @@ describe("tickets para vendedores", () => {
       embeds: [{ description: expect.stringContaining("Dragon Física") }],
       components: [{ components: [{ label: "Concluir ticket", custom_id: `${SELLING_COMPLETE_PREFIX}${ticketId}` }] }],
     });
+  });
+  it("move atendimento recuperado para Venda sem mudar suas permissões ou duplicar mensagens", async () => {
+    const discord = fakeDiscord();
+    await completeItemSellingInteraction(raw(), { ...discord, settings });
+    const ticket = discord.channels.find(row => row.id === ticketId)!;
+    const permissions = structuredClone(ticket.permission_overwrites);
+    ticket.parent_id = purchaseCategoryId;
+    discord.calls.length = 0;
+    await completeItemSellingInteraction(raw(), { ...discord, settings });
+    expect(ticket.parent_id).toBe(saleCategoryId);
+    expect(ticket.permission_overwrites).toEqual(permissions);
+    expect(discord.calls.filter(call => call.method === "PATCH" && call.path === `/channels/${ticketId}`)).toEqual([
+      { path: `/channels/${ticketId}`, method: "PATCH", body: { parent_id: saleCategoryId } },
+    ]);
+    expect(discord.calls.some(call => call.method === "POST")).toBe(false);
   });
   it("conclui, renomeia, bloqueia o vendedor e preserva o histórico sem publicar duplicatas", async () => {
     const discord = fakeDiscord();

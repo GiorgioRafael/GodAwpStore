@@ -11,6 +11,7 @@ import {
   type DiscordPermissionOverwrite,
 } from "@/lib/bot/discord-ticket-controls";
 import { loadBotRuntimeSettings } from "@/lib/bot/message-customization-server";
+import { resolveGwStoreTicketCategoryId } from "@/lib/bot/discord-ticket-categories";
 import { botMessageBannerUrl, type BotMessageCustomization } from "@/lib/bot/message-customization";
 import { STORE_NAME } from "@/lib/brand";
 import { formatCoins } from "@/lib/roulette/demo";
@@ -24,6 +25,7 @@ type DiscordChannel = {
   id: string;
   type: number;
   topic?: string | null;
+  parent_id?: string | null;
   permission_overwrites?: DiscordPermissionOverwrite[];
 };
 
@@ -139,6 +141,9 @@ export async function ensureRouletteRedemptionTicket(
         : ("no-channel" as const),
     };
   }
+  const purchaseCategoryId = await resolveGwStoreTicketCategoryId(
+    input.guildDiscordId, "purchase", channels, fetcher,
+  );
 
   if (!channel) {
     channel = await discordBotJson<DiscordChannel>(
@@ -155,6 +160,7 @@ export async function ensureRouletteRedemptionTicket(
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
+          ...(purchaseCategoryId ? { parent_id: purchaseCategoryId } : {}),
         }),
       },
       fetcher,
@@ -170,6 +176,11 @@ export async function ensureRouletteRedemptionTicket(
 
   if (!SNOWFLAKE_PATTERN.test(channel.id)) {
     throw new Error("Discord retornou um canal de resgate inválido.");
+  }
+  if (!created && purchaseCategoryId && channel.parent_id !== purchaseCategoryId) {
+    channel = await discordBotJson<DiscordChannel>(`/channels/${channel.id}`, {
+      method: "PATCH", signal: AbortSignal.timeout(15_000), body: JSON.stringify({ parent_id: purchaseCategoryId }),
+    }, fetcher);
   }
 
   const components = buildRouletteTicketControlComponents(

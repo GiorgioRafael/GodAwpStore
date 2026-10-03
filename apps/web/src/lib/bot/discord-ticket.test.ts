@@ -230,6 +230,54 @@ describe("Discord paid-order ticket", () => {
     expect(fields.some((field) => field.name === "Quantidade")).toBe(false);
   });
 
+  it.each([
+    [false, undefined], [true, undefined], [false, "robux"], [true, "robux"],
+  ] as const)("encaminha compra GW para Compra (recuperado=%s, controles=%s), preservando acesso", async (existing, controls) => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    const guildId = "1401264061101899820";
+    const categoryId = "823456789012345678";
+    const permissions = ticket.buildTicketPermissionOverwrites({
+      guildId, buyerDiscordId: order.buyerDiscordId, botDiscordId: botId,
+      closerDiscordUserIds: defaultCloseAdminUserIds,
+      notificationDiscordUserIds: [defaultNotificationUserId],
+    });
+    let channel: (ReturnType<typeof channelResponse> & { parent_id?: string }) | null = existing
+      ? { ...channelResponse(`gwstore-order:${order.orderId};welcome=1`, permissions), parent_id: "923456789012345678" }
+      : null;
+    const calls: Array<{ url: string; method: string; body: Record<string, unknown> | null }> = [];
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      calls.push({ url, method, body });
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      if (url.endsWith(`/users/${order.buyerDiscordId}`)) return Response.json({ id: order.buyerDiscordId, username: "comprador" });
+      if (url.endsWith(`/guilds/${guildId}/channels`) && method === "GET") {
+        return Response.json([{ id: categoryId, type: 4, name: "🛒┊COMPRA" }, ...(channel ? [channel] : [])]);
+      }
+      if (url.endsWith(`/guilds/${guildId}/channels`) && method === "POST") {
+        channel = { ...channelResponse(body.topic, body.permission_overwrites), ...body };
+        return Response.json(channel);
+      }
+      if (url.endsWith(`/channels/${channelId}/messages`) && method === "POST") return Response.json({ id: "723456789012345678" });
+      if (url.endsWith(`/channels/${channelId}`) && method === "PATCH") {
+        channel = { ...channel!, ...body };
+        return Response.json(channel);
+      }
+      throw new Error(`unexpected request ${method} ${url}`);
+    }) as unknown as typeof fetch;
+
+    await expect(ticket.ensurePaidOrderTicket({ ...order, guildId, controls,
+      parentChannelId: "923456789012345678" }, { fetcher })).resolves.toMatchObject({ created: !existing });
+    const creates = calls.filter(call => call.method === "POST" && call.url.endsWith(`/guilds/${guildId}/channels`));
+    expect(creates).toHaveLength(existing ? 0 : 1);
+    if (!existing) expect(creates[0]?.body).toMatchObject({ parent_id: categoryId, permission_overwrites: permissions });
+    const moves = calls.filter(call => call.method === "PATCH" && call.body?.parent_id);
+    expect(moves.map(call => call.body)).toEqual(existing ? [{ parent_id: categoryId }] : []);
+    expect(channel?.permission_overwrites).toEqual(permissions);
+    expect(channel?.parent_id).toBe(categoryId);
+  });
+
   it("allowlists multiple configured users and deduplicates the buyer", () => {
     const secondNotificationUserId = "911402638975844354";
     const payload = ticket.paidTicketWelcomeMessage(order, undefined, [

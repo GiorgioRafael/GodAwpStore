@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node --conditions=react-server --import tsx scripts/reconcile-robux-orders.ts --deployment && node scripts/register-discord-commands.mjs --deployment && node --conditions=react-server --import tsx scripts/repair-discord-storefronts.ts --deployment && node scripts/refresh-discord-brand-banners.mjs --deployment && node --conditions=react-server --import tsx scripts/refresh-discord-product-emojis.ts --deployment && node scripts/refresh-discord-product-option-emojis.mjs --deployment && node --conditions=react-server --import tsx scripts/sync-discord-top-spenders.ts --deployment && node --conditions=react-server --import tsx scripts/sync-discord-item-selling.ts --deployment",
+    "postbuild": "node --conditions=react-server --import tsx scripts/reconcile-robux-orders.ts --deployment && node scripts/register-discord-commands.mjs --deployment && node --conditions=react-server --import tsx scripts/repair-discord-storefronts.ts --deployment && node scripts/refresh-discord-brand-banners.mjs --deployment && node --conditions=react-server --import tsx scripts/refresh-discord-product-emojis.ts --deployment && node scripts/refresh-discord-product-option-emojis.mjs --deployment && node --conditions=react-server --import tsx scripts/sync-discord-top-spenders.ts --deployment && node --conditions=react-server --import tsx scripts/sync-discord-item-selling.ts --deployment && node --conditions=react-server --import tsx scripts/sync-discord-ticket-categories.ts --deployment",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
@@ -15,7 +15,8 @@
     "test:coverage": "vitest run --coverage",
     "discord:storefronts:repair": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/repair-discord-storefronts.ts",
     "discord:ranking:sync": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/sync-discord-top-spenders.ts",
-    "discord:selling:sync": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/sync-discord-item-selling.ts"
+    "discord:selling:sync": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/sync-discord-item-selling.ts",
+    "discord:categories:sync": "node --conditions=react-server --env-file-if-exists=.env.local --import tsx scripts/sync-discord-ticket-categories.ts"
   },
   "dependencies": {
     "@chat-adapter/discord": "^4.34.0",

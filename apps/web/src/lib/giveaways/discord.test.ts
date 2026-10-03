@@ -315,4 +315,58 @@ describe("giveaway Discord announcement", () => {
       request.url.endsWith(`/channels/${channelId}/messages`) && request.method === "POST",
     )).toBe(false);
   });
+
+  it.each([
+    ["1401264061101899820", false], ["1401264061101899820", true],
+    ["123456789012345678", false], ["123456789012345678", true],
+  ] as const)("encaminha prêmio para Compra somente na GW (%s, recuperado=%s)", async (guildId, existing) => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    const botId = "523456789012345678";
+    vi.stubEnv("DISCORD_APPLICATION_ID", botId);
+    const categoryId = "823456789012345678";
+    const legacyCategoryId = "923456789012345678";
+    const winnerId = "223456789012345678";
+    const channelId = "623456789012345678";
+    const { buildTicketPermissionOverwrites } = await import("@/lib/bot/discord-ticket-controls");
+    const permissions = buildTicketPermissionOverwrites({ guildId, buyerDiscordId: winnerId, botDiscordId: botId });
+    let channel: { id: string; type: number; topic: string; parent_id: string; permission_overwrites: typeof permissions } | null = existing
+      ? { id: channelId, type: 0, topic: `gwstore:giveaway:${input.id};welcome=1`,
+        parent_id: legacyCategoryId, permission_overwrites: permissions } : null;
+    const calls: Array<{ url: string; method: string; body: Record<string, unknown> | null }> = [];
+    const fetcher = vi.fn(async (request: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(request);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      calls.push({ url, method, body });
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId, bot: true });
+      if (url.endsWith(`/guilds/${guildId}`)) return Response.json({ id: guildId });
+      if (url.endsWith(`/guilds/${guildId}/channels`) && method === "GET") {
+        return Response.json([{ id: categoryId, type: 4, name: "🛒┊COMPRA" }, ...(channel ? [channel] : [])]);
+      }
+      if (url.endsWith(`/guilds/${guildId}/channels`) && method === "POST") {
+        channel = { id: channelId, ...body };
+        return Response.json(channel);
+      }
+      if (url.endsWith(`/channels/${channelId}`) && method === "PATCH") {
+        channel = { ...channel!, ...body };
+        return Response.json(channel);
+      }
+      if (url.includes(`/channels/${channelId}/messages?`)) return Response.json([]);
+      if (url.endsWith(`/channels/${channelId}/messages`) && method === "POST") return Response.json({ id: "723456789012345678" });
+      throw new Error(`unexpected request ${method} ${url}`);
+    }) as unknown as typeof fetch;
+
+    await expect(ensureGiveawayWinnerTicket({ giveawayId: input.id, guildId,
+      winnerDiscordUserId: winnerId, winnerDisplayName: "Ganhador", title: input.title,
+      prizes: input.prizes, parentChannelId: legacyCategoryId }, { fetcher }))
+      .resolves.toEqual({ channelId, created: !existing });
+    const creates = calls.filter(call => call.method === "POST" && call.url.endsWith(`/guilds/${guildId}/channels`));
+    expect(creates).toHaveLength(existing ? 0 : 1);
+    const isGw = guildId === "1401264061101899820";
+    if (!existing) expect(creates[0]?.body).toMatchObject({ parent_id: isGw ? categoryId : legacyCategoryId, permission_overwrites: permissions });
+    const moves = calls.filter(call => call.method === "PATCH" && call.body?.parent_id);
+    expect(moves.map(call => call.body)).toEqual(existing && isGw ? [{ parent_id: categoryId }] : []);
+    expect(channel?.permission_overwrites).toEqual(permissions);
+    expect(channel?.parent_id).toBe(isGw ? categoryId : legacyCategoryId);
+  });
 });
