@@ -84,6 +84,28 @@ afterEach(() => {
 });
 
 describe("Discord native quantity interactions", () => {
+  it("verifica a assinatura e abre uma resposta privada separada para Ver meu rank", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicDer = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", publicDer.subarray(publicDer.length - 32).toString("hex"));
+    const body = JSON.stringify({ type: 3,
+      data: { component_type: 2, custom_id: "gwstore_rank:self" },
+    });
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = sign(null, Buffer.from(timestamp + body), privateKey).toString("hex");
+    const request = (requestSignature: string) => new Request("https://gwstore.vercel.app/api/webhooks/discord", {
+      method: "POST", body, headers: {
+        "x-signature-ed25519": requestSignature, "x-signature-timestamp": timestamp,
+      },
+    });
+    expect((await POST(request("00".repeat(64)))).status).toBe(401);
+    expect(nextServerMocks.after).not.toHaveBeenCalled();
+    const response = await POST(request(signature));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ type: 5, data: { flags: 64 } });
+    expect(nextServerMocks.after).toHaveBeenCalledOnce();
+  });
+
   it("verifica a assinatura no carrinho progressivo e na abertura das quantidades", async () => {
     const { publicKey, privateKey } = generateKeyPairSync("ed25519");
     const publicDer = publicKey.export({ format: "der", type: "spki" });

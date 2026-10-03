@@ -322,6 +322,8 @@ minuto 02 para evitar a execução simultânea com a reconciliação de pagament
 e tickets, que continua a cada cinco minutos. O cálculo inclui pagamentos
 LivePix/EclipsePay confirmados de produtos e Robux, sem pedidos pendentes,
 cancelados ou reembolsados. Os valores individuais não aparecem no post.
+O botão **Ver meu rank** usa a mesma consulta do `/rank` e responde somente
+para quem clicou, sem publicar o total pessoal no canal ou alterar o Top 5.
 Empates seguem a data da primeira compra confirmada e o ID Discord.
 
 O primeiro deployment de produção publica a mensagem; também é possível

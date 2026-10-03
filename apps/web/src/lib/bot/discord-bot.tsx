@@ -40,7 +40,8 @@ import {
   customerRankUnavailableCard,
 } from "./customer-rank-card";
 import { SupabaseCustomerRankRepository } from "./customer-rank-repository";
-import { synchronizeDiscordCustomerRankRole } from "./discord-customer-rank";
+import { synchronizeDiscordCustomerRankRole, type CustomerRankRoleRepository } from "./discord-customer-rank";
+import { CUSTOMER_RANK_BUTTON_CUSTOM_ID } from "./customer-top-spenders";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { encodeDiscordCartSelection } from "./discord-cart-selection";
 import { scopeCatalogToDiscordChannel } from "./discord-storefront-scope";
@@ -116,6 +117,54 @@ export function createNativeDiscordRankingResponse() {
   };
 }
 
+export function isNativeDiscordCustomerRankButton(raw: unknown) {
+  return isObject(raw) && raw.type === DISCORD_MESSAGE_COMPONENT && isObject(raw.data) &&
+    raw.data.component_type === 2 && raw.data.custom_id === CUSTOMER_RANK_BUTTON_CUSTOM_ID;
+}
+
+/** The button and /rank share the same lookup and card. Only the signed
+ * interaction's user is queried; no buyer ID is accepted from the button. */
+export async function completeDiscordCustomerRankResponse(raw: unknown, dependencies: {
+  repository?: CustomerRankRoleRepository;
+  registerGuild?: BotCommerceService["registerGuild"];
+  fetchGuildIdentity?: typeof fetchDiscordGuildIdentity;
+  synchronizeRole?: typeof synchronizeDiscordCustomerRankRole;
+  post?: (card: ChatElement) => Promise<unknown>;
+} = {}) {
+  const post = dependencies.post ?? ((card) => updateDiscordEphemeralResponse(raw, card));
+  try {
+    const context = readDiscordInteraction(raw, "");
+    if (!context.guildId || !context.userId) {
+      await post(customerRankUnavailableCard());
+      return;
+    }
+    const identity = await (dependencies.fetchGuildIdentity ?? fetchDiscordGuildIdentity)(context.guildId);
+    const guild = dependencies.registerGuild
+      ? await dependencies.registerGuild(identity)
+      : await new BotCommerceService(new SupabaseBotCommerceRepository()).registerGuild(identity);
+    if (!guild) {
+      await post(customerRankUnavailableCard());
+      return;
+    }
+    const repository = dependencies.repository ?? new SupabaseCustomerRankRepository();
+    const progress = await repository.getProgress(guild.id, context.userId);
+    await post(customerRankCard(progress));
+    try {
+      await (dependencies.synchronizeRole ?? synchronizeDiscordCustomerRankRole)({
+        discordGuildId: context.guildId,
+        buyerDiscordId: context.userId,
+        guildId: guild.id,
+        progress,
+      }, repository);
+    } catch (error) {
+      logBotError("customer_rank_role", error);
+    }
+  } catch (error) {
+    logBotError("customer_rank", error);
+    await post(customerRankUnavailableCard());
+  }
+}
+
 function createBot() {
   const service = new BotCommerceService(new SupabaseBotCommerceRepository());
   const discord = new GWStoreDiscordAdapter({
@@ -172,41 +221,10 @@ function createBot() {
   });
 
   bot.onSlashCommand("/rank", async (event) => {
-    try {
-      const context = readDiscordInteraction(event.raw, event.user.userId);
-      if (!context.guildId || !context.userId) {
-        await event.channel.post(customerRankUnavailableCard());
-        return;
-      }
-
-      const identity = await fetchDiscordGuildIdentity(context.guildId);
-      const guild = await service.registerGuild(identity);
-      if (!guild) {
-        await event.channel.post(customerRankUnavailableCard());
-        return;
-      }
-
-      const repository = new SupabaseCustomerRankRepository();
-      const progress = await repository.getProgress(guild.id, context.userId);
-      await event.channel.post(customerRankCard(progress));
-
-      try {
-        await synchronizeDiscordCustomerRankRole(
-          {
-            discordGuildId: context.guildId,
-            buyerDiscordId: context.userId,
-            guildId: guild.id,
-            progress,
-          },
-          repository,
-        );
-      } catch (error) {
-        logBotError("customer_rank_role", error);
-      }
-    } catch (error) {
-      logBotError("customer_rank", error);
-      await event.channel.post(customerRankUnavailableCard());
-    }
+    await completeDiscordCustomerRankResponse(event.raw, {
+      registerGuild: service.registerGuild.bind(service),
+      post: (card) => event.channel.post(card),
+    });
   });
 
   bot.onSlashCommand("/ranking", async (event) => {

@@ -13,7 +13,8 @@ const noticeId = "323456789012345678";
 const buyerId = "423456789012345678";
 const leaders = [{ buyerDiscordId: buyerId, totalSpentCents: 1200 }];
 const message = (pinned = true) => ({ id: messageId, author: { id: botId }, channel_id: channelId,
-  type: 0, pinned, embeds: topSpendersMessage(leaders).embeds });
+  type: 0, pinned, embeds: topSpendersMessage(leaders).embeds,
+  components: topSpendersMessage(leaders).components });
 
 function repository(savedId: string | null = messageId): TopSpendersRepository {
   return {
@@ -80,6 +81,24 @@ describe("mensagem fixa do Top 5", () => {
     const fetcher = discord();
     await synchronizeGwStoreTopSpenders({ repository: repository(), fetcher });
     expect(fetcher.mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+  });
+
+  it("restaura o botão no mesmo post mesmo quando o Top 5 não muda", async () => {
+    const base = discord();
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const response = await base(input, init);
+      if (String(input).endsWith(`/messages/${messageId}`) && !init?.method) {
+        return Response.json({ ...await response.json(), components: [] });
+      }
+      return response;
+    });
+    await synchronizeGwStoreTopSpenders({ repository: repository(), fetcher });
+    const patch = fetcher.mock.calls.find(([, init]) => init?.method === "PATCH");
+    expect(String(patch![0])).toContain(`/messages/${messageId}`);
+    expect(JSON.parse(String(patch![1]?.body)).components[0].components[0]).toMatchObject({
+      label: "Ver meu rank", custom_id: "gwstore_rank:self",
+    });
+    expect(fetcher.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
   it("recupera a publicação que não foi salva no banco sem duplicá-la", async () => {

@@ -1,6 +1,7 @@
 export const GWSTORE_RANKING_GUILD_ID = "1401264061101899820";
 export const GWSTORE_RANKING_CHANNEL_ID = "1556055233937940614";
 export const TOP_SPENDERS_TITLE = "🏆 TOP 5 CLIENTES • GWSTORE";
+export const CUSTOMER_RANK_BUTTON_CUSTOM_ID = "gwstore_rank:self";
 
 export type PaidCustomerPurchase = {
   source: "product" | "robux";
@@ -62,9 +63,19 @@ export function topSpendersMessage(leaders: TopSpender[]) {
         "**Como funciona**",
         "Ranking geral pelo total pago em produtos e Robux neste servidor. Pedidos pendentes, cancelados e reembolsados não contam.",
         "",
-        "Use **/rank** em outro canal para consultar seu total e seus descontos.",
+        "Clique em **Ver meu rank** para consultar seu total e seus descontos. Só você vê a resposta.",
       ].join("\n"),
       footer: { text: "GWStore • Atualização automática a cada 3 horas" },
+    }],
+    components: [{
+      type: 1,
+      components: [{
+        type: 2,
+        style: 1,
+        label: "Ver meu rank",
+        emoji: { name: "🏆" },
+        custom_id: CUSTOMER_RANK_BUTTON_CUSTOM_ID,
+      }],
     }],
     allowed_mentions: { parse: [] },
   };

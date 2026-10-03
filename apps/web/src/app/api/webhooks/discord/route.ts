@@ -3,10 +3,12 @@ import { verifyKey } from "discord-interactions";
 
 import {
   completeDiscordQuantityPurchase,
+  completeDiscordCustomerRankResponse,
   createNativeDiscordRankingResponse,
   createNativeDiscordQuantityResponse,
   getDiscordBot,
   isNativeDiscordRankingCommand,
+  isNativeDiscordCustomerRankButton,
   parseNativeDiscordQuantityInteraction,
 } from "@/lib/bot/discord-bot";
 import {
@@ -126,6 +128,19 @@ export async function POST(request: Request) {
 
       if (native.scope === "ranking") {
         return Response.json(createNativeDiscordRankingResponse());
+      }
+
+      if (native.scope === "customer_rank") {
+        after(async () => {
+          try {
+            await completeDiscordCustomerRankResponse(native.raw);
+          } catch (error) {
+            console.error("[discord-customer-rank]", error instanceof Error ? error.message : "erro desconhecido");
+          }
+        });
+        // Create a separate private response; never defer an update to the
+        // public Top 5 message, even while the database lookup is running.
+        return Response.json({ type: 5, data: { flags: 64 } });
       }
 
       if (native.scope === "integrated_storefront") {
@@ -493,6 +508,10 @@ async function readNativeDiscordInteraction(request: Request) {
       scope: "ranking" as const,
       interaction: { kind: "publish" as const },
     };
+  }
+
+  if (isNativeDiscordCustomerRankButton(raw)) {
+    return { body, raw, scope: "customer_rank" as const };
   }
 
   const integratedStorefront = parseNativeDiscordIntegratedStorefrontInteraction(raw);

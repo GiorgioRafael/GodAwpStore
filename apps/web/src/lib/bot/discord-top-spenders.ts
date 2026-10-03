@@ -12,6 +12,10 @@ type Message = {
   channel_id: string;
   pinned: boolean;
   embeds?: Array<{ title?: string; description?: string; color?: number; footer?: { text?: string } }>;
+  components?: Array<{ type: number; components?: Array<{
+    type: number; style?: number; label?: string; custom_id?: string;
+    emoji?: { name?: string }; disabled?: boolean;
+  }> }>;
   type?: number;
   message_reference?: { message_id?: string };
 };
@@ -109,7 +113,21 @@ function sameRankingContent(message: Message, payload: ReturnType<typeof topSpen
   const previous = message.embeds?.[0];
   const next = payload.embeds[0];
   return previous?.title === next.title && previous.description === next.description &&
-    previous.color === next.color && previous.footer?.text === next.footer.text;
+    previous.color === next.color && previous.footer?.text === next.footer.text &&
+    sameComponents(message.components, payload.components);
+}
+
+function sameComponents(previous: Message["components"], next: Message["components"]): boolean {
+  // Discord adds generated component IDs and defaults. Compare button behavior.
+  const normalize = (rows: Message["components"]) => (rows ?? []).map(row => ({
+    type: row.type,
+    components: (row.components ?? []).map(button => ({
+      type: button.type, style: button.style, label: button.label,
+      custom_id: button.custom_id, emoji: button.emoji?.name,
+      disabled: Boolean(button.disabled),
+    })),
+  }));
+  return JSON.stringify(normalize(previous)) === JSON.stringify(normalize(next));
 }
 
 async function findRankingMessage(botId: string, fetcher: typeof fetch) {
