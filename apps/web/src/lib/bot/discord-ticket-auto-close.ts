@@ -1,5 +1,6 @@
 import "server-only";
 
+import { IS_GWSTORE } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 import { assertConfiguredDiscordBotIdentity, assertDiscordBotGuildAccess } from "./discord-api";
@@ -15,8 +16,23 @@ const UUID_PATTERN =
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const MAXIMUM_AUTO_CLOSE_CANDIDATES = 100;
 const DEFAULT_AUTO_CLOSE_CONCURRENCY = 4;
+const GWSTORE_GUILD_ID = "1401264061101899820";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
+type AutoCloseRpcRow = {
+  source?: string;
+  claimed_order_id: string;
+  discord_guild_id: string;
+  ticket_channel_id: string;
+  claim_token: string;
+  claimed_at: string;
+};
+type AutoCloseRpcClient = {
+  rpc: (name: string, args: Record<string, unknown>) => Promise<{
+    data: AutoCloseRpcRow[] | null;
+    error: { message: string } | null;
+  }>;
+};
 
 export type DiscordTicketAutoCloseResult = {
   claimed: number;
@@ -30,6 +46,7 @@ export type DiscordTicketAutoCloseResult = {
 export interface DiscordTicketAutoCloseRepository {
   claimDue(limit: number): Promise<DiscordTicketCloseReconciliationCandidate[]>;
   complete(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
@@ -41,17 +58,35 @@ export class SupabaseDiscordTicketAutoCloseRepository
 {
   private readonly closeRepository: SupabaseDiscordTicketCloseReconciliationRepository;
 
-  constructor(private readonly client: AdminClient = requireAdminClient()) {
-    this.closeRepository = new SupabaseDiscordTicketCloseReconciliationRepository(client);
+  constructor(
+    private readonly client: AdminClient = requireAdminClient(),
+    private readonly options: { gwStoreOnly?: boolean } = {},
+  ) {
+    this.closeRepository = new SupabaseDiscordTicketCloseReconciliationRepository(client, options);
   }
 
   async claimDue(limit: number): Promise<DiscordTicketCloseReconciliationCandidate[]> {
-    const { data, error } = await this.client.rpc(
-      "claim_due_delivered_discord_ticket_closes",
+    if (!IS_GWSTORE) return this.claimRows("claim_due_delivered_discord_ticket_closes", limit, false);
+    const gwClaims = await this.claimRows("claim_due_gwstore_discord_ticket_closes", limit, true);
+    if (this.options.gwStoreOnly || gwClaims.length >= limit) return gwClaims;
+    const legacyClaims = await this.claimRows("claim_due_delivered_discord_ticket_closes", limit - gwClaims.length, false);
+    const allClaims = [...gwClaims, ...legacyClaims];
+    if (new Set(allClaims.map(claim => `${claim.source ?? "orders"}:${claim.orderId}`)).size !== allClaims.length) {
+      throw new Error("Supabase retornou reservas automáticas de fechamento duplicadas.");
+    }
+    return allClaims;
+  }
+
+  private async claimRows(rpcName: string, limit: number, gwStoreOnly: boolean) {
+    const { data, error } = await (this.client as unknown as AutoCloseRpcClient).rpc(
+      rpcName,
       { p_limit: limit },
     );
     if (error) {
       throw new Error(`Falha ao reservar tickets entregues para fechamento: ${error.message}`);
+    }
+    if (data && (!Array.isArray(data) || data.length > limit)) {
+      throw new Error("Supabase retornou um lote automático de fechamento inválido.");
     }
 
     return (data ?? []).map((row) => {
@@ -61,11 +96,15 @@ export class SupabaseDiscordTicketAutoCloseRepository
         !SNOWFLAKE_PATTERN.test(row.ticket_channel_id) ||
         !UUID_PATTERN.test(row.claim_token) ||
         typeof row.claimed_at !== "string" ||
-        Number.isNaN(Date.parse(row.claimed_at))
+        Number.isNaN(Date.parse(row.claimed_at)) ||
+        (gwStoreOnly && (row.discord_guild_id !== GWSTORE_GUILD_ID
+          || (row.source !== "orders" && row.source !== "robux"))) ||
+        (!gwStoreOnly && row.source !== undefined && row.source !== "orders")
       ) {
         throw new Error("Supabase retornou uma reserva automática de fechamento inválida.");
       }
       return {
+        ...(row.source === "robux" ? { source: "robux" as const } : {}),
         orderId: row.claimed_order_id,
         discordGuildId: row.discord_guild_id,
         ticketChannelId: row.ticket_channel_id,
@@ -76,6 +115,7 @@ export class SupabaseDiscordTicketAutoCloseRepository
   }
 
   complete(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
@@ -90,9 +130,12 @@ export async function reconcileDeliveredDiscordTicketAutoCloses(
     fetcher?: typeof fetch;
     concurrency?: number;
     limit?: number;
+    gwStoreOnly?: boolean;
   } = {},
 ): Promise<DiscordTicketAutoCloseResult> {
-  const repository = options.repository ?? new SupabaseDiscordTicketAutoCloseRepository();
+  const repository = options.repository ?? new SupabaseDiscordTicketAutoCloseRepository(undefined, {
+    gwStoreOnly: options.gwStoreOnly,
+  });
   const fetcher = options.fetcher ?? fetch;
   const limit = Math.min(
     Math.max(Math.trunc(options.limit ?? MAXIMUM_AUTO_CLOSE_CANDIDATES), 1),

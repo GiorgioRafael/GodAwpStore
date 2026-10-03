@@ -39,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe("Discord paid-ticket delivery message", () => {
@@ -125,6 +126,105 @@ describe("Discord paid-ticket delivery message", () => {
       p_ticket_channel_id: channelId,
       p_delivered_by_discord_user_id: adminId,
     });
+  });
+
+  it.each(["items", "robux"] as const)("aceita cinco minutos na entrega GWStore de %s", async source => {
+    const single = vi.fn(async () => ({ data: {
+      completed_order_id: orderId, was_completed: true,
+      order_status: source === "robux" ? "paid" : "delivered", ticket_status: "open", ticket_channel_id: channelId,
+      delivery_completed_at: "2026-10-03T23:00:00.000Z", auto_close_at: "2026-10-03T23:05:00.000Z",
+      delivered_by_discord_user_id: adminId,
+    }, error: null }));
+    const rpc = vi.fn(() => ({ single }));
+    const deliveryRepository = new SupabaseDiscordTicketDeliveryRepository({ rpc } as never);
+    await expect(deliveryRepository.complete({
+      orderId, discordGuildId: "1401264061101899820", ticketChannelId: channelId,
+      deliveredByDiscordUserId: adminId, ...(source === "robux" ? { source } : {}),
+    })).resolves.toMatchObject({ autoCloseAt: "2026-10-03T23:05:00.000Z" });
+    expect(rpc).toHaveBeenCalledWith(source === "robux" ? "complete_robux_discord_ticket_delivery" : "complete_paid_order_discord_delivery", expect.any(Object));
+  });
+
+  it.each([
+    [guildId, "2026-10-03T23:05:00.000Z"],
+    ["1401264061101899820", "2026-10-03T23:04:00.000Z"],
+  ])("recusa duração inesperada sem alterar outras lojas (%s)", async (discordGuildId, autoCloseAt) => {
+    const deliveryRepository = new SupabaseDiscordTicketDeliveryRepository({ rpc: () => ({ single: async () => ({ data: {
+      completed_order_id: orderId, was_completed: true, order_status: "delivered", ticket_status: "open",
+      ticket_channel_id: channelId, delivery_completed_at: "2026-10-03T23:00:00.000Z", auto_close_at: autoCloseAt,
+      delivered_by_discord_user_id: adminId,
+    }, error: null }) }) } as never);
+    await expect(deliveryRepository.complete({ orderId, discordGuildId, ticketChannelId: channelId,
+      deliveredByDiscordUserId: adminId })).rejects.toThrow("conclusão de entrega inválida");
+  });
+
+  it("aceita o agendamento legado de trinta minutos na GW durante o rollout", async () => {
+    const deliveryRepository = new SupabaseDiscordTicketDeliveryRepository({ rpc: () => ({ single: async () => ({ data: {
+      completed_order_id: orderId, was_completed: false, order_status: "delivered", ticket_status: "open",
+      ticket_channel_id: channelId, delivery_completed_at: "2026-10-03T23:00:00.000Z", auto_close_at: "2026-10-03T23:30:00.000Z",
+      delivered_by_discord_user_id: adminId,
+    }, error: null }) }) } as never);
+    await expect(deliveryRepository.complete({ orderId, discordGuildId: "1401264061101899820", ticketChannelId: channelId,
+      deliveredByDiscordUserId: adminId })).resolves.toMatchObject({ wasCompleted: false, autoCloseAt: "2026-10-03T23:30:00.000Z" });
+  });
+
+  it("só renomeia após confirmar o agendamento e recupera retry sem outra mensagem", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const first: Array<{ url: string; method: string; body: unknown }> = [];
+    const deliveryRepository = repository();
+    deliveryRepository.complete.mockRejectedValueOnce(new Error("Database unavailable"));
+    expect(await completeDiscordTicketDelivery(interaction(), settings, {
+      repository: deliveryRepository, fetcher: deliveryFetcher(first),
+    })).toEqual({ status: "unavailable" });
+    expect(first.some(request => request.method === "PATCH" && request.url.endsWith(`/channels/${channelId}`))).toBe(false);
+    const retry: Array<{ url: string; method: string; body: unknown }> = [];
+    deliveryRepository.complete.mockImplementationOnce(async () => {
+      expect(retry.some(request => request.method === "PATCH" && request.url.endsWith(`/channels/${channelId}`))).toBe(false);
+      return { orderId, wasCompleted: true, deliveryCompletedAt: "2026-07-22T12:05:00.000Z", autoCloseAt: "2026-07-22T12:35:00.000Z" };
+    });
+    expect(await completeDiscordTicketDelivery(interaction(), settings, { repository: deliveryRepository,
+      fetcher: deliveryFetcher(retry, { existingMessages: [{ id: "823456789012345678", author: { id: botId },
+        content: buildDeliveryMessage(buyerId, DEFAULT_BOT_MESSAGE_CUSTOMIZATION.ticket.deliveryMessageText, feedbackChannelId) }] }),
+    })).toEqual({ status: "already_sent" });
+    expect(retry.some(request => request.method === "POST" && request.url.endsWith(`/channels/${channelId}/messages`))).toBe(false);
+    expect(retry.find(request => request.method === "PATCH" && request.url.endsWith(`/channels/${channelId}`))?.body)
+      .toEqual({ name: "✅・entregue-pedido-speedy" });
+  });
+
+  it("preserva o registro de entrega quando a renomeação falha e não o duplica no retry", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const first: Array<{ url: string; method: string; body: unknown }> = [];
+    const deliveryRepository = repository();
+    deliveryRepository.complete.mockImplementationOnce(async () => {
+      expect(first.some(request => request.method === "POST" && request.url.endsWith(`/channels/${deliveryLogChannelId}/messages`))).toBe(false);
+      expect(first.some(request => request.method === "PATCH" && request.url.endsWith(`/channels/${channelId}`))).toBe(false);
+      return { orderId, wasCompleted: true, deliveryCompletedAt: "2026-07-22T12:05:00.000Z", autoCloseAt: "2026-07-22T12:35:00.000Z" };
+    });
+    const baseFetcher = deliveryFetcher(first, { deliveryLogChannelId });
+    const failRename = (async (input: string | URL | Request, init?: RequestInit) => {
+      const response = await baseFetcher(input, init);
+      return init?.method === "PATCH" && String(input).endsWith(`/channels/${channelId}`)
+        ? Response.json({ message: "Missing permissions" }, { status: 403 }) : response;
+    }) as typeof fetch;
+    expect(await completeDiscordTicketDelivery(interaction(), settings, { repository: deliveryRepository, fetcher: failRename }))
+      .toEqual({ status: "unavailable" });
+    const logIndex = first.findIndex(request => request.method === "POST" && request.url.endsWith(`/channels/${deliveryLogChannelId}/messages`));
+    const renameIndex = first.findIndex(request => request.method === "PATCH" && request.url.endsWith(`/channels/${channelId}`));
+    expect(logIndex).toBeGreaterThanOrEqual(0);
+    expect(renameIndex).toBeGreaterThan(logIndex);
+
+    const initialMessage = first.find(request => request.method === "POST" && request.url.endsWith(`/channels/${channelId}/messages`))!.body;
+    const retry: Array<{ url: string; method: string; body: unknown }> = [];
+    deliveryRepository.complete.mockResolvedValueOnce({ orderId, wasCompleted: false,
+      deliveryCompletedAt: "2026-07-22T12:05:00.000Z", autoCloseAt: "2026-07-22T12:35:00.000Z" });
+    expect(await completeDiscordTicketDelivery(interaction(), settings, { repository: deliveryRepository,
+      fetcher: deliveryFetcher(retry, { deliveryLogChannelId, existingMessages: [
+        { id: "823456789012345678", author: { id: botId }, ...(initialMessage as Record<string, unknown>) },
+      ] }),
+    })).toEqual({ status: "already_sent" });
+    expect(retry.some(request => request.method === "POST")).toBe(false);
+    expect(retry.find(request => request.method === "PATCH" && request.url.endsWith(`/channels/${channelId}`))?.body)
+      .toEqual({ name: "✅・entregue-pedido-speedy" });
+    expect(first.filter(request => request.method === "POST" && request.url.endsWith(`/channels/${deliveryLogChannelId}/messages`))).toHaveLength(1);
   });
 
   it("difere o clique autorizado e recusa os demais de forma privada", () => {

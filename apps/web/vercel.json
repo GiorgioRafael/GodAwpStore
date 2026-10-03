@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/cron/discord-ticket-auto-close",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/discord-ticket-close-reconciliation",
       "schedule": "*/5 * * * *"
     },

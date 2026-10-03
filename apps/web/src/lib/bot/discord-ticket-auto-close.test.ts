@@ -15,7 +15,7 @@ import type { DiscordTicketCloseReconciliationCandidate } from "./discord-ticket
 const applicationId = "123456789012345678";
 const claim: DiscordTicketCloseReconciliationCandidate = {
   orderId: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9",
-  discordGuildId: "223456789012345678",
+  discordGuildId: "1401264061101899820",
   ticketChannelId: "323456789012345678",
   claimToken: "6bc34461-3e2d-4af2-bd2d-b42150704897",
   claimedAt: "2026-07-27T18:00:00.000Z",
@@ -36,6 +36,7 @@ describe("Discord delivered-ticket automatic close", () => {
     const rpc = vi.fn(async () => ({
       data: [
         {
+          source: "orders",
           claimed_order_id: claim.orderId,
           discord_guild_id: claim.discordGuildId,
           ticket_channel_id: claim.ticketChannelId,
@@ -45,12 +46,102 @@ describe("Discord delivered-ticket automatic close", () => {
       ],
       error: null,
     }));
-    const repository = new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never);
+    const repository = new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never, { gwStoreOnly: true });
 
     await expect(repository.claimDue(25)).resolves.toEqual([claim]);
-    expect(rpc).toHaveBeenCalledWith("claim_due_delivered_discord_ticket_closes", {
+    expect(rpc).toHaveBeenCalledWith("claim_due_gwstore_discord_ticket_closes", {
       p_limit: 25,
     });
+  });
+
+  it("preserva a origem Robux da reserva e da conclusão automática", async () => {
+    const rpc = vi.fn((name: string) => name.startsWith("claim_due") ? Promise.resolve({ data: [{
+      source: "robux", claimed_order_id: claim.orderId, discord_guild_id: claim.discordGuildId,
+      ticket_channel_id: claim.ticketChannelId, claim_token: claim.claimToken, claimed_at: claim.claimedAt,
+    }], error: null }) : { single: async () => ({ data: {
+      completed_order_id: claim.orderId, was_closed: true, ticket_status: "closed", ticket_channel_id: claim.ticketChannelId,
+      closed_at: "2026-10-03T23:05:00.000Z", closed_by_discord_user_id: null,
+    }, error: null }) });
+    const repository = new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never, { gwStoreOnly: true });
+    const due = await repository.claimDue(25);
+    expect(due).toEqual([{ ...claim, source: "robux" }]);
+    expect(await repository.complete(due[0])).toBe(true);
+    expect(rpc).toHaveBeenLastCalledWith("complete_robux_discord_ticket_close", {
+      p_order_id: claim.orderId, p_ticket_channel_id: claim.ticketChannelId, p_claim_token: claim.claimToken,
+    });
+    const workerRepository = fakeRepository(due);
+    await expect(reconcileDeliveredDiscordTicketAutoCloses({ repository: workerRepository, fetcher: discordFetcher([]) }))
+      .resolves.toMatchObject({ completed: 1, failed: 0 });
+    expect(workerRepository.complete).toHaveBeenCalledWith({ ...claim, source: "robux" });
+  });
+
+  it.each([
+    { source: "unexpected", discord_guild_id: claim.discordGuildId },
+    { source: "robux", discord_guild_id: "923456789012345678" },
+  ])("recusa origem ou servidor fora do contrato GW (%s)", async override => {
+    const rpc = vi.fn(async () => ({ data: [{ claimed_order_id: claim.orderId,
+      ticket_channel_id: claim.ticketChannelId, claim_token: claim.claimToken, claimed_at: claim.claimedAt, ...override }], error: null }));
+    const repository = new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never);
+    await expect(repository.claimDue(25)).rejects.toThrow("reserva automática de fechamento inválida");
+  });
+
+  it("combina GW de itens e Robux com o saldo da fila legada de outros servidores", async () => {
+    const item = { source: "orders", claimed_order_id: claim.orderId, discord_guild_id: claim.discordGuildId,
+      ticket_channel_id: claim.ticketChannelId, claim_token: claim.claimToken, claimed_at: claim.claimedAt };
+    const robux = { ...item, source: "robux", claimed_order_id: "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f" };
+    const legacy = { ...item, source: undefined, claimed_order_id: "8b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f", discord_guild_id: "923456789012345678" };
+    const rpc = vi.fn(async (name: string) => ({ data: name === "claim_due_gwstore_discord_ticket_closes" ? [item, robux] : [legacy], error: null }));
+    const repository = new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never);
+    const result = await repository.claimDue(3);
+    expect(result).toEqual([
+      claim, { ...claim, source: "robux", orderId: robux.claimed_order_id },
+      { ...claim, orderId: legacy.claimed_order_id, discordGuildId: legacy.discord_guild_id },
+    ]);
+    expect(rpc.mock.calls).toEqual([
+      ["claim_due_gwstore_discord_ticket_closes", { p_limit: 3 }],
+      ["claim_due_delivered_discord_ticket_closes", { p_limit: 1 }],
+    ]);
+  });
+
+  it("não reserva a fila legada quando a GW já completou o limite compartilhado", async () => {
+    const rpc = vi.fn(async () => ({ data: [{ source: "orders", claimed_order_id: claim.orderId,
+      discord_guild_id: claim.discordGuildId, ticket_channel_id: claim.ticketChannelId,
+      claim_token: claim.claimToken, claimed_at: claim.claimedAt }], error: null }));
+    expect(await new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never).claimDue(1)).toEqual([claim]);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith("claim_due_gwstore_discord_ticket_closes", { p_limit: 1 });
+  });
+
+  it("o job exclusivo GW nunca consulta a fila legada, mesmo com saldo vazio", async () => {
+    const rpc = vi.fn(async () => ({ data: [], error: null }));
+    expect(await new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never, { gwStoreOnly: true }).claimDue(100)).toEqual([]);
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith("claim_due_gwstore_discord_ticket_closes", { p_limit: 100 });
+  });
+
+  it("recusa Robux na resposta legada para não ampliar a fila de outros servidores", async () => {
+    const rpc = vi.fn(async (name: string) => ({ data: name === "claim_due_gwstore_discord_ticket_closes" ? [] : [{
+      source: "robux", claimed_order_id: claim.orderId, discord_guild_id: "923456789012345678",
+      ticket_channel_id: claim.ticketChannelId, claim_token: claim.claimToken, claimed_at: claim.claimedAt,
+    }], error: null }));
+    await expect(new SupabaseDiscordTicketAutoCloseRepository({ rpc } as never).claimDue(1))
+      .rejects.toThrow("reserva automática de fechamento inválida");
+    expect(rpc.mock.calls).toEqual([
+      ["claim_due_gwstore_discord_ticket_closes", { p_limit: 1 }],
+      ["claim_due_delivered_discord_ticket_closes", { p_limit: 1 }],
+    ]);
+  });
+
+  it("mantém o RPC antigo e o contrato sem source para outras lojas", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/brand", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/brand")>(), IS_GWSTORE: false }));
+    try {
+      const { SupabaseDiscordTicketAutoCloseRepository: OtherRepository } = await import("./discord-ticket-auto-close");
+      const rpc = vi.fn(async () => ({ data: [{ claimed_order_id: claim.orderId, discord_guild_id: claim.discordGuildId,
+        ticket_channel_id: claim.ticketChannelId, claim_token: claim.claimToken, claimed_at: claim.claimedAt }], error: null }));
+      expect(await new OtherRepository({ rpc } as never).claimDue(25)).toEqual([claim]);
+      expect(rpc).toHaveBeenCalledWith("claim_due_delivered_discord_ticket_closes", { p_limit: 25 });
+    } finally { vi.doUnmock("@/lib/brand"); vi.resetModules(); }
   });
 
   it("apaga o canal validado e conclui a reserva automática", async () => {
@@ -78,7 +169,7 @@ describe("Discord delivered-ticket automatic close", () => {
     ]);
   });
 
-  it("não chama o Discord quando nenhum ticket completou trinta minutos", async () => {
+  it("não chama o Discord quando nenhum fechamento está vencido", async () => {
     const repository = fakeRepository([]);
     const fetcher = vi.fn() as unknown as typeof fetch;
 

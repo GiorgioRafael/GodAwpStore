@@ -1,6 +1,6 @@
 import "server-only";
 
-import { STORE_NAME } from "@/lib/brand";
+import { IS_GWSTORE, STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 import {
@@ -16,10 +16,27 @@ const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const TICKET_CLOSE_LEASE_MS = 5 * 60 * 1_000;
 const MAXIMUM_RECONCILIATION_CANDIDATES = 100;
 const DEFAULT_RECONCILIATION_CONCURRENCY = 4;
+const GWSTORE_GUILD_ID = "1401264061101899820";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
+type PendingCloseRow = {
+  id: string;
+  guild_id: string;
+  discord_ticket_channel_id: string | null;
+  discord_ticket_close_claim_token: string | null;
+  discord_ticket_close_claimed_at: string | null;
+};
+type CloseRpcClient = {
+  rpc: (name: string, args: Record<string, unknown>) => {
+    single: () => Promise<{
+      data: Record<string, unknown>;
+      error: { message: string; code?: string } | null;
+    }>;
+  };
+};
 
 export type DiscordTicketCloseReconciliationCandidate = {
+  source?: "robux";
   orderId: string;
   discordGuildId: string;
   ticketChannelId: string;
@@ -42,11 +59,13 @@ type DiscordTicketCloseClaimRenewal = "renewed" | "active" | "closed";
 export interface DiscordTicketCloseReconciliationRepository {
   listClaims(limit: number): Promise<DiscordTicketCloseReconciliationCandidate[]>;
   renew(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
   }): Promise<DiscordTicketCloseClaimRenewal>;
   complete(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
@@ -63,21 +82,43 @@ export class DiscordTicketCloseClaimSupersededError extends Error {
 export class SupabaseDiscordTicketCloseReconciliationRepository
   implements DiscordTicketCloseReconciliationRepository
 {
-  constructor(private readonly client: AdminClient = requireAdminClient()) {}
+  constructor(
+    private readonly client: AdminClient = requireAdminClient(),
+    private readonly options: { gwStoreOnly?: boolean } = {},
+  ) {}
 
   async listClaims(limit: number): Promise<DiscordTicketCloseReconciliationCandidate[]> {
-    const { data, error } = await this.client
+    const orderScope = this.client
       .from("orders")
       .select(
-        "id,guild_id,discord_ticket_channel_id,discord_ticket_close_claim_token,discord_ticket_close_claimed_at",
-      )
+        "id,guild_id,discord_ticket_channel_id,discord_ticket_close_claim_token,discord_ticket_close_claimed_at,guilds!inner(discord_guild_id)",
+      );
+    const ordersQuery = (this.options.gwStoreOnly
+      ? orderScope.eq("guilds.discord_guild_id", GWSTORE_GUILD_ID) : orderScope)
       .eq("discord_ticket_status", "open")
       .not("discord_ticket_channel_id", "is", null)
       .not("discord_ticket_close_claim_token", "is", null)
       .not("discord_ticket_close_claimed_at", "is", null)
       .order("discord_ticket_close_claimed_at", { ascending: true })
       .limit(limit);
-    if (error) throw new Error(`Falha ao listar fechamentos pendentes: ${error.message}`);
+    const robuxQuery = IS_GWSTORE ? this.client
+      .from("robux_orders")
+      .select("id,guild_id,discord_ticket_channel_id,discord_ticket_close_claim_token,discord_ticket_close_claimed_at,guilds!inner(discord_guild_id)")
+      .eq("discord_ticket_status", "open")
+      .eq("guilds.discord_guild_id", GWSTORE_GUILD_ID)
+      .not("discord_ticket_channel_id", "is", null)
+      .not("discord_ticket_close_claim_token", "is", null)
+      .not("discord_ticket_close_claimed_at", "is", null)
+      .order("discord_ticket_close_claimed_at", { ascending: true })
+      .limit(limit) : Promise.resolve({ data: [], error: null });
+    const [orders, robux] = await Promise.all([ordersQuery, robuxQuery]);
+    if (orders.error || robux.error) {
+      throw new Error(`Falha ao listar fechamentos pendentes: ${(orders.error ?? robux.error)?.message}`);
+    }
+    const data = [
+      ...(orders.data ?? []).map(row => ({ ...row, source: undefined })),
+      ...((robux.data ?? []) as unknown as PendingCloseRow[]).map(row => ({ ...row, source: "robux" as const })),
+    ];
 
     const guildIds = [...new Set((data ?? []).map((row) => row.guild_id))];
     if (guildIds.length === 0) return [];
@@ -92,7 +133,7 @@ export class SupabaseDiscordTicketCloseReconciliationRepository
       (guilds ?? []).map((guild) => [guild.id, guild.discord_guild_id]),
     );
 
-    return (data ?? []).map((row) => {
+    return data.map((row) => {
       const orderId = row.id;
       const discordGuildId = discordGuildIds.get(row.guild_id);
       const ticketChannelId = row.discord_ticket_channel_id;
@@ -107,25 +148,28 @@ export class SupabaseDiscordTicketCloseReconciliationRepository
         !claimToken ||
         !UUID_PATTERN.test(claimToken) ||
         !claimedAt ||
-        Number.isNaN(Date.parse(claimedAt))
+        Number.isNaN(Date.parse(claimedAt)) ||
+        ((row.source === "robux" || this.options.gwStoreOnly) && discordGuildId !== GWSTORE_GUILD_ID)
       ) {
         throw new Error(`Pedido ${orderId} possui uma reserva de fechamento inválida.`);
       }
-      return { orderId, discordGuildId, ticketChannelId, claimToken, claimedAt };
-    });
+      return { ...(row.source === "robux" ? { source: "robux" as const } : {}),
+        orderId, discordGuildId, ticketChannelId, claimToken, claimedAt };
+    }).sort((a, b) => Date.parse(a.claimedAt) - Date.parse(b.claimedAt)).slice(0, limit);
   }
 
   async complete(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
   }): Promise<boolean> {
-    const { data, error } = await this.client
-      .rpc("complete_discord_ticket_close", {
+    const { data, error } = await (this.client as unknown as CloseRpcClient)
+      .rpc(input.source === "robux" ? "complete_robux_discord_ticket_close" : "complete_discord_ticket_close", {
         p_order_id: input.orderId,
         p_ticket_channel_id: input.ticketChannelId,
         p_claim_token: input.claimToken,
-        p_completion_source: "discord_close_reconciliation",
+        ...(input.source !== "robux" ? { p_completion_source: "discord_close_reconciliation" } : {}),
       })
       .single();
     if (error?.code === "42501") throw new DiscordTicketCloseClaimSupersededError();
@@ -147,12 +191,13 @@ export class SupabaseDiscordTicketCloseReconciliationRepository
   }
 
   async renew(input: {
+    source?: "robux";
     orderId: string;
     ticketChannelId: string;
     claimToken: string;
   }): Promise<DiscordTicketCloseClaimRenewal> {
-    const { data, error } = await this.client
-      .rpc("renew_discord_ticket_close_claim", {
+    const { data, error } = await (this.client as unknown as CloseRpcClient)
+      .rpc(input.source === "robux" ? "renew_robux_discord_ticket_close_claim" : "renew_discord_ticket_close_claim", {
         p_order_id: input.orderId,
         p_ticket_channel_id: input.ticketChannelId,
         p_claim_token: input.claimToken,
@@ -206,10 +251,13 @@ export async function reconcileDiscordTicketCloseClaims(
     now?: () => number;
     concurrency?: number;
     limit?: number;
+    gwStoreOnly?: boolean;
   } = {},
 ): Promise<DiscordTicketCloseReconciliationResult> {
   const repository =
-    options.repository ?? new SupabaseDiscordTicketCloseReconciliationRepository();
+    options.repository ?? new SupabaseDiscordTicketCloseReconciliationRepository(undefined, {
+      gwStoreOnly: options.gwStoreOnly,
+    });
   const fetcher = options.fetcher ?? fetch;
   const now = options.now ?? Date.now;
   const limit = Math.min(

@@ -88,6 +88,65 @@ describe("Discord ticket close reconciliation", () => {
     });
   });
 
+  it("lista reservas Robux da GW junto às compras por idade, mantendo o limite total", async () => {
+    const gwGuild = "1401264061101899820";
+    const row = { id: candidate.orderId, guild_id: "guild-db", discord_ticket_channel_id: candidate.ticketChannelId,
+      discord_ticket_close_claim_token: candidate.claimToken, discord_ticket_close_claimed_at: candidate.claimedAt };
+    const robuxId = "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f";
+    const query = (rows: unknown[]) => {
+      const builder = { select: vi.fn(() => builder), eq: vi.fn(() => builder), not: vi.fn(() => builder),
+        order: vi.fn(() => builder), limit: vi.fn(async () => ({ data: rows, error: null })),
+        in: vi.fn(async () => ({ data: rows, error: null })) };
+      return builder;
+    };
+    const orders = query([{ ...row, discord_ticket_close_claimed_at: new Date(now - 7 * 60 * 1_000).toISOString() }]);
+    const robux = query([{ ...row, id: robuxId, discord_ticket_close_claimed_at: new Date(now - 8 * 60 * 1_000).toISOString() }]);
+    const guilds = query([{ id: "guild-db", discord_guild_id: gwGuild }]);
+    const from = vi.fn((table: string) => table === "orders" ? orders : table === "robux_orders" ? robux : guilds);
+    const repository = new SupabaseDiscordTicketCloseReconciliationRepository({ from } as never);
+    const claims = await repository.listClaims(1);
+    expect(claims).toEqual([{ source: "robux", orderId: robuxId, discordGuildId: gwGuild,
+      ticketChannelId: candidate.ticketChannelId, claimToken: candidate.claimToken,
+      claimedAt: new Date(now - 8 * 60 * 1_000).toISOString() }]);
+    expect(robux.eq).toHaveBeenCalledWith("guilds.discord_guild_id", gwGuild);
+    expect(orders.limit).toHaveBeenCalledWith(1);
+    expect(robux.limit).toHaveBeenCalledWith(1);
+    expect(orders.eq).not.toHaveBeenCalledWith("guilds.discord_guild_id", gwGuild);
+    const gwOnly = new SupabaseDiscordTicketCloseReconciliationRepository({ from } as never, { gwStoreOnly: true });
+    expect(await gwOnly.listClaims(1)).toEqual(claims);
+    expect(orders.eq).toHaveBeenCalledWith("guilds.discord_guild_id", gwGuild);
+  });
+
+  it("renova e conclui Robux com os RPCs próprios e o mesmo token", async () => {
+    const rpc = vi.fn((name: string) => ({ single: async () => ({ data: name.startsWith("renew") ? {
+      renewed_order_id: candidate.orderId, renewed: true, active: false, ticket_status: "open",
+      ticket_channel_id: candidate.ticketChannelId, claim_expires_at: new Date(now + 5 * 60 * 1_000).toISOString(),
+    } : { completed_order_id: candidate.orderId, was_closed: true, ticket_status: "closed",
+      ticket_channel_id: candidate.ticketChannelId, closed_at: new Date(now).toISOString(), closed_by_discord_user_id: null,
+    }, error: null }) }));
+    const repository = new SupabaseDiscordTicketCloseReconciliationRepository({ rpc } as never);
+    expect(await repository.renew({ ...candidate, source: "robux" })).toBe("renewed");
+    expect(await repository.complete({ ...candidate, source: "robux" })).toBe(true);
+    for (const rpcName of ["renew_robux_discord_ticket_close_claim", "complete_robux_discord_ticket_close"]) {
+      expect(rpc).toHaveBeenCalledWith(rpcName, {
+        p_order_id: candidate.orderId, p_ticket_channel_id: candidate.ticketChannelId, p_claim_token: candidate.claimToken,
+      });
+    }
+    const worker = fakeRepository([{ ...candidate, source: "robux" }]);
+    await expect(reconcileDiscordTicketCloseClaims({ repository: worker, fetcher: discordFetcher(), now: () => now }))
+      .resolves.toMatchObject({ completed: 1, failed: 0 });
+    expect(worker.renew).toHaveBeenCalledWith({ ...candidate, source: "robux" });
+    expect(worker.complete).toHaveBeenCalledWith({ ...candidate, source: "robux" });
+  });
+
+  it("uma reserva Robux substituída não permite continuar o fechamento", async () => {
+    const repository = new SupabaseDiscordTicketCloseReconciliationRepository({ rpc: () => ({ single: async () => ({
+      data: null, error: { code: "42501", message: "Claim superseded" },
+    }) }) } as never);
+    await expect(repository.renew({ ...candidate, source: "robux" })).rejects.toBeInstanceOf(DiscordTicketCloseClaimSupersededError);
+    await expect(repository.complete({ ...candidate, source: "robux" })).rejects.toBeInstanceOf(DiscordTicketCloseClaimSupersededError);
+  });
+
   it("rejeita uma confirmacao RPC que nao corresponde ao pedido", async () => {
     const single = vi.fn(async () => ({
       data: {

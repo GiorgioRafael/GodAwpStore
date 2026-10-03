@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHash } from "node:crypto";
 
-import { STORE_NAME } from "@/lib/brand";
+import { IS_GWSTORE, STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import {
   assertConfiguredDiscordBotIdentity,
@@ -25,6 +25,7 @@ const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const INTERACTION_TOKEN_PATTERN = /^[A-Za-z0-9._-]{20,500}$/;
 const DELIVERED_CHANNEL_PREFIX = "✅・entregue-";
 const DISCORD_CHANNEL_NAME_MAX_LENGTH = 100;
+const GWSTORE_GUILD_ID = "1401264061101899820";
 
 export const TICKET_DELIVERY_INTERACTION_PREFIX = "gwstore_ticket_delivery:";
 
@@ -201,8 +202,10 @@ export class SupabaseDiscordTicketDeliveryRepository
       Number.isNaN(Date.parse(data.delivery_completed_at)) ||
       typeof data.auto_close_at !== "string" ||
       Number.isNaN(Date.parse(data.auto_close_at)) ||
-      Date.parse(data.auto_close_at) - Date.parse(data.delivery_completed_at) !==
-        30 * 60 * 1_000
+      !validDeliveryAutoCloseWindow(
+        input.discordGuildId,
+        Date.parse(data.auto_close_at) - Date.parse(data.delivery_completed_at),
+      )
     ) {
       throw new Error("Supabase retornou uma conclusão de entrega inválida.");
     }
@@ -332,12 +335,6 @@ export async function completeDiscordTicketDelivery(
       }
     }
 
-    await renameDeliveredTicketChannel(
-      context.channelId,
-      context.guildId,
-      order.orderId,
-      fetcher,
-    );
     const completed = await repository.complete({
       orderId: order.orderId,
       discordGuildId: context.guildId,
@@ -345,7 +342,6 @@ export async function completeDiscordTicketDelivery(
       deliveredByDiscordUserId: context.userId,
       ...(order.source === "robux" ? { source: "robux" as const } : {}),
     });
-
     if (completed.wasCompleted && deliveryLogChannelId) {
       try {
         await publishDeliveryLog(
@@ -360,6 +356,14 @@ export async function completeDiscordTicketDelivery(
         console.error(`[discord-ticket-delivery:log] ${logMessage}`);
       }
     }
+    // Schedule closure and publish the first-delivery log before renaming.
+    // A retry after a failed rename reuses both the completion and the message.
+    await renameDeliveredTicketChannel(
+      context.channelId,
+      context.guildId,
+      order.orderId,
+      fetcher,
+    );
 
     await updateOriginalInteractionSafely(
       raw,
@@ -587,6 +591,13 @@ function isEligibleOrder(
     order.paidAt !== null &&
     SNOWFLAKE_PATTERN.test(order.buyerDiscordId)
   );
+}
+
+function validDeliveryAutoCloseWindow(guildId: string, windowMs: number) {
+  // Existing 30-minute rows remain valid while the database migration rolls out.
+  // New GWStore schedules use five minutes; other stores keep thirty minutes.
+  return windowMs === 30 * 60 * 1_000
+    || (IS_GWSTORE && guildId === GWSTORE_GUILD_ID && windowMs === 5 * 60 * 1_000);
 }
 
 function readInteractionContext(raw: unknown, requireWebhook = false) {

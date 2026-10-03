@@ -2737,6 +2737,17 @@ export type Database = {
           claimed_at: string;
         }[];
       };
+      claim_due_gwstore_discord_ticket_closes: {
+        Args: { p_limit: number };
+        Returns: {
+          source: "orders" | "robux";
+          claimed_order_id: string;
+          discord_guild_id: string;
+          ticket_channel_id: string;
+          claim_token: string;
+          claimed_at: string;
+        }[];
+      };
       complete_discord_ticket: {
         Args: { p_order_id: string; p_channel_id: string };
         Returns: {
@@ -2799,6 +2810,21 @@ export type Database = {
         }[];
       };
       renew_discord_ticket_close_claim: {
+        Args: {
+          p_order_id: string;
+          p_ticket_channel_id: string;
+          p_claim_token: string;
+        };
+        Returns: {
+          renewed_order_id: string;
+          renewed: boolean;
+          active: boolean;
+          ticket_status: Database["public"]["Enums"]["discord_ticket_status"];
+          ticket_channel_id: string;
+          claim_expires_at: string | null;
+        }[];
+      };
+      renew_robux_discord_ticket_close_claim: {
         Args: {
           p_order_id: string;
           p_ticket_channel_id: string;
