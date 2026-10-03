@@ -3,6 +3,8 @@
 O deployment de produção da GWStore publica `📦┊vender-itens` no servidor
 `1401264061101899820`, na categoria Comprar quando ela existe. O canal público
 nega mensagens, tópicos e comandos aos membros; só o bot publica o formulário.
+Essa mesma mensagem exibe as tabelas de preços de compra informados pelo GodAwp,
+separadas em frutas físicas e skins, com itens e valores alinhados.
 
 **Vender um item** abre um formulário com o nome do item. A confirmação cria um
 ticket privado para o vendedor, GodAwp (`385924725332901909`), bot e responsáveis

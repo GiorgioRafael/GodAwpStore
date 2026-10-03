@@ -81,10 +81,33 @@ export function itemSellingResponse(raw: unknown, settings?: BotRuntimeSettings)
 
 export function sellingEntryMessage() {
   return { embeds: [{ title: SELLING_ENTRY_TITLE, color: 0xcc37c8,
-    description: "Tem um item e quer vender para o GodAwp?\n\n**1.** Clique em **Vender um item**.\n**2.** Informe o nome do item.\n**3.** Converse com o GodAwp no seu ticket privado.\n\nVocê pode enviar detalhes, imagens e combinar o valor dentro do ticket.",
+    description: "Confira os valores que o **GodAwp paga** pelos itens abaixo.\n\n**1.** Clique em **Vender um item**.\n**2.** Informe o nome do item.\n**3.** Converse com o GodAwp no seu ticket privado.",
+    fields: [
+      { name: "🍎 FRUTAS FÍSICAS", inline: false, value: sellingPriceTable([
+        ["Dragon West", 55], ["Dragon East", 50], ["Magnetic", 20], ["Kitsune", 12],
+        ["Control", 8], ["Yeti", 5], ["Tiger", 5],
+      ]) },
+      { name: "💎 SKINS", inline: false, value: sellingPriceTable([
+        ["Rabid", 400], ["Banner Doghouse", 250], ["Banner Vibeframes", 150],
+        ["Kitsune Galaxy", 140], ["Dragon Ember", 120], ["Kitsune Imperial", 120],
+        ["Meme Fruit", 120], ["Rumble Roxa", 80], ["Magnetic Arcsteel", 55],
+        ["Rumble Vermelha", 45], ["Pain Super Spirit", 38], ["Divine Portal", 35],
+        ["Dog Blade", 35], ["Runic Fiend", 35], ["Werewolf", 25], ["Yeti Fiend", 22],
+        ["Pain Celestial", 20], ["Rumble Amarela", 10], ["Rumble Verde", 10], ["Gravity Skin", 10],
+      ]) },
+    ],
     footer: { text: "GWStore • Atendimento privado para vendedores" },
   }], components: [{ type: 1, components: [{ type: 2, style: 3, custom_id: SELLING_OPEN_ID,
     label: "Vender um item", emoji: { name: "📦" } }] }], allowed_mentions: { parse: [] } };
+}
+
+function sellingPriceTable(rows: Array<[string, number]>) {
+  const itemWidth = Math.max(...rows.map(([item]) => item.length));
+  const priceWidth = "Compro por".length;
+  const header = `${"Item".padEnd(itemWidth)}  Compro por`;
+  const divider = `${"─".repeat(itemWidth)}  ${"─".repeat(priceWidth)}`;
+  const items = rows.map(([item, price]) => `${item.padEnd(itemWidth)}  ${`R$ ${price}`.padStart(priceWidth)}`);
+  return `\`\`\`text\n${[header, divider, ...items].join("\n")}\n\`\`\``;
 }
 
 export function sellingTicketComponents(channelId: string, completed = false) {
