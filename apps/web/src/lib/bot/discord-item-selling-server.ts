@@ -11,7 +11,7 @@ import { GODAWP_DISCORD_USER_ID, GWSTORE_SELLING_GUILD_ID, SELLING_ENTRY_TOPIC, 
 
 type Channel = { id: string; guild_id?: string; name: string; type: number; topic?: string | null;
   parent_id?: string | null; permission_overwrites?: DiscordPermissionOverwrite[] };
-type Message = { id: string; timestamp?: string; author?: { id: string }; embeds?: Array<{ title?: string; footer?: { text?: string } }> };
+type Message = { id: string; timestamp?: string; components?: unknown; author?: { id: string }; embeds?: Array<{ title?: string; footer?: { text?: string } }> };
 type Offer = { requestId: string; sellerId: string; itemName: string; status: "open" | "completed"; welcomeId?: string; completedBy?: string; completedAt?: string };
 const WRITE_PERMISSIONS = (1n << 11n) | (1n << 35n) | (1n << 36n) | (1n << 38n) | (1n << 31n) | (1n << 50n);
 const VIEW_CHANNEL = 1n << 10n;
@@ -69,9 +69,7 @@ export async function synchronizeGwStoreItemSelling(options: { fetcher?: typeof 
         offer = await ensureCompletionTime(ticket.channel.id, offer, botId, Date.now(), fetcher);
         ticketUpdates.legacyCompletionTimesMigrated++;
       }
-      await discordBotJson(`/channels/${ticket.channel.id}/messages/${ticket.welcome.id}`, {
-        method: "PATCH", body: JSON.stringify({ components: sellingTicketComponents(ticket.channel.id, offer.status === "completed"), allowed_mentions: { parse: [] } }),
-      }, fetcher);
+      await ensureSellingTicketComponents(ticket.channel.id, ticket.welcome, offer.status === "completed", fetcher);
       if (offer.status === "completed") await synchronizeCompletionNotice(ticket.channel.id, offer, botId, fetcher, false);
       ticketUpdates.ticketsUpdated++;
     } catch (error) {
@@ -208,17 +206,28 @@ export async function reconcileCompletedGwStoreItemSellingTickets(options: {
   const botId = await assertConfiguredDiscordBotIdentity(fetcher);
   const limit = Number.isFinite(options.limit) ? Math.max(0, Math.min(MAX_TICKETS_PER_RUN, Math.floor(options.limit!))) : MAX_TICKETS_PER_RUN;
   const channels = await listChannels(fetcher);
-  const candidates = channels.filter(channel => channel.type === 0 && channel.guild_id === GWSTORE_SELLING_GUILD_ID && readOffer(channel.topic)?.status === "completed")
-    .sort((a, b) => (readOffer(a.topic)?.completedAt ?? "").localeCompare(readOffer(b.topic)?.completedAt ?? ""))
+  const candidates = channels.filter(channel => channel.type === 0 && channel.guild_id === GWSTORE_SELLING_GUILD_ID && readOffer(channel.topic))
+    .sort((a, b) => {
+      const first = readOffer(a.topic)!;
+      const second = readOffer(b.topic)!;
+      if (first.status !== second.status) return first.status === "completed" ? -1 : 1;
+      return (first.completedAt ?? "").localeCompare(second.completedAt ?? "");
+    })
     .slice(0, limit);
   for (const candidate of candidates) {
     summary.scanned++;
     try {
       const verified = await verifiedOfferChannel(candidate.id, botId, fetcher);
-      // A channel may have been reopened or replaced since it was listed.
-      if (verified.offer.status !== "completed") { summary.active++; continue; }
+      // Recover button updates as well as closures after a deployment or rate limit.
+      if (verified.offer.status !== "completed") {
+        await ensureSellingTicketComponents(candidate.id, verified.welcome, false, fetcher);
+        summary.active++; continue;
+      }
       const offer = await ensureCompletionTime(candidate.id, verified.offer, botId, now, fetcher);
-      if (now - Date.parse(offer.completedAt!) < AUTO_CLOSE_DELAY_MS) { summary.active++; continue; }
+      if (now - Date.parse(offer.completedAt!) < AUTO_CLOSE_DELAY_MS) {
+        await ensureSellingTicketComponents(candidate.id, verified.welcome, true, fetcher);
+        summary.active++; continue;
+      }
       // Recheck the persisted state and our welcome before the destructive request.
       const current = await verifiedOfferChannel(candidate.id, botId, fetcher);
       if (current.offer.status !== "completed" || current.offer.requestId !== offer.requestId || current.offer.sellerId !== offer.sellerId || current.offer.completedAt !== offer.completedAt) {
@@ -235,6 +244,37 @@ export async function reconcileCompletedGwStoreItemSellingTickets(options: {
     }
   }
   return summary;
+}
+
+async function ensureSellingTicketComponents(channelId: string, welcome: Message, completed: boolean, fetcher: typeof fetch) {
+  const components = sellingTicketComponents(channelId, completed);
+  if (sellingComponentsSignature(welcome.components) === sellingComponentsSignature(components)) return false;
+  await discordBotJson(`/channels/${channelId}/messages/${welcome.id}`, {
+    method: "PATCH", body: JSON.stringify({ components, allowed_mentions: { parse: [] } }),
+  }, fetcher);
+  return true;
+}
+
+// Discord adds component IDs and may send disabled=false even when it was omitted.
+// Compare only the fields that define our two buttons, so retries make no redundant writes.
+function sellingComponentsSignature(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const rows = [];
+  for (const rawRow of value) {
+    if (typeof rawRow !== "object" || rawRow === null || rawRow.type !== 1 || !Array.isArray(rawRow.components)) return null;
+    const buttons = [];
+    for (const rawButton of rawRow.components) {
+      if (typeof rawButton !== "object" || rawButton === null || rawButton.type !== 2 || typeof rawButton.style !== "number"
+        || typeof rawButton.custom_id !== "string" || typeof rawButton.label !== "string"
+        || (rawButton.disabled !== undefined && typeof rawButton.disabled !== "boolean")) return null;
+      const emoji = rawButton.emoji;
+      if (emoji !== undefined && (typeof emoji !== "object" || emoji === null || typeof emoji.name !== "string")) return null;
+      buttons.push({ type: rawButton.type, custom_id: rawButton.custom_id, style: rawButton.style, label: rawButton.label,
+        emojiName: emoji?.name ?? null, disabled: rawButton.disabled === true });
+    }
+    rows.push({ type: rawRow.type, buttons });
+  }
+  return JSON.stringify(rows);
 }
 
 async function closeVerifiedOffer(channelId: string, botId: string, fetcher: typeof fetch) {

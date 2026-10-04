@@ -33,6 +33,9 @@ O deploy também atualiza os botões das mensagens iniciais dos tickets de venda
 existentes, sem duplicar mensagens ou menções. Conclusões antigas usam a data
 do aviso de conclusão do próprio bot; sem esse aviso, o prazo de cinco minutos
 começa na atualização do estado.
+A checagem de três minutos também recupera botões ausentes em tickets abertos
+ou concluídos, repetindo uma atualização recusada pelo Discord. Controles já
+corretos não são republicados.
 Não há migração de banco. A THStore não executa esse fluxo.
 
 Após o deploy, conferir o alias legado `gwstore.vercel.app`, usado pelas

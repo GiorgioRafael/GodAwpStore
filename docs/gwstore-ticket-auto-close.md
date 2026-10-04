@@ -25,6 +25,8 @@ estado concluído, a data e sua própria mensagem inicial. O canal é relido ant
 da exclusão. Uma falha mantém o ticket para a próxima execução. Tickets antigos
 recebem o botão manual no deploy; a data da conclusão vem do aviso original do
 bot e, quando esse aviso não existe, um novo prazo conservador começa na migração.
+A mesma checagem recupera controles ausentes dos tickets de venda abertos ou
+concluídos, sem editar novamente os botões que já estão corretos.
 **Fechar ticket** exige confirmação privada e a mesma autorização do GodAwp ou
 equipe configurada, tanto antes quanto depois da conclusão.
 

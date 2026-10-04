@@ -239,7 +239,7 @@ describe("fechamento durável dos tickets de venda GWStore", () => {
     expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => now + 300_000 })).toMatchObject({ completed: 1 });
   });
 
-  it("não fecha abertos, Ticket King, canais externos ou tópicos de conclusão inválidos", async () => {
+  it("mantém abertos e ignora Ticket King, canais externos e tópicos de conclusão inválidos", async () => {
     const discord = fakeDiscord();
     await completeItemSellingInteraction(raw(), { ...discord, settings });
     const native = discord.channels.find(channel => channel.id === ticketId)!;
@@ -250,7 +250,7 @@ describe("fechamento durável dos tickets de venda GWStore", () => {
       { ...native, id: "423456789012345681", topic: `${SELLING_TICKET_TOPIC}${JSON.stringify(malformed)}` },
       { ...native, id: "423456789012345682", topic: `${SELLING_TICKET_TOPIC}${JSON.stringify({ ...malformed, completedBy: GODAWP_DISCORD_USER_ID, completedAt: "amanhã" })}` },
     );
-    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 999_999 })).toEqual({ scanned: 0, active: 0, completed: 0, alreadyClosed: 0, failed: 0 });
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 999_999 })).toEqual({ scanned: 1, active: 1, completed: 0, alreadyClosed: 0, failed: 0 });
     expect(discord.calls.some(call => call.method === "DELETE")).toBe(false);
   });
 
@@ -399,5 +399,85 @@ describe("migração conservadora com histórico grande", () => {
     await synchronizeGwStoreItemSelling({ fetcher });
     expect(discord.messages.get(ticketId)).toHaveLength(2);
     expect(discord.calls.some(call => call.method === "POST" && call.path === `/channels/${ticketId}/messages`)).toBe(false);
+  });
+});
+
+function welcomeComponents(discord: ReturnType<typeof fakeDiscord>) {
+  return discord.messages.get(ticketId)![0].components as Array<{ type: number; id?: number; components: Array<Record<string, unknown>> }>;
+}
+function makeLegacyButtons(discord: ReturnType<typeof fakeDiscord>) {
+  welcomeComponents(discord)[0].components.splice(1);
+}
+function addDiscordComponentDefaults(discord: ReturnType<typeof fakeDiscord>) {
+  for (const [index, row] of welcomeComponents(discord).entries()) {
+    row.id = index + 1;
+    for (const [buttonIndex, button] of row.components.entries()) {
+      button.id = buttonIndex + 2;
+      button.disabled ??= false;
+      if (button.emoji && typeof button.emoji === "object") Object.assign(button.emoji, { id: null, animated: false });
+    }
+  }
+}
+
+describe("recuperação durável dos botões de venda", () => {
+  it("repara os botões antigos de um ticket aberto e não repete o PATCH quando Discord adiciona IDs e defaults", async () => {
+    const discord = fakeDiscord();
+    await completeItemSellingInteraction(raw(), { ...discord, settings });
+    makeLegacyButtons(discord);
+    discord.calls.length = 0;
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt })).toEqual({ scanned: 1, active: 1, completed: 0, alreadyClosed: 0, failed: 0 });
+    expect(welcomeComponents(discord)[0].components).toHaveLength(2);
+    const update = discord.calls.find(call => call.method === "PATCH");
+    expect(update?.body).toMatchObject({ allowed_mentions: { parse: [] } });
+    expect(update?.body).not.toHaveProperty("content");
+    expect(update?.body).not.toHaveProperty("embeds");
+    addDiscordComponentDefaults(discord);
+    discord.calls.length = 0;
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 180_000 })).toMatchObject({ active: 1, failed: 0 });
+    expect(discord.calls.some(call => call.method === "PATCH" || call.method === "POST" || call.method === "DELETE")).toBe(false);
+  });
+
+  it("repara concluídos dentro do prazo, mas não faz PATCH de botões quando já deve fechar", async () => {
+    const discord = fakeDiscord();
+    await completedTicket(discord);
+    makeLegacyButtons(discord);
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 180_000 })).toMatchObject({ active: 1, failed: 0 });
+    expect(welcomeComponents(discord)[0].components).toHaveLength(2);
+    expect(welcomeComponents(discord)[0].components[0].disabled).toBe(true);
+    makeLegacyButtons(discord);
+    discord.calls.length = 0;
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 300_000 })).toMatchObject({ completed: 1, failed: 0 });
+    expect(discord.calls.some(call => call.method === "PATCH")).toBe(false);
+  });
+
+  it("recupera no próximo ciclo após429 ao atualizar um aberto, sem apagá-lo nem reenviar mensagens", async () => {
+    const discord = fakeDiscord();
+    await completeItemSellingInteraction(raw(), { ...discord, settings });
+    makeLegacyButtons(discord);
+    const welcome = discord.messages.get(ticketId)![0];
+    const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith(`/channels/${ticketId}/messages/${welcome.id}`) && init?.method === "PATCH") return Response.json({ code: 20028 }, { status: 429 });
+      return discord.fetcher(url, init);
+    }) as typeof fetch;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    discord.calls.length = 0;
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ fetcher, now: () => completedAt })).toMatchObject({ failed: 1, completed: 0 });
+    expect(welcomeComponents(discord)[0].components).toHaveLength(1);
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 180_000 })).toMatchObject({ active: 1, failed: 0, completed: 0 });
+    expect(welcomeComponents(discord)[0].components).toHaveLength(2);
+    expect(discord.calls.some(call => call.method === "POST" || call.method === "DELETE")).toBe(false);
+    expect(discord.messages.get(ticketId)).toHaveLength(1);
+  });
+
+  it("o sync também evita PATCH de botões que já estão corretos", async () => {
+    const discord = fakeDiscord();
+    await completeItemSellingInteraction(raw(), { ...discord, settings });
+    addDiscordComponentDefaults(discord);
+    const welcome = discord.messages.get(ticketId)![0];
+    discord.calls.length = 0;
+    expect(await synchronizeGwStoreItemSelling(discord)).toMatchObject({ ticketsScanned: 1, ticketsUpdated: 1, ticketsFailed: 0 });
+    expect(discord.calls.some(call => call.method === "PATCH" && call.path === `/channels/${ticketId}/messages/${welcome.id}`)).toBe(false);
+    expect(discord.calls.some(call => call.method === "DELETE")).toBe(false);
+    expect(discord.messages.get(ticketId)).toHaveLength(1);
   });
 });
