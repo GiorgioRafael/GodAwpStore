@@ -12,12 +12,15 @@ export const SELLING_TICKET_TOPIC = "gwstore-item-offer:";
 export const SELLING_OPEN_ID = "gwsell:open";
 export const SELLING_SUBMIT_ID = "gwsell:submit";
 export const SELLING_COMPLETE_PREFIX = "gwsell:complete:";
+export const SELLING_CLOSE_PREFIX = "gwsell:close:";
+export const SELLING_CLOSE_CONFIRM_PREFIX = "gwsell:close-confirm:";
+export const SELLING_CLOSE_CANCEL_PREFIX = "gwsell:close-cancel:";
 export const SNOWFLAKE = /^[0-9]{15,22}$/;
 
 export type ItemSellingInteraction =
   | { kind: "open" }
   | { kind: "submit"; itemName: string | null }
-  | { kind: "complete"; channelId: string };
+  | { kind: "complete" | "close_request" | "close_confirm" | "close_cancel"; channelId: string };
 
 export type ItemSellingContext = {
   interactionId: string;
@@ -38,9 +41,17 @@ export function parseItemSellingInteraction(raw: unknown): ItemSellingInteractio
       ? value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim() : "";
     return { kind: "submit", itemName: itemName.length > 0 && itemName.length <= 120 ? itemName : null };
   }
-  if (raw.type === 3 && typeof id === "string" && id.startsWith(SELLING_COMPLETE_PREFIX)) {
-    const channelId = id.slice(SELLING_COMPLETE_PREFIX.length);
-    return SNOWFLAKE.test(channelId) ? { kind: "complete", channelId } : null;
+  if (raw.type === 3 && typeof id === "string") {
+    for (const [prefix, kind] of [
+      [SELLING_COMPLETE_PREFIX, "complete"],
+      [SELLING_CLOSE_PREFIX, "close_request"],
+      [SELLING_CLOSE_CONFIRM_PREFIX, "close_confirm"],
+      [SELLING_CLOSE_CANCEL_PREFIX, "close_cancel"],
+    ] as const) {
+      if (!id.startsWith(prefix)) continue;
+      const channelId = id.slice(prefix.length);
+      return SNOWFLAKE.test(channelId) ? { kind, channelId } : null;
+    }
   }
   return null;
 }
@@ -73,8 +84,21 @@ export function itemSellingResponse(raw: unknown, settings?: BotRuntimeSettings)
     }] } };
   }
   if (interaction.kind === "submit" && !interaction.itemName) return sellingEphemeral("Informe o nome do item, com até 120 caracteres.");
-  if (interaction.kind === "complete" && (interaction.channelId !== context.channelId || !settings || !canCompleteItemSelling(context, settings))) {
-    return sellingEphemeral("Apenas o GodAwp e a equipe autorizada podem concluir este ticket.");
+  if (interaction.kind !== "submit") {
+    if (interaction.channelId !== context.channelId || !settings || !canCompleteItemSelling(context, settings)) {
+      return sellingEphemeral("Apenas o GodAwp e a equipe autorizada podem concluir ou fechar este ticket.");
+    }
+    if (interaction.kind === "close_request") {
+      return { type: 4, data: { content: "**Fechar este ticket de venda?**\nO canal e seu histórico serão apagados. Confirme apenas quando o atendimento estiver encerrado.",
+        flags: 64, allowed_mentions: { parse: [] }, components: [{ type: 1, components: [
+          { type: 2, style: 4, custom_id: `${SELLING_CLOSE_CONFIRM_PREFIX}${context.channelId}`, label: "Confirmar fechamento" },
+          { type: 2, style: 2, custom_id: `${SELLING_CLOSE_CANCEL_PREFIX}${context.channelId}`, label: "Cancelar" },
+        ] }] } };
+    }
+    if (interaction.kind === "close_cancel") {
+      return { type: 7, data: { content: "Fechamento cancelado. O ticket continua aberto.",
+        components: [], allowed_mentions: { parse: [] } } };
+    }
   }
   return { type: 5, data: { flags: 64 } };
 }
@@ -113,7 +137,8 @@ function sellingPriceTable(rows: Array<[string, number]>) {
 export function sellingTicketComponents(channelId: string, completed = false) {
   return [{ type: 1, components: [{ type: 2, style: completed ? 2 : 3,
     custom_id: `${SELLING_COMPLETE_PREFIX}${channelId}`, label: completed ? "Ticket concluído" : "Concluir ticket",
-    emoji: { name: "✅" }, disabled: completed }] }];
+    emoji: { name: "✅" }, disabled: completed }, { type: 2, style: 4,
+    custom_id: `${SELLING_CLOSE_PREFIX}${channelId}`, label: "Fechar ticket", emoji: { name: "🗑️" } }] }];
 }
 
 export function sellingEphemeral(content: string) {

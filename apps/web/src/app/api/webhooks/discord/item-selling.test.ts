@@ -1,11 +1,18 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
-const mocks = vi.hoisted(() => ({ after: vi.fn(), complete: vi.fn() }));
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "@/lib/bot/message-customization";
+const mocks = vi.hoisted(() => ({ after: vi.fn(), complete: vi.fn(), settings: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("next/server", () => ({ after: mocks.after }));
 vi.mock("@/lib/bot/discord-item-selling-server", () => ({ completeItemSellingInteraction: mocks.complete }));
+vi.mock("@/lib/bot/message-customization-server", () => ({ loadBotRuntimeSettings: mocks.settings, loadBotMessageCustomization: vi.fn() }));
 import { POST } from "./route";
-import { GWSTORE_SELLING_GUILD_ID, SELLING_OPEN_ID, SELLING_SUBMIT_ID } from "@/lib/bot/discord-item-selling";
+import { GODAWP_DISCORD_USER_ID, GWSTORE_SELLING_GUILD_ID, SELLING_OPEN_ID, SELLING_SUBMIT_ID,
+  SELLING_COMPLETE_PREFIX, SELLING_CLOSE_PREFIX, SELLING_CLOSE_CONFIRM_PREFIX, SELLING_CLOSE_CANCEL_PREFIX } from "@/lib/bot/discord-item-selling";
+beforeEach(() => {
+  mocks.settings.mockResolvedValue({ customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+    ticketCloseAdminDiscordUserIds: [], ticketNotificationDiscordUserIds: [] });
+});
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 describe("webhook de venda de itens", () => {
@@ -37,5 +44,69 @@ describe("webhook de venda de itens", () => {
     await mocks.after.mock.calls[0][0]();
     expect(mocks.complete).toHaveBeenCalledWith(submission);
     expect((await POST(request(submission, String(Math.floor(Date.now() / 1000) - 3600)))).status).toBe(401);
+  });
+  it("confirma e cancela em privado e só adia o fechamento após confirmação autorizada", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const der = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", der.subarray(der.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const channelId = "323456789012345678";
+    const payload = { type: 3, id: "223456789012345678", application_id: "123456789012345678",
+      guild_id: GWSTORE_SELLING_GUILD_ID, channel_id: channelId, token: "abcdefghijklmnopqrstuvwxyz0123456789",
+      member: { user: { id: GODAWP_DISCORD_USER_ID } }, data: { custom_id: `${SELLING_CLOSE_PREFIX}${channelId}` },
+    };
+    const request = (data: unknown, timestamp = String(Math.floor(Date.now() / 1000))) => {
+      const body = JSON.stringify(data);
+      return new Request("https://gwstore.vercel.app/api/webhooks/discord", { method: "POST", body,
+        headers: { "x-signature-timestamp": timestamp,
+          "x-signature-ed25519": sign(null, Buffer.from(timestamp + body), privateKey).toString("hex") } });
+    };
+    await expect((await POST(request(payload))).json()).resolves.toMatchObject({ type: 4, data: { flags: 64 } });
+    expect(mocks.settings).toHaveBeenCalledTimes(1);
+    expect(mocks.after).not.toHaveBeenCalled();
+    const cancelled = { ...payload, data: { custom_id: `${SELLING_CLOSE_CANCEL_PREFIX}${channelId}` } };
+    await expect((await POST(request(cancelled))).json()).resolves.toMatchObject({ type: 7, data: { components: [] } });
+    expect(mocks.settings).toHaveBeenCalledTimes(2);
+    expect(mocks.after).not.toHaveBeenCalled();
+    const confirmed = { ...payload, data: { custom_id: `${SELLING_CLOSE_CONFIRM_PREFIX}${channelId}` } };
+    await expect((await POST(request(confirmed))).json()).resolves.toEqual({ type: 5, data: { flags: 64 } });
+    expect(mocks.settings).toHaveBeenCalledTimes(3);
+    expect(mocks.after).toHaveBeenCalledTimes(1);
+    await mocks.after.mock.calls[0][0]();
+    expect(mocks.complete).toHaveBeenCalledWith(confirmed);
+    const completed = { ...payload, data: { custom_id: `${SELLING_COMPLETE_PREFIX}${channelId}` } };
+    await expect((await POST(request(completed))).json()).resolves.toEqual({ type: 5, data: { flags: 64 } });
+    expect(mocks.settings).toHaveBeenCalledTimes(4);
+    expect(mocks.after).toHaveBeenCalledTimes(2);
+  });
+  it("não agenda fechamento para vendedor, canal trocado, equipe revogada ou confirmação antiga", async () => {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const der = publicKey.export({ format: "der", type: "spki" });
+    vi.stubEnv("DISCORD_PUBLIC_KEY", der.subarray(der.length - 32).toString("hex"));
+    vi.stubEnv("DISCORD_APPLICATION_ID", "123456789012345678");
+    const channelId = "323456789012345678";
+    const sellerId = "423456789012345678";
+    const payload = { type: 3, id: "223456789012345678", application_id: "123456789012345678",
+      guild_id: GWSTORE_SELLING_GUILD_ID, channel_id: channelId, token: "abcdefghijklmnopqrstuvwxyz0123456789",
+      member: { user: { id: sellerId } }, data: { custom_id: `${SELLING_CLOSE_CONFIRM_PREFIX}${channelId}` },
+    };
+    const request = (data: unknown, timestamp = String(Math.floor(Date.now() / 1000))) => {
+      const body = JSON.stringify(data);
+      return new Request("https://gwstore.vercel.app/api/webhooks/discord", { method: "POST", body,
+        headers: { "x-signature-timestamp": timestamp,
+          "x-signature-ed25519": sign(null, Buffer.from(timestamp + body), privateKey).toString("hex") } });
+    };
+    await expect((await POST(request(payload))).json()).resolves.toMatchObject({ type: 4, data: { flags: 64 } });
+    const wrongChannel = { ...payload, member: { user: { id: GODAWP_DISCORD_USER_ID } },
+      data: { custom_id: `${SELLING_CLOSE_CONFIRM_PREFIX}${sellerId}` } };
+    await expect((await POST(request(wrongChannel))).json()).resolves.toMatchObject({ type: 4, data: { flags: 64 } });
+    mocks.settings.mockResolvedValueOnce({ customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+      ticketCloseAdminDiscordUserIds: [sellerId], ticketNotificationDiscordUserIds: [] });
+    await expect((await POST(request({ ...payload, data: { custom_id: `${SELLING_CLOSE_PREFIX}${channelId}` } }))).json())
+      .resolves.toMatchObject({ type: 4, data: { components: [{ components: [{ label: "Confirmar fechamento" }, { label: "Cancelar" }] }] } });
+    await expect((await POST(request(payload))).json()).resolves.toMatchObject({ type: 4, data: { flags: 64 } });
+    expect((await POST(request({ ...payload, member: { user: { id: GODAWP_DISCORD_USER_ID } } }, String(Math.floor(Date.now() / 1000) - 3600)))).status).toBe(401);
+    expect(mocks.after).not.toHaveBeenCalled();
+    expect(mocks.complete).not.toHaveBeenCalled();
   });
 });

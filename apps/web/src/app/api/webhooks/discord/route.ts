@@ -147,9 +147,12 @@ export async function POST(request: Request) {
       }
 
       if (native.scope === "item_selling") {
-        const settings = native.interaction.kind === "complete" ? await loadBotRuntimeSettingsQuickly() : undefined;
+        const settings = native.interaction.kind !== "open" && native.interaction.kind !== "submit"
+          ? await loadBotRuntimeSettingsQuickly() : undefined;
         const response = itemSellingResponse(native.raw, settings);
-        if (response.type === 5) after(async () => {
+        if (response.type === 5 && (
+          native.interaction.kind === "submit" || native.interaction.kind === "complete" || native.interaction.kind === "close_confirm"
+        )) after(async () => {
           await completeItemSellingInteraction(native.raw);
         });
         return Response.json(response);

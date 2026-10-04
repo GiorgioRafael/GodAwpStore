@@ -14,14 +14,25 @@ o link do mesmo ticket, sem duplicar canais ou menções.
 
 **Concluir ticket** está restrito ao GodAwp e aos mesmos responsáveis dos outros
 tickets. A conclusão muda o nome para `✅・concluido-…`, bloqueia novas mensagens
-do vendedor, desativa o botão e preserva o histórico. O ticket não é apagado
-automaticamente. A oferta não cria pedido, cobrança, estoque ou entrada no
-ranking de compradores.
+do vendedor, desativa o botão de conclusão e registra a data no tópico do canal.
+O ticket fica programado para fechar após cinco minutos. A checagem ocorre a
+cada três minutos, então o fechamento normalmente ocorre entre cinco e oito
+minutos após concluir. Repetir a conclusão não reinicia esse prazo.
+
+**Fechar ticket** fica disponível nos tickets abertos e concluídos. Apenas
+GodAwp e a equipe autorizada podem confirmar o fechamento, em uma mensagem
+privada. O backend verifica novamente a autorização e o ticket antes de apagar
+o canal. A oferta não cria pedido, cobrança, estoque ou entrada no ranking de
+compradores.
 
 O estado é persistido no tópico do canal, com marcador `gwstore-item-offer:`.
 Repetições e timeouts recuperam o canal e a mensagem inicial. O sincronizador
 recupera o canal público pela descrição do atendimento e migra o marcador
 antigo `gwstore-item-selling:v1` sem criar outro canal.
+O deploy também atualiza os botões das mensagens iniciais dos tickets de venda
+existentes, sem duplicar mensagens ou menções. Conclusões antigas usam a data
+do aviso de conclusão do próprio bot; sem esse aviso, o prazo de cinco minutos
+começa na atualização do estado.
 Não há migração de banco. A THStore não executa esse fluxo.
 
 Após o deploy, conferir o alias legado `gwstore.vercel.app`, usado pelas
