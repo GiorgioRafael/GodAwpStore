@@ -70,7 +70,7 @@ export async function synchronizeGwStoreItemSelling(options: { fetcher?: typeof 
         ticketUpdates.legacyCompletionTimesMigrated++;
       }
       await ensureSellingTicketComponents(ticket.channel.id, ticket.welcome, offer.status === "completed", fetcher);
-      if (offer.status === "completed") await synchronizeCompletionNotice(ticket.channel.id, offer, botId, fetcher, false);
+      if (offer.status === "completed") await synchronizeCompletionNotice(ticket.channel.id, offer, botId, fetcher, false, findFeedbackChannelId(channels));
       ticketUpdates.ticketsUpdated++;
     } catch (error) {
       ticketUpdates.ticketsFailed++;
@@ -335,19 +335,52 @@ async function completionNotices(channelId: string, offer: Offer, botId: string,
   return findMessages(channelId, message => message.author?.id === botId && message.embeds?.[0]?.footer?.text === `GWStore • Oferta concluída ${offer.requestId}`, fetcher, true);
 }
 
-async function synchronizeCompletionNotice(channelId: string, offer: Offer, botId: string, fetcher: typeof fetch, createMissing = true) {
+async function synchronizeCompletionNotice(channelId: string, offer: Offer, botId: string, fetcher: typeof fetch, createMissing = true, knownFeedbackChannelId?: string | null) {
   const notices = await completionNotices(channelId, offer, botId, fetcher);
   if (notices.length > 1) throw new Error("Aviso de conclusão duplicado.");
   const notice = notices[0];
   if (!notice && !createMissing) return;
+  const feedbackChannelId = knownFeedbackChannelId === undefined ? await resolveFeedbackChannelId(fetcher) : knownFeedbackChannelId;
+  const feedbackLine = feedbackChannelId ? `Deixe sua avaliação em <#${feedbackChannelId}>.` : "Procure o canal de feedbacks no servidor.";
   await discordBotJson(`/channels/${channelId}/messages${notice ? `/${notice.id}` : ""}`, {
     method: notice ? "PATCH" : "POST", signal: AbortSignal.timeout(15_000), body: JSON.stringify({
+      content: `<@${offer.sellerId}>`,
       embeds: [{ title: "✅ Ticket concluído", color: 0x32ad72,
-        description: `Atendimento finalizado por <@${offer.completedBy}>.\n\n${COMPLETION_DESCRIPTION}`,
-        footer: { text: `GWStore • Oferta concluída ${offer.requestId}` } }], allowed_mentions: { parse: [] },
+        description: [
+          "Obrigado pela confiança na **GWStore**! 👑",
+          "",
+          "💬 **Conte como foi sua experiência**",
+          "Se puder, deixa um feedback aqui no servidor 🙏",
+          "Isso ajuda muito a loja a crescer.",
+          feedbackLine,
+          "",
+          "⏳ **Fechamento do ticket**",
+          COMPLETION_DESCRIPTION,
+          "",
+          `Atendimento finalizado por <@${offer.completedBy}>.`,
+        ].join("\n"),
+        footer: { text: `GWStore • Oferta concluída ${offer.requestId}` } }],
+      allowed_mentions: { parse: [], users: notice ? [] : [offer.sellerId], replied_user: false },
       ...(!notice ? { nonce: `done:${channelId}`, enforce_nonce: true } : {}),
     }),
   }, fetcher);
+}
+
+async function resolveFeedbackChannelId(fetcher: typeof fetch) {
+  try { return findFeedbackChannelId(await listChannels(fetcher)); }
+  catch (error) {
+    console.error("[discord:item-selling-feedback]", error instanceof Error ? error.message : "Falha ao localizar feedbacks.");
+    return null;
+  }
+}
+
+function findFeedbackChannelId(channels: Channel[]) {
+  const candidates = channels.filter(channel => channel.type === 0 && SNOWFLAKE.test(channel.id) && typeof channel.name === "string");
+  const normalized = (name: string) => name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const exact = candidates.find(channel => ["feedback", "feedbacks"].includes(normalized(channel.name)));
+  if (exact) return exact.id;
+  const partial = candidates.filter(channel => normalized(channel.name).includes("feedback"));
+  return partial.length === 1 ? partial[0].id : null;
 }
 
 function isUnknownChannelError(error: unknown) {

@@ -18,6 +18,11 @@ do vendedor, desativa o botão de conclusão e registra a data no tópico do can
 O ticket fica programado para fechar após cinco minutos. A checagem ocorre a
 cada três minutos, então o fechamento normalmente ocorre entre cinco e oito
 minutos após concluir. Repetir a conclusão não reinicia esse prazo.
+A mensagem de conclusão agradece ao vendedor e pede feedback com link para o
+canal de avaliações, como nos tickets de compra. Ela menciona somente o vendedor
+ao ser publicada; novas tentativas e atualizações não repetem a notificação.
+Se o canal de feedbacks não puder ser identificado, a mensagem orienta o usuário
+a procurá-lo no servidor sem impedir a conclusão.
 
 **Fechar ticket** fica disponível nos tickets abertos e concluídos. Apenas
 GodAwp e a equipe autorizada podem confirmar o fechamento, em uma mensagem

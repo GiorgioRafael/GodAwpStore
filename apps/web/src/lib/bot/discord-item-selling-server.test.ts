@@ -11,6 +11,7 @@ const sellerId = "323456789012345678";
 const ticketId = "423456789012345678";
 const purchaseCategoryId = "823456789012345678";
 const saleCategoryId = "923456789012345678";
+const feedbackChannelId = "723456789012345678";
 const settings = { customization: DEFAULT_BOT_MESSAGE_CUSTOMIZATION, ticketCloseAdminDiscordUserIds: [], ticketNotificationDiscordUserIds: [] };
 type FakeChannel = { id: string; type: number; guild_id: string; name: string; topic?: string; parent_id?: string | null; permission_overwrites?: Array<{id:string;type:number;allow:string;deny:string}> };
 type FakeMessage = { id: string; timestamp?: string; author: {id:string}; embeds?: Array<{title?: string; footer?: {text?:string}}>; content?: string; components?: unknown };
@@ -122,6 +123,10 @@ describe("tickets para vendedores", () => {
   });
   it("conclui, renomeia, bloqueia o vendedor e preserva o histórico sem publicar duplicatas", async () => {
     const discord = fakeDiscord();
+    discord.channels.push(
+      { id: "723456789012345679", type: 0, guild_id: GWSTORE_SELLING_GUILD_ID, name: "feedback-antigo" },
+      { id: feedbackChannelId, type: 0, guild_id: GWSTORE_SELLING_GUILD_ID, name: "✅┊feedbacks" },
+    );
     await completeItemSellingInteraction(raw(), { ...discord, settings });
     await completeItemSellingInteraction(raw("complete", GODAWP_DISCORD_USER_ID), { ...discord, settings });
     await completeItemSellingInteraction(raw("complete", GODAWP_DISCORD_USER_ID), { ...discord, settings });
@@ -133,6 +138,14 @@ describe("tickets para vendedores", () => {
     expect(BigInt(seller.allow) & (1n << 10n)).not.toBe(0n);
     expect(discord.messages.get(ticketId)).toHaveLength(2);
     expect(discord.messages.get(ticketId)![0].components).toMatchObject([{ components: [{ disabled: true, label: "Ticket concluído" }, { label: "Fechar ticket" }] }]);
+    const notices = discord.calls.filter(call => call.path.startsWith(`/channels/${ticketId}/messages`) && call.body.content === `<@${sellerId}>`);
+    expect(notices.map(call => call.method)).toEqual(["POST", "PATCH"]);
+    expect(notices[0].body).toMatchObject({
+      embeds: [{ description: expect.stringContaining(`<#${feedbackChannelId}>`), footer: { text: "GWStore • Oferta concluída 623456789012345678" } }],
+      allowed_mentions: { parse: [], users: [sellerId], replied_user: false },
+      nonce: `done:${ticketId}`, enforce_nonce: true,
+    });
+    expect(notices[1].body.allowed_mentions).toEqual({ parse: [], users: [], replied_user: false });
     expect(discord.calls.some(call => call.method === "DELETE")).toBe(false);
   });
   it("recusa conclusão pelo vendedor e formulário vindo de outro canal", async () => {
@@ -188,6 +201,24 @@ async function completedTicket(discord: ReturnType<typeof fakeDiscord>) {
 }
 
 describe("fechamento durável dos tickets de venda GWStore", () => {
+  it("conclui e fecha no prazo mesmo se o Discord falhar ao localizar o canal de feedbacks", async () => {
+    const discord = fakeDiscord();
+    await completeItemSellingInteraction(raw(), { ...discord, settings });
+    const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
+      if (String(url).endsWith(`/guilds/${GWSTORE_SELLING_GUILD_ID}/channels`) && (!init?.method || init.method === "GET")) {
+        return Response.json({ message: "Rate limited" }, { status: 429 });
+      }
+      return discord.fetcher(url, init);
+    }) as typeof fetch;
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await completeItemSellingInteraction(raw("complete", GODAWP_DISCORD_USER_ID), { fetcher, settings, now: () => completedAt });
+    expect(offerOf(discord)).toMatchObject({ status: "completed", completedAt: "2026-10-03T23:00:00.000Z" });
+    expect(discord.calls.find(call => call.method === "POST" && call.body.content === `<@${sellerId}>`)?.body).toMatchObject({
+      embeds: [{ description: expect.stringContaining("Procure o canal de feedbacks no servidor.") }],
+    });
+    expect(await reconcileCompletedGwStoreItemSellingTickets({ ...discord, now: () => completedAt + 300_000 })).toMatchObject({ completed: 1, failed: 0 });
+  });
+
   it("mantém o ticket antes dos cinco minutos e fecha ao atingir o prazo", async () => {
     const discord = fakeDiscord();
     await completedTicket(discord);
