@@ -109,7 +109,7 @@ export function sellingEntryMessage() {
     fields: [
       { name: "🍎 FRUTAS FÍSICAS", inline: false, value: sellingPriceTable([
         ["Dragon West", 55], ["Dragon East", 50], ["Magnetic", 20], ["Kitsune", 12],
-        ["Control", 8], ["Yeti", 5], ["Tiger", 5],
+        ["Control", 5], ["Yeti", 5], ["Tiger", 5],
       ]) },
       { name: "💎 SKINS", inline: false, value: sellingPriceTable([
         ["Rabid", 400], ["Banner Doghouse", 250], ["Banner Vibeframes", 150],
