@@ -117,7 +117,7 @@ export function sellingEntryMessage() {
         ["Meme Fruit", 120], ["Rumble Roxa", 80], ["Magnetic Arcsteel", 55],
         ["Rumble Vermelha", 45], ["Pain Super Spirit", 38], ["Divine Portal", 35],
         ["Dog Blade", 35], ["Runic Fiend", 35], ["Werewolf", 25], ["Yeti Fiend", 22],
-        ["Pain Celestial", 20], ["Rumble Amarela", 10], ["Rumble Verde", 10], ["Gravity Skin", 10],
+        ["Pain Celestial", 20], ["Rumble Amarela", 8], ["Rumble Verde", 8], ["Gravity Skin", 10],
       ]) },
     ],
     footer: { text: "GWStore • Atendimento privado para vendedores" },
