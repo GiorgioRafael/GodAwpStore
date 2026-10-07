@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   assertConfiguredDiscordBotIdentity,
+  DiscordApiError,
   discordBotJson,
   discordBotRequest,
 } from "./discord-api";
@@ -12,6 +13,7 @@ import {
 } from "./customer-rank-repository";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
+const DISCORD_UNKNOWN_MEMBER_CODE = 10_007;
 
 type DiscordRole = {
   id: string;
@@ -67,19 +69,26 @@ export async function synchronizeDiscordCustomerRankRole(
   const guildId = input.guildId ?? await repository.findGuildId(input.discordGuildId);
   if (!guildId) throw new Error("Servidor ativo não encontrado para sincronizar o ranking.");
 
-  const [progress, roleIdsByRank] = await Promise.all([
+  const memberPath = `/guilds/${input.discordGuildId}/members/${input.buyerDiscordId}`;
+  const [progress, member] = await Promise.all([
     input.progress ?? repository.getProgress(guildId, input.buyerDiscordId),
-    ensureDiscordCustomerRankRoles(
-      input.discordGuildId,
-      guildId,
-      repository,
-      fetcher,
-    ),
+    discordBotJson<DiscordGuildMember>(memberPath, {}, fetcher).catch((error: unknown) => {
+      if (isUnknownMemberError(error, memberPath)) return null;
+      throw error;
+    }),
   ]);
 
-  const member = await discordBotJson<DiscordGuildMember>(
-    `/guilds/${input.discordGuildId}/members/${input.buyerDiscordId}`,
-    {},
+  // Historical purchases still count after a buyer leaves the server. There
+  // is no Discord role to update until they return and use /rank or buy again.
+  if (!member) {
+    await assertConfiguredDiscordBotIdentity(fetcher);
+    return progress;
+  }
+
+  const roleIdsByRank = await ensureDiscordCustomerRankRoles(
+    input.discordGuildId,
+    guildId,
+    repository,
     fetcher,
   );
   const memberRoleIds = new Set(
@@ -98,27 +107,30 @@ export async function synchronizeDiscordCustomerRankRole(
     throw new Error(`Cargo do ranking ${progress.currentRank.name} não foi provisionado.`);
   }
 
-  // Add the new role before removing an older one, avoiding a visible gap.
-  if (currentRoleId && !memberRoleIds.has(currentRoleId)) {
-    await requireDiscordSuccess(
-      `/guilds/${input.discordGuildId}/members/${input.buyerDiscordId}/roles/${currentRoleId}`,
-      { method: "PUT" },
-      fetcher,
-    );
-  }
+  try {
+    // Add the new role before removing an older one, avoiding a visible gap.
+    if (currentRoleId && !memberRoleIds.has(currentRoleId)) {
+      await requireDiscordSuccess(
+        `${memberPath}/roles/${currentRoleId}`,
+        { method: "PUT" },
+        fetcher,
+      );
+    }
 
-  const obsoleteRoleIds = [...roleIdsByRank.values()].filter(
-    (roleId) => roleId !== currentRoleId && memberRoleIds.has(roleId),
-  );
-  await Promise.all(
-    obsoleteRoleIds.map((roleId) =>
-      requireDiscordSuccess(
-        `/guilds/${input.discordGuildId}/members/${input.buyerDiscordId}/roles/${roleId}`,
+    const obsoleteRoleIds = [...roleIdsByRank.values()].filter(
+      (roleId) => roleId !== currentRoleId && memberRoleIds.has(roleId),
+    );
+    for (const roleId of obsoleteRoleIds) {
+      await requireDiscordSuccess(
+        `${memberPath}/roles/${roleId}`,
         { method: "DELETE" },
         fetcher,
-      ),
-    ),
-  );
+      );
+    }
+  } catch (error) {
+    // A member can leave between the lookup and the role mutation.
+    if (!isUnknownMemberError(error, memberPath)) throw error;
+  }
 
   return progress;
 }
@@ -316,8 +328,23 @@ async function requireDiscordSuccess(
 ) {
   const response = await discordBotRequest(path, init, fetcher);
   if (!response.ok) {
-    throw new Error(`Discord recusou a sincronização do cargo (${response.status}).`);
+    const payload: unknown = await response.json().catch(() => null);
+    throw new DiscordApiError(
+      response.status,
+      path,
+      (init.method ?? "GET").toUpperCase(),
+      isObject(payload) && typeof payload.code === "number" && Number.isSafeInteger(payload.code)
+        ? payload.code
+        : null,
+    );
   }
+}
+
+function isUnknownMemberError(error: unknown, memberPath: string) {
+  return error instanceof DiscordApiError &&
+    error.status === 404 &&
+    error.discordCode === DISCORD_UNKNOWN_MEMBER_CODE &&
+    (error.path === memberPath || error.path.startsWith(`${memberPath}/roles/`));
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

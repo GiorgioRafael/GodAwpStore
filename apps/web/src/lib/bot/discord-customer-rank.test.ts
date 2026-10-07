@@ -228,7 +228,126 @@ describe("Discord customer rank roles", () => {
       ),
     ).toBe(true);
   });
+
+  it("preserva o progresso de quem saiu sem provisionar ou atribuir cargos", async () => {
+    const repository = roleRepository();
+    const fetcher = memberFetcher({
+      member: () => Response.json({ code: 10007, message: "Unknown Member" }, { status: 404 }),
+    });
+
+    await expect(synchronizeDiscordCustomerRankRole(
+      { discordGuildId, buyerDiscordId, guildId }, repository, fetcher,
+    )).resolves.toEqual(progress);
+
+    expect(repository.getProgress).toHaveBeenCalledWith(guildId, buyerDiscordId);
+    expect(repository.claimRoleSync).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("verifica a identidade do bot mesmo quando o comprador está ausente", async () => {
+    const fetcher = vi.fn<typeof fetch>(async (url) => String(url).endsWith("/users/@me")
+      ? Response.json({ id: buyerDiscordId, bot: true })
+      : Response.json({ code: 10007 }, { status: 404 }));
+
+    await expect(synchronizeDiscordCustomerRankRole(
+      { discordGuildId, buyerDiscordId, guildId }, roleRepository(), fetcher,
+    )).rejects.toThrow("O bot autenticado não corresponde");
+  });
+
+  it.each(["PUT", "DELETE"])("tolera saída do membro durante %s do cargo", async (method) => {
+    const fetcher = memberFetcher({
+      mutation: (_url, actualMethod) => actualMethod === method
+        ? Response.json({ code: 10007 }, { status: 404 })
+        : new Response(null, { status: 204 }),
+    });
+
+    await expect(synchronizeDiscordCustomerRankRole(
+      { discordGuildId, buyerDiscordId, guildId }, roleRepository(), fetcher,
+    )).resolves.toEqual(progress);
+    const mutations = fetcher.mock.calls.filter(([, init]) =>
+      init?.method === "PUT" || init?.method === "DELETE");
+    expect(mutations.map(([, init]) => init?.method)).toEqual(
+      method === "PUT" ? ["PUT"] : ["PUT", "DELETE"],
+    );
+  });
+
+  it.each([
+    { status: 404, code: 10004 },
+    { status: 404, code: 10011 },
+    { status: 404, code: null },
+    { status: 403, code: 10007 },
+  ])("mantém falhas reais no lookup: $status / $code", async ({ status, code }) => {
+    const fetcher = memberFetcher({ member: () => Response.json({ code }, { status }) });
+
+    await expect(synchronizeDiscordCustomerRankRole(
+      { discordGuildId, buyerDiscordId, guildId }, roleRepository(), fetcher,
+    )).rejects.toMatchObject({ status, discordCode: code });
+  });
+
+  it.each(["PUT", "DELETE"])("mantém o 404 de cargo excluído durante %s", async (method) => {
+    const fetcher = memberFetcher({
+      mutation: (_url, actualMethod) => actualMethod === method
+        ? Response.json({ code: 10011 }, { status: 404 })
+        : new Response(null, { status: 204 }),
+    });
+
+    await expect(synchronizeDiscordCustomerRankRole(
+      { discordGuildId, buyerDiscordId, guildId }, roleRepository(), fetcher,
+    )).rejects.toMatchObject({ status: 404, discordCode: 10011, method });
+  });
+
+  it("não ignora erros de outra rota durante o provisionamento", async () => {
+    const fetcher = memberFetcher({
+      roles: () => Response.json({ code: 10007 }, { status: 404 }),
+    });
+
+    await expect(synchronizeDiscordCustomerRankRole(
+      { discordGuildId, buyerDiscordId, guildId }, roleRepository(), fetcher,
+    )).rejects.toMatchObject({ path: `/guilds/${discordGuildId}/roles`, discordCode: 10007 });
+  });
+
+  it("atribui o ranking salvo quando o comprador retorna ao servidor", async () => {
+    const member = vi.fn()
+      .mockImplementationOnce(() => Response.json({ code: 10007 }, { status: 404 }))
+      .mockImplementation(() => Response.json({ roles: [bronzeRoleId] }));
+    const fetcher = memberFetcher({ member });
+    const repository = roleRepository();
+    const input = { discordGuildId, buyerDiscordId, guildId };
+
+    await synchronizeDiscordCustomerRankRole(input, repository, fetcher);
+    await synchronizeDiscordCustomerRankRole(input, repository, fetcher);
+
+    expect(repository.getProgress).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+    expect(fetcher.mock.calls.some(([url, init]) =>
+      init?.method === "PUT" && String(url).endsWith(`/roles/${silverRoleId}`),
+    )).toBe(true);
+  });
 });
+
+function memberFetcher(overrides: {
+  member?: () => Response;
+  roles?: () => Response;
+  mutation?: (url: string, method: string) => Response;
+} = {}) {
+  return vi.fn<typeof fetch>(async (input, init) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+    if (url.endsWith(`/guilds/${discordGuildId}/members/${buyerDiscordId}`)) {
+      return overrides.member?.() ?? Response.json({ roles: [bronzeRoleId] });
+    }
+    if (method === "PUT" || method === "DELETE") {
+      return overrides.mutation?.(url, method) ?? new Response(null, { status: 204 });
+    }
+    if (url.endsWith("/users/@me")) return Response.json({ id: botId, bot: true });
+    if (url.endsWith(`/guilds/${discordGuildId}/roles`)) {
+      return overrides.roles?.() ?? Response.json([
+        discordRole(bronzeRoleId, levels[0]!), discordRole(silverRoleId, levels[1]!),
+      ]);
+    }
+    return new Response(null, { status: 404 });
+  });
+}
 
 function roleRepository(
   overrides: Partial<CustomerRankRoleRepository> = {},

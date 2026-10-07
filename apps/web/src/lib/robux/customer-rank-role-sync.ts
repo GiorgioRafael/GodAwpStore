@@ -1,12 +1,13 @@
 import "server-only";
 
 import { ROBUX_SALES_ENABLED } from "@/lib/brand";
+import { DiscordApiError } from "@/lib/bot/discord-api";
 import { synchronizeDiscordCustomerRankRole } from "@/lib/bot/discord-customer-rank";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
 
-/** Refresh one buyer's Discord role and acknowledge only purchases already paid. */
+/** Refresh a buyer's role (or acknowledge their absence) for purchases already paid. */
 export async function synchronizeRobuxCustomerRankRole(
   input: { guildId?: string; discordGuildId: string; buyerDiscordId: string },
   client: AdminClient = requireClient(),
@@ -81,7 +82,10 @@ export async function reconcileRobuxCustomerRankRoles(
       result.synced++;
     } catch (syncError) {
       result.failed++;
-      console.error(`[robux-rank:${order.id}] ${syncError instanceof Error ? syncError.message : "erro desconhecido"}`);
+      const details = syncError instanceof DiscordApiError
+        ? ` [${syncError.method} ${syncError.path}; código=${syncError.discordCode ?? "desconhecido"}]`
+        : "";
+      console.error(`[robux-rank:${order.id}] ${syncError instanceof Error ? syncError.message : "erro desconhecido"}${details}`);
     }
   }
   return result;
