@@ -3,7 +3,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { IS_GWSTORE } from "@/lib/brand";
 import type { Json } from "@/lib/supabase/database.types";
 import { assertConfiguredDiscordBotIdentity, discordApiUrl, discordBotJson } from "./discord-api";
-import { GW_UP_CATEGORIES, GW_UP_ENTRY_TITLE, GW_UP_GUILD_ID, GW_UP_STORE_ID, upServiceDescription } from "./gw-up-catalog";
+import { GW_UP_CATEGORIES, GW_UP_CHANNEL_ID, GW_UP_ENTRY_TITLE, GW_UP_GUILD_ID, GW_UP_STORE_ID, upServiceDescription } from "./gw-up-catalog";
 import { upCategoryMessage, upEntryMessage, upServiceMessage, upText, type UpInteraction } from "./discord-up";
 import { readDiscordInteraction } from "./discord-context";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
@@ -23,14 +23,19 @@ export function readUpConfiguration(value: unknown): UpConfiguration | null {
 /** Inserts only missing rows: deployments never undo prices or pauses set by staff. */
 export async function synchronizeGwStoreUpServices() {
   if (!IS_GWSTORE) return { status: "disabled" };
+  // Publishing is a background/build task. Its HTTP requests can tolerate a
+  // longer timeout than interactive acknowledgements on a cold connection.
+  const publicationFetch: typeof fetch = (input, init) => fetch(input, {
+    ...init, signal: AbortSignal.timeout(15_000),
+  });
   const client = requireClient();
   const { data: games, error: gamesError } = await client.from("games").select("id,name,slug").eq("status", "active").is("archived_at", null);
   if (gamesError) throw new Error("Não foi possível consultar o jogo para os serviços de UP.");
   const game = games?.find(row => canonical(row.slug) === "blox-fruits" || canonical(row.name) === "blox-fruits");
   if (!game) throw new Error("Cadastre o jogo Blox Fruits antes de publicar serviços de UP.");
-  const botId = await assertConfiguredDiscordBotIdentity();
-  const channels = await discordBotJson<Channel[]>(`/guilds/${GW_UP_GUILD_ID}/channels`);
-  const candidates = channels.filter(channel => channel.type === 0 && canonical(channel.name) === "upper-precos");
+  const botId = await assertConfiguredDiscordBotIdentity(publicationFetch);
+  const channels = await discordBotJson<Channel[]>(`/guilds/${GW_UP_GUILD_ID}/channels`, {}, publicationFetch);
+  const candidates = channels.filter(channel => channel.type === 0 && channel.id === GW_UP_CHANNEL_ID);
   if (candidates.length !== 1) throw new Error("Não foi encontrado um único canal upper-preços na GWStore.");
   const channel = candidates[0];
   if (channel.guild_id !== GW_UP_GUILD_ID) throw new Error("Canal de UP pertence a outro servidor.");
@@ -46,7 +51,7 @@ export async function synchronizeGwStoreUpServices() {
   let message: Message | null = null;
   let before = "";
   for (let page = 0; page < 20; page++) {
-    const messages = await discordBotJson<Message[]>(`/channels/${channel.id}/messages?limit=100${before ? `&before=${before}` : ""}`);
+    const messages = await discordBotJson<Message[]>(`/channels/${channel.id}/messages?limit=100${before ? `&before=${before}` : ""}`, {}, publicationFetch);
     const matches = messages.filter(row => row.author?.id === botId && row.embeds?.[0]?.title === GW_UP_ENTRY_TITLE);
     if (matches.length > 1 || (message && matches.length)) throw new Error("Há mais de uma vitrine de UP deste bot no canal.");
     message = matches[0] ?? message;
@@ -54,7 +59,7 @@ export async function synchronizeGwStoreUpServices() {
     if (page === 19) throw new Error("Canal de UP muito extenso; não foi possível verificar a vitrine existente.");
     before = messages[messages.length - 1].id;
   }
-  const published = await discordBotJson<Message>(`/channels/${channel.id}/messages${message ? `/${message.id}` : ""}`, { method: message ? "PATCH" : "POST", body: JSON.stringify({ ...upEntryMessage(), ...(!message ? { nonce: `up:${channel.id}`, enforce_nonce: true } : {}) }) });
+  const published = await discordBotJson<Message>(`/channels/${channel.id}/messages${message ? `/${message.id}` : ""}`, { method: message ? "PATCH" : "POST", body: JSON.stringify({ ...upEntryMessage(), ...(!message ? { nonce: `up:${channel.id}`, enforce_nonce: true } : {}) }) }, publicationFetch);
   if (!SNOWFLAKE.test(published.id) || published.channel_id !== channel.id || published.author?.id !== botId) throw new Error("Discord não confirmou a vitrine de UP.");
   for (let attempt = 0; attempt < 3; attempt++) {
     const { data: guild, error } = await client.from("guilds").select("id,configuration,updated_at").eq("discord_guild_id", GW_UP_GUILD_ID).eq("status", "active").is("archived_at", null).single();

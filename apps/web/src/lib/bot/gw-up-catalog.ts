@@ -1,5 +1,6 @@
 /** GWStore UP prices supplied by the store owner. Each quantity is a package, never a raw level/beli amount. */
 export const GW_UP_GUILD_ID = "1401264061101899820";
+export const GW_UP_CHANNEL_ID = "1492332216410439882";
 export const GW_UP_STORE_ID = "0b0e91fe-d7ba-5257-845d-7e78a9187d4a";
 export const GW_UP_ENTRY_TITLE = "🔥 GW STORE — SERVIÇOS DE UP";
 export type UpServiceDefinition = { id: string; name: string; priceCents: number; requirements: string; unit: string };

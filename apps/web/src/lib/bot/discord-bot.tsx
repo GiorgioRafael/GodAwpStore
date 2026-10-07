@@ -1,6 +1,6 @@
 /** @jsxImportSource chat */
 import "server-only";
-import { GW_UP_STORE_ID } from "./gw-up-catalog";
+import { GW_UP_CHANNEL_ID, GW_UP_GUILD_ID, GW_UP_STORE_ID } from "./gw-up-catalog";
 
 import {
   cardToDiscordPayload,
@@ -503,6 +503,12 @@ export function catalogCards(
 ): ChatElement[] {
   if (catalog.length > 1) {
     return catalog.flatMap((store) => catalogCards([store], customization));
+  }
+  if (catalog[0]?.catalogStoreId === GW_UP_STORE_ID) {
+    return [<Card key="up-services" title="🔥 Serviços de UP · Blox Fruits">
+      <CardText>Escolha a categoria e confira os requisitos na vitrine de UP. O ticket de compra é aberto após o pagamento.</CardText>
+      <Actions><LinkButton url={`https://discord.com/channels/${GW_UP_GUILD_ID}/${GW_UP_CHANNEL_ID}`} label="Ver serviços de UP" /></Actions>
+    </Card>];
   }
   const products = flattenCatalog(catalog);
   const message = customization.storefront;
