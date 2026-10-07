@@ -206,7 +206,7 @@ function ProductForm({
           <Field
             label="Estoque disponível"
             htmlFor={`${formId}-stock`}
-            hint="unidades"
+            hint={product?.unlimited_stock ? "Serviço sem limite; use o Estado para pausar." : "unidades"}
             error={fieldError(state, "stockQuantity")}
           >
             <Input
@@ -218,6 +218,7 @@ function ProductForm({
               max={1_000_000_000}
               step={1}
               defaultValue={product?.stock_quantity ?? 0}
+              readOnly={product?.unlimited_stock}
               required
             />
           </Field>
@@ -433,7 +434,7 @@ export function ProductsManager({ products, substores, stores }: ProductsManager
       >
         {filteredProducts.map((product) => {
           const available = product.stock_quantity;
-          const isLowStock = product.status === "active" && available <= product.low_stock_threshold;
+          const isLowStock = !product.unlimited_stock && product.status === "active" && available <= product.low_stock_threshold;
 
           return (
             <tr
@@ -474,10 +475,10 @@ export function ProductsManager({ products, substores, stores }: ProductsManager
                 <p className="text-sm text-muted-strong">{product.substores?.name ?? "Categoria removida"}</p>
               </td>
               <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-foreground">{formatMoney(product.minimum_price_cents)}</td>
-              <td className="px-5 py-4 text-sm font-medium text-foreground">{available.toLocaleString("pt-BR")}</td>
+              <td className="px-5 py-4 text-sm font-medium text-foreground">{product.unlimited_stock ? "Sem limite" : available.toLocaleString("pt-BR")}</td>
               <td className="px-5 py-4">
                 <Badge tone={isLowStock ? "warning" : "neutral"}>
-                  {available}/{product.low_stock_threshold}
+                  {product.unlimited_stock ? "Serviço" : `${available}/${product.low_stock_threshold}`}
                 </Badge>
               </td>
               <td className="px-5 py-4"><CatalogStatusBadge status={product.status} /></td>

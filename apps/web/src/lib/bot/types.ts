@@ -15,6 +15,7 @@ export type BotCatalogProduct = {
   discordEmoji?: DiscordProductEmoji | null;
   priceCents: number;
   availableStock: number;
+  unlimitedStock?: boolean;
   sortOrder: number;
 };
 
@@ -53,6 +54,7 @@ export type PurchasableProduct = {
   id: string;
   name: string;
   minimumPriceCents: number;
+  unlimitedStock?: boolean;
 };
 
 export type ExistingOrder = {

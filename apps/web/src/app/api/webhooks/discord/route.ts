@@ -76,6 +76,10 @@ import {
   DEFERRED_INTEGRATED_STOREFRONT_FLAGS,
   parseNativeDiscordIntegratedStorefrontInteraction,
 } from "@/lib/bot/discord-integrated-storefront";
+import { parseUpInteraction, upQuantityModal } from "@/lib/bot/discord-up";
+import { completeUpInteraction } from "@/lib/bot/discord-up-server";
+import { IS_GWSTORE } from "@/lib/brand";
+import { GW_UP_GUILD_ID } from "@/lib/bot/gw-up-catalog";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -114,6 +118,7 @@ export async function POST(request: Request) {
         (
           native.scope === "ticket_close" ||
           native.scope === "item_selling" ||
+          native.scope === "up_services" ||
           native.scope === "ticket_delivery" ||
           native.scope === "roulette_delivery" ||
           native.scope === "robux" ||
@@ -156,6 +161,15 @@ export async function POST(request: Request) {
           await completeItemSellingInteraction(native.raw);
         });
         return Response.json(response);
+      }
+
+      if (native.scope === "up_services") {
+        if (!IS_GWSTORE || typeof native.raw !== "object" || native.raw === null || !("guild_id" in native.raw) || native.raw.guild_id !== GW_UP_GUILD_ID) {
+          return Response.json({ type: 4, data: { flags: 64, content: "Este serviço está disponível no servidor GWStore." } });
+        }
+        if (native.interaction.kind === "quantity") return Response.json(upQuantityModal(native.interaction.productId));
+        after(async () => { await completeUpInteraction(native.raw, native.interaction); });
+        return Response.json({ type: 5, data: { flags: 64 } });
       }
 
       if (native.scope === "integrated_storefront") {
@@ -511,6 +525,8 @@ async function readNativeDiscordInteraction(request: Request) {
   } catch {
     return null;
   }
+  const upServices = parseUpInteraction(raw);
+  if (upServices) return { body, raw, scope: "up_services" as const, interaction: upServices };
   const itemSelling = parseItemSellingInteraction(raw);
   if (itemSelling) return { body, raw, scope: "item_selling" as const, interaction: itemSelling };
   const ticketClose = parseNativeDiscordTicketCloseInteraction(raw);

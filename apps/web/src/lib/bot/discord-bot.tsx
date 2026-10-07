@@ -1,5 +1,6 @@
 /** @jsxImportSource chat */
 import "server-only";
+import { GW_UP_STORE_ID } from "./gw-up-catalog";
 
 import {
   cardToDiscordPayload,
@@ -646,6 +647,7 @@ export type IntegratedStorefrontGame = {
 export function integratedStorefrontGames(catalog: BotCatalogGame[]): IntegratedStorefrontGame[] {
   const games = new Map<string, IntegratedStorefrontGame>();
   for (const store of catalog) {
+    if (store.catalogStoreId === GW_UP_STORE_ID) continue;
     const current = games.get(store.id);
     if (current) {
       current.stores.push(store);

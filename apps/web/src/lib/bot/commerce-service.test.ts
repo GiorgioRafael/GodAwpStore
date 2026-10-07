@@ -784,3 +784,34 @@ describe("BotCommerceService", () => {
     expect(conflictRepo.findPurchaseById).not.toHaveBeenCalled();
   });
 });
+
+describe("serviços de UP sem estoque finito", () => {
+  const upGuild = { ...guild, discordGuildId: "1401264061101899820" };
+  const serviceProduct = { ...product, name: "Level · 100 níveis", unlimitedStock: true };
+  const cartInput = { interactionId: input.interactionId, buyerDiscordId: input.buyerDiscordId, guild: upGuild, isServerBooster: false, items: [{ productId: product.id, quantity: 5 }] };
+  function upRepository() {
+    return repository({ findPurchasableProducts: vi.fn(async () => [serviceProduct]), countAvailableStocks: vi.fn(async () => new Map([[product.id, 0]])) });
+  }
+  it("calcula cinco pacotes e cria só o pedido aguardando pagamento com estoque zero", async () => {
+    const repo = upRepository();
+    expect(await new BotCommerceService(repo).purchaseCart({ ...cartInput, serviceRequirementsConfirmed: true })).toMatchObject({ kind: "created", subtotalPriceCents: 1000, totalPriceCents: 1000 });
+    expect(repo.createAwaitingPaymentPurchase).toHaveBeenCalledWith(expect.objectContaining({ items: [{ productId: product.id, quantity: 5 }] }));
+  });
+  it("bloqueia checkout genérico sem confirmação dos requisitos e outros servidores", async () => {
+    const repo = upRepository();
+    const service = new BotCommerceService(repo);
+    expect(await service.purchaseCart(cartInput)).toEqual({ kind: "product_unavailable" });
+    expect(await service.purchaseCart({ ...cartInput, guild, serviceRequirementsConfirmed: true })).toEqual({ kind: "product_unavailable" });
+    expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
+  });
+  it("continua verificando estoque de produtos físicos no mesmo carrinho", async () => {
+    const repo = repository({ findPurchasableProducts: vi.fn(async () => [serviceProduct, secondProduct]), countAvailableStocks: vi.fn(async () => new Map([[product.id, 0], [secondProduct.id, 1]])) });
+    expect(await new BotCommerceService(repo).purchaseCart({ ...cartInput, serviceRequirementsConfirmed: true, items: [...cartInput.items, { productId: secondProduct.id, quantity: 2 }] })).toMatchObject({ kind: "insufficient_stock", productName: secondProduct.name, availableStock: 1 });
+    expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
+  });
+  it("não oferece upsell de itens em uma contratação de UP", async () => {
+    const repo = upRepository();
+    expect(await new BotCommerceService(repo).prepareUpsell(cartInput)).toEqual({ kind: "not_offered" });
+    expect(repo.createUpsellOffer).not.toHaveBeenCalled();
+  });
+});

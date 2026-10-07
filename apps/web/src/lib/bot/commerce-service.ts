@@ -19,6 +19,7 @@ import {
   minimumLivePixQuantityWithCustomerDiscount,
 } from "./customer-rank";
 import { MAXIMUM_CART_ITEMS as MAX_CART_ITEMS } from "./types";
+import { GW_UP_GUILD_ID } from "./gw-up-catalog";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
@@ -88,7 +89,7 @@ export class BotCommerceService {
       this.repository.findPurchasableProduct(input.productId),
     ]);
 
-    if (!product) {
+    if (!product || product.unlimitedStock) {
       return { kind: "product_unavailable" };
     }
     if (!guild.whitelistEntryId) {
@@ -171,6 +172,7 @@ export class BotCommerceService {
     items: CartItemInput[];
     isServerBooster: boolean;
     guild: DiscordGuildIdentity;
+    serviceRequirementsConfirmed?: boolean;
   }): Promise<CartPurchaseResult> {
     if (
       !SNOWFLAKE_PATTERN.test(input.interactionId) ||
@@ -236,6 +238,10 @@ export class BotCommerceService {
     if (products.length !== productIds.length) {
       return { kind: "product_unavailable" };
     }
+    if (products.some(product => product.unlimitedStock) &&
+      (!input.serviceRequirementsConfirmed || input.guild.discordGuildId !== GW_UP_GUILD_ID)) {
+      return { kind: "product_unavailable" };
+    }
     const productById = new Map(products.map((product) => [product.id, product]));
     const subtotals = input.items.map((item) => {
       const product = productById.get(item.productId);
@@ -275,7 +281,7 @@ export class BotCommerceService {
     for (const entry of subtotals) {
       if (!entry) continue;
       const availableStock = stockByProduct.get(entry.product.id) ?? 0;
-      if (availableStock < entry.item.quantity) {
+      if (!entry.product.unlimitedStock && availableStock < entry.item.quantity) {
         return availableStock < 1
           ? { kind: "out_of_stock" }
           : {
@@ -416,7 +422,7 @@ export class BotCommerceService {
       this.repository.ensureGuild(input.guild),
       this.repository.findPurchasableProducts(productIds),
     ]);
-    if (existing || !guild.whitelistEntryId || products.length !== productIds.length) {
+    if (existing || !guild.whitelistEntryId || products.length !== productIds.length || products.some(product => product.unlimitedStock)) {
       return { kind: "not_offered" };
     }
 

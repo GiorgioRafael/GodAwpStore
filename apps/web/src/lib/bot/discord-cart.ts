@@ -24,6 +24,7 @@ import { SupabaseBotCommerceRepository } from "./supabase-repository";
 import { scopeCatalogToDiscordChannel } from "./discord-storefront-scope";
 import {
   MAXIMUM_CART_ITEMS,
+  type CartItemInput,
   type CartQuantityPreparationResult,
 } from "./types";
 
@@ -302,11 +303,12 @@ export function createNativeDiscordCartResponse(
 export async function completeDiscordCartPurchase(
   raw: unknown,
   customization: BotMessageCustomization = DEFAULT_BOT_MESSAGE_CUSTOMIZATION,
+  serviceItems?: CartItemInput[],
 ) {
   let stockChanged = false;
   try {
     const context = readDiscordInteraction(raw, "");
-    const items = readNativeDiscordCartModalItems(raw);
+    const items = serviceItems ?? readNativeDiscordCartModalItems(raw);
     if (!context.interactionId || !context.guildId || !context.channelId || !context.userId || !items) {
       await updateDiscordEphemeralResponse(
         raw,
@@ -361,6 +363,7 @@ export async function completeDiscordCartPurchase(
       items,
       isServerBooster: context.isServerBooster,
       guild,
+      serviceRequirementsConfirmed: Boolean(serviceItems),
     });
     stockChanged = result.kind === "created";
     const checkoutUrl =

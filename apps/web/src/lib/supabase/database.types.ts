@@ -156,6 +156,7 @@ type ProductRow = {
   description: string | null;
   minimum_price_cents: number;
   stock_quantity: number;
+  unlimited_stock?: boolean;
   image_url: string | null;
   discord_application_emoji_id: string | null;
   discord_application_emoji_source_sha256: string | null;

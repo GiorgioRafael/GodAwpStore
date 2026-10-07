@@ -3,6 +3,7 @@ import "server-only";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { readDiscordIntegratedStorefrontConfiguration, readStorefrontConfigurations } from "./discord-storefront";
 import type { BotCatalogGame } from "./types";
+import { GW_UP_STORE_ID } from "./gw-up-catalog";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 
@@ -11,6 +12,12 @@ export function filterCatalogForDiscordChannel(
   configuration: Parameters<typeof readStorefrontConfigurations>[0],
   channelId: string,
 ) {
+  if (configuration && typeof configuration === "object" && !Array.isArray(configuration)) {
+    const up = configuration.up_services;
+    if (up && typeof up === "object" && !Array.isArray(up) && up.channel_id === channelId && up.catalog_store_id === GW_UP_STORE_ID) {
+      return catalog.filter(store => store.catalogStoreId === GW_UP_STORE_ID);
+    }
+  }
   const storefront = readStorefrontConfigurations(configuration).find(
     (item) => item.channel_id === channelId,
   );

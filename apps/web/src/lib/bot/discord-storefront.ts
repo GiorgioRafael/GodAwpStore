@@ -1,4 +1,5 @@
 import "server-only";
+import { GW_UP_STORE_ID } from "./gw-up-catalog";
 
 import {
   cardToDiscordPayload,
@@ -566,7 +567,7 @@ export function createDiscordIntegratedStorefrontPayload(
 export function catalogStoresForIntegratedStorefront(catalog: BotCatalogGame[]) {
   return catalog.filter((store) => {
     const name = (store.catalogStoreName ?? store.name).trim().toLocaleLowerCase("pt-BR");
-    return !IS_GWSTORE || name !== "robux";
+    return store.catalogStoreId !== GW_UP_STORE_ID && (!IS_GWSTORE || name !== "robux");
   });
 }
 

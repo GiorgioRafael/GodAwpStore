@@ -49,7 +49,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
         .order("name"),
       this.client
         .from("products")
-        .select("id,substore_id,catalog_store_id,name,description,image_url,discord_application_emoji_id,discord_application_emoji_source_sha256,minimum_price_cents,sort_order")
+        .select("*")
         .eq("status", "active")
         .is("archived_at", null)
         .order("sort_order")
@@ -88,6 +88,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
             : null,
         priceCents: safeInteger(product.minimum_price_cents),
         availableStock: stockByProduct.get(product.id) ?? 0,
+        unlimitedStock: "unlimited_stock" in product && product.unlimited_stock === true,
         sortOrder: safeInteger(product.sort_order),
       });
       productsByStoreAndSubstore.set(key, products);
@@ -349,7 +350,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
   async findPurchasableProduct(productId: string): Promise<PurchasableProduct | null> {
     const { data: product, error: productError } = await this.client
       .from("products")
-      .select("id,substore_id,name,minimum_price_cents")
+      .select("*")
       .eq("id", productId)
       .eq("status", "active")
       .is("archived_at", null)
@@ -381,6 +382,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       id: product.id,
       name: product.name,
       minimumPriceCents: safeInteger(product.minimum_price_cents),
+      unlimitedStock: "unlimited_stock" in product && product.unlimited_stock === true,
     };
   }
 
