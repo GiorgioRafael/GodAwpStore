@@ -7,7 +7,6 @@ import { GW_UP_CATEGORIES, GW_UP_ENTRY_TITLE, GW_UP_GUILD_ID, GW_UP_STORE_ID, up
 import { upCategoryMessage, upEntryMessage, upServiceMessage, upText, type UpInteraction } from "./discord-up";
 import { readDiscordInteraction } from "./discord-context";
 import { SupabaseBotCommerceRepository } from "./supabase-repository";
-import { completeDiscordCartPurchase } from "./discord-cart";
 import { loadBotMessageCustomization } from "./message-customization-server";
 
 const SNOWFLAKE = /^[0-9]{15,22}$/;
@@ -93,6 +92,9 @@ export async function completeUpInteraction(raw: unknown, interaction: UpInterac
     if (interaction.kind === "service") return await update(raw, upServiceMessage(product), fetcher);
     if (!interaction.confirmed) throw new Error("Confira os requisitos do serviço e digite SIM para continuar.");
     if (!interaction.quantity) throw new Error("Informe uma quantidade inteira entre 1 e 10.000 pacotes.");
+    // Catalog provisioning also runs in the build's Node/tsx process. Load the
+    // Chat SDK checkout only for actual Discord submissions in the Next runtime.
+    const { completeDiscordCartPurchase } = await import("./discord-cart");
     await completeDiscordCartPurchase(raw, await loadBotMessageCustomization(), [{ productId: product.id, quantity: interaction.quantity }]);
   } catch (error) {
     console.error("[discord:up]", error instanceof Error ? error.message : "Falha ao abrir serviço.");
