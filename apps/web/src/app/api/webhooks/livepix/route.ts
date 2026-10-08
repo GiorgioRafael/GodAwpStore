@@ -4,7 +4,7 @@ import { fulfillVerifiedPayment } from "@/lib/payments/fulfillment";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 120;
 
 const MAXIMUM_WEBHOOK_BYTES = 16 * 1024;
 

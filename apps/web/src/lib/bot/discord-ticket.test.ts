@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
+import { DiscordApiError } from "./discord-api";
 
 vi.mock("server-only", () => ({}));
 vi.mock("./message-customization-server", async () => {
@@ -45,6 +46,8 @@ beforeAll(async () => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
@@ -457,6 +460,131 @@ describe("Discord paid-order ticket", () => {
       welcomeMessageCreated: false,
     });
     expect(channelRequests).toBe(2);
+  });
+
+  it("permite respostas de criação mais lentas que quatro segundos sem abortar a entrega", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), milliseconds);
+      return controller.signal;
+    });
+    let channel = channelResponse(`gwstore-order:${order.orderId}`, []);
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, 5_000);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(timer);
+          reject(init.signal?.reason);
+        }, { once: true });
+      });
+      if (url.endsWith(`/guilds/${order.guildId}/channels`) && method === "GET") return Response.json([]);
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      if (url.endsWith(`/guilds/${order.guildId}/channels`) && method === "POST") {
+        channel = channelResponse(body.topic, body.permission_overwrites);
+        return Response.json(channel, { status: 201 });
+      }
+      if (url.endsWith(`/channels/${channelId}/messages`) && method === "POST") return Response.json({ id: "723456789012345678" });
+      if (url.endsWith(`/channels/${channelId}`) && method === "PATCH") {
+        channel = { ...channel, ...body };
+        return Response.json(channel);
+      }
+      throw new Error(`unexpected request ${method} ${url}`);
+    }) as unknown as typeof fetch;
+    const task = ticket.ensurePaidOrderTicket(order, { fetcher });
+    const completed = expect(task).resolves.toMatchObject({ created: true, welcomeMessageCreated: true });
+    await vi.advanceTimersByTimeAsync(20_000);
+    await completed;
+    expect(AbortSignal.timeout).toHaveBeenCalledWith(15_000);
+  });
+
+  it.each(["channel", "welcome"] as const)("recupera criação com resposta perdida (%s) sem repetir canal ou mensagem", async (unknownOutcome) => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    let channel: ReturnType<typeof channelResponse> | null = null;
+    let message: { id: string; author: { id: string }; embeds: unknown } | null = null;
+    let channelCreates = 0;
+    let messageCreates = 0;
+    let welcomeNonce: string | null = null;
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+      if (url.endsWith(`/guilds/${order.guildId}/channels`) && method === "GET") return Response.json(channel ? [channel] : []);
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      if (url.endsWith(`/guilds/${order.guildId}/channels`) && method === "POST") {
+        channelCreates++;
+        channel = channelResponse(body.topic, body.permission_overwrites);
+        if (unknownOutcome === "channel") throw new DOMException("Response lost", "TimeoutError");
+        return Response.json(channel, { status: 201 });
+      }
+      if (url.endsWith(`/channels/${channelId}/messages?limit=100`)) return Response.json(message ? [message] : []);
+      if (url.endsWith(`/channels/${channelId}/messages`) && method === "POST") {
+        messageCreates++;
+        welcomeNonce = body.nonce;
+        message = { id: "723456789012345678", author: { id: botId }, embeds: body.embeds };
+        if (unknownOutcome === "welcome") throw new DOMException("Response lost", "TimeoutError");
+        return Response.json(message);
+      }
+      if (url.endsWith(`/channels/${channelId}`) && method === "PATCH") {
+        channel = { ...channel!, ...body };
+        return Response.json(channel);
+      }
+      throw new Error(`unexpected request ${method} ${url}`);
+    }) as unknown as typeof fetch;
+    await expect(ticket.ensurePaidOrderTicket(order, { fetcher })).rejects.toThrow("Discord não respondeu à operação do ticket no prazo (POST");
+    expect(channelCreates).toBe(1);
+    await expect(ticket.ensurePaidOrderTicket(order, { fetcher })).resolves.toMatchObject({ channelId, created: false });
+    expect(channelCreates).toBe(1);
+    expect(messageCreates).toBe(1);
+    expect(welcomeNonce).toBe(ticket.paidTicketWelcomeMessage(order).nonce);
+    expect(channel).toMatchObject({ topic: `gwstore-order:${order.orderId};welcome=1` });
+  });
+
+  it("preserva o código Discord e a operação quando a criação é recusada", async () => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      if (url.endsWith(`/guilds/${order.guildId}/channels`)) {
+        return init?.method === "POST"
+          ? Response.json({ code: 50035, message: "Invalid Form Body" }, { status: 400 })
+          : Response.json([]);
+      }
+      throw new Error(`unexpected request ${url}`);
+    }) as unknown as typeof fetch;
+    const error = await ticket.ensurePaidOrderTicket(order, { fetcher }).catch(error => error);
+    expect(error).toBeInstanceOf(DiscordApiError);
+    expect(error).toMatchObject({ status: 400, discordCode: 50035, method: "POST", path: `/guilds/${order.guildId}/channels` });
+  });
+
+  it.each([10_001, 500_000])("permite recuperar tickets de %s Robux dentro do limite de compra", async (quantity) => {
+    vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    const permissions = ticket.buildTicketPermissionOverwrites({
+      guildId: order.guildId, buyerDiscordId: order.buyerDiscordId, botDiscordId: botId,
+      closerDiscordUserIds: defaultCloseAdminUserIds,
+      notificationDiscordUserIds: [defaultNotificationUserId],
+    });
+    const readyChannel = channelResponse(`gwstore-order:${order.orderId};welcome=1`, permissions);
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(`/guilds/${order.guildId}/channels`)) return Response.json([readyChannel]);
+      if (url.endsWith("/users/@me")) return Response.json({ id: botId });
+      throw new Error(`unexpected request ${url}`);
+    }) as unknown as typeof fetch;
+    await expect(ticket.ensurePaidOrderTicket({ ...order, productName: "Robux", quantity, controls: "robux" }, { fetcher }))
+      .resolves.toMatchObject({ channelId, created: false });
+  });
+
+  it.each([
+    [10_001, undefined], [500_001, "robux"],
+  ] as const)("mantém a validação de quantidade excessiva (%s, %s) antes da rede", async (quantity, controls) => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    await expect(ticket.ensurePaidOrderTicket({ ...order, quantity, controls }, { fetcher })).rejects.toThrow("Quantidade inválida");
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("falha antes da rede para IDs inválidos", async () => {

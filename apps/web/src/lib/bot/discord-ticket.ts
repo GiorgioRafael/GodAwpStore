@@ -9,6 +9,8 @@ import {
   type BotMessageCustomization,
 } from "./message-customization";
 import { STORE_NAME, STORE_SLUG } from "@/lib/brand";
+import { MAXIMUM_ROBUX_QUANTITY } from "@/lib/robux/pricing";
+import { DiscordApiError } from "./discord-api";
 import { loadBotRuntimeSettings } from "./message-customization-server";
 import { resolveGwStoreTicketCategoryId } from "./discord-ticket-categories";
 import {
@@ -30,7 +32,7 @@ export { buildTicketPermissionOverwrites } from "./discord-ticket-controls";
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const DISCORD_REQUEST_TIMEOUT_MS = 4_000;
+const DISCORD_REQUEST_TIMEOUT_MS = 15_000;
 const DISCORD_MAX_RETRY_AFTER_MS = 1_500;
 
 type DiscordChannel = {
@@ -365,7 +367,8 @@ function validateTicketInput(input: PaidOrderTicketInput): PaidOrderTicketInput 
     throw new Error("ID da categoria de tickets inválido.");
   }
   if (!input.productName.trim()) throw new Error("Produto inválido para ticket Discord.");
-  if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > 10_000) {
+  const maximumQuantity = input.controls === "robux" ? MAXIMUM_ROBUX_QUANTITY : 10_000;
+  if (!Number.isInteger(input.quantity) || input.quantity < 1 || input.quantity > maximumQuantity) {
     throw new Error("Quantidade inválida para ticket Discord.");
   }
   if (!Number.isSafeInteger(input.paidAmountCents) || input.paidAmountCents < 0) {
@@ -402,11 +405,24 @@ async function discordJson<T>(
   fetcher: typeof fetch,
   attempt = 0,
 ): Promise<T> {
-  const response = await fetcher(`${apiUrl}${path}`, {
-    ...init,
-    cache: "no-store",
-    signal: init.signal ?? AbortSignal.timeout(DISCORD_REQUEST_TIMEOUT_MS),
-  });
+  const method = (init.method ?? "GET").toUpperCase();
+  let response: Response;
+  try {
+    response = await fetcher(`${apiUrl}${path}`, {
+      ...init,
+      cache: "no-store",
+      signal: init.signal ?? AbortSignal.timeout(DISCORD_REQUEST_TIMEOUT_MS),
+    });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "name" in error
+      && (error.name === "TimeoutError" || error.name === "AbortError")) {
+      // The server may already have created a channel or message. Let the
+      // durable recovery reread its topic marker/nonce instead of repeating
+      // a creation request whose result is unknown.
+      throw new Error(`Discord não respondeu à operação do ticket no prazo (${method} ${path}).`, { cause: error });
+    }
+    throw error;
+  }
   if (response.status === 429 && attempt === 0) {
     const payload: unknown = await response.json().catch(() => null);
     const retryAfter = readRetryAfterMs(payload);
@@ -416,7 +432,11 @@ async function discordJson<T>(
     }
   }
   if (!response.ok) {
-    throw new Error(`Discord recusou a operação do ticket (${response.status}).`);
+    const payload: unknown = await response.json().catch(() => null);
+    const code = typeof payload === "object" && payload !== null && "code" in payload
+      && typeof payload.code === "number" && Number.isSafeInteger(payload.code)
+      ? payload.code : null;
+    throw new DiscordApiError(response.status, path, method, code);
   }
   return (await response.json()) as T;
 }

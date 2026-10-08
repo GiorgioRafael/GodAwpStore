@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   reconcileLeadRecoveryOffers: vi.fn(),
   reconcileRouletteRedemptionTickets: vi.fn(),
   reconcileLatePaidOrderTickets: vi.fn(),
+  reconcilePaidOrderTickets: vi.fn(),
   reconcileRobuxOrders: vi.fn(),
   reconcileRobuxCustomerRankRoles: vi.fn(),
   synchronizeGwStoreTopSpenders: vi.fn(),
@@ -37,6 +38,9 @@ vi.mock("@/lib/bot/lead-recovery", () => ({
 
 vi.mock("@/lib/bot/late-payment-ticket", () => ({
   reconcileLatePaidOrderTickets: mocks.reconcileLatePaidOrderTickets,
+}));
+vi.mock("@/lib/payments/paid-ticket-reconciliation", () => ({
+  reconcilePaidOrderTickets: mocks.reconcilePaidOrderTickets,
 }));
 vi.mock("@/lib/roulette/redemptions", () => ({
   reconcileRouletteRedemptionTickets: mocks.reconcileRouletteRedemptionTickets,
@@ -88,6 +92,7 @@ const rouletteRedemptionResult = { attempted: 1, opened: 1, failed: 0 };
 
 // Compradores que pagaram depois do prazo e ficaram sem canal para perguntar.
 const latePaymentResult = { pending: 2, opened: 2, failed: 0 };
+const paidOrderResult = { checked: 1, opened: 1, skipped: 0, failed: 0, deferred: 0 };
 
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-secret-value");
@@ -99,6 +104,7 @@ beforeEach(() => {
   mocks.reconcileLeadRecoveryOffers.mockResolvedValue(leadRecoveryResult);
   mocks.reconcileRouletteRedemptionTickets.mockResolvedValue(rouletteRedemptionResult);
   mocks.reconcileLatePaidOrderTickets.mockResolvedValue(latePaymentResult);
+  mocks.reconcilePaidOrderTickets.mockResolvedValue(paidOrderResult);
   mocks.reconcileRobuxOrders.mockResolvedValue({ checked: 2, opened: 2, pending: 0, skipped: 0, failed: 0 });
   mocks.reconcileRobuxCustomerRankRoles.mockResolvedValue({ checked: 2, synced: 2, failed: 0 });
   mocks.synchronizeGwStoreTopSpenders.mockResolvedValue({ status: "updated", customers: 5 });
@@ -128,6 +134,7 @@ describe("Discord ticket close reconciliation cron", () => {
       expect(mocks.reconcileGiveaways).not.toHaveBeenCalled();
       expect(mocks.reconcileLeadRecoveryOffers).not.toHaveBeenCalled();
       expect(mocks.reconcileLatePaidOrderTickets).not.toHaveBeenCalled();
+      expect(mocks.reconcilePaidOrderTickets).not.toHaveBeenCalled();
       expect(mocks.synchronizeGwStoreTopSpenders).not.toHaveBeenCalled();
     },
   );
@@ -150,6 +157,7 @@ describe("Discord ticket close reconciliation cron", () => {
       leadRecovery: leadRecoveryResult,
       rouletteRedemptions: rouletteRedemptionResult,
       latePayments: latePaymentResult,
+      paidOrders: paidOrderResult,
       robux: { checked: 2, opened: 2, pending: 0, skipped: 0, failed: 0 },
       robuxRanks: { checked: 2, synced: 2, failed: 0 },
       eclipsepay: { processed: 0, failed: 0 },
@@ -161,6 +169,7 @@ describe("Discord ticket close reconciliation cron", () => {
     expect(mocks.reconcileLeadRecoveryOffers).toHaveBeenCalledOnce();
     // A cada cinco minutos, ninguém que pagou fica sem canal.
     expect(mocks.reconcileLatePaidOrderTickets).toHaveBeenCalledOnce();
+    expect(mocks.reconcilePaidOrderTickets).toHaveBeenCalledOnce();
     // O Top 5 tem seu próprio agendamento de três horas.
     expect(mocks.synchronizeGwStoreTopSpenders).not.toHaveBeenCalled();
   });
@@ -183,5 +192,6 @@ describe("Discord ticket close reconciliation cron", () => {
     expect(body).toContain("temporariamente indisponível");
     expect(body).not.toContain("service role secret");
     expect(consoleError).toHaveBeenCalled();
+    expect(mocks.reconcilePaidOrderTickets).toHaveBeenCalledOnce();
   });
 });

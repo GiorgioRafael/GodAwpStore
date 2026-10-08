@@ -1,6 +1,7 @@
 import { after } from "next/server";
 
 import { ensurePaidOrderTicket } from "@/lib/bot/discord-ticket";
+import { DiscordApiError } from "@/lib/bot/discord-api";
 import { reconcileLatePaidOrderTickets } from "@/lib/bot/late-payment-ticket";
 import { synchronizeDiscordCustomerRankRole } from "@/lib/bot/discord-customer-rank";
 import {
@@ -87,16 +88,10 @@ export async function fulfillVerifiedPayment(input: { providerPaymentId: string;
       logWebhookError("storefront_queue", error);
     }
 
-    try {
-      await synchronizeDiscordCustomerRankRole({
-        discordGuildId: confirmation.discordGuildId,
-        buyerDiscordId: confirmation.buyerDiscordId,
-      });
-    } catch (error) {
-      // Payment and ticket delivery must not be rolled back by a temporary
-      // Discord role failure. A webhook replay or /rank retries the sync.
-      logWebhookError("customer_rank_role", error);
-    }
+    deferRankRoleSync("customer_rank_role", () => synchronizeDiscordCustomerRankRole({
+      discordGuildId: confirmation.discordGuildId,
+      buyerDiscordId: confirmation.buyerDiscordId,
+    }));
 
     const claim = await payments.claimTicket(confirmation.orderId);
     if (!claim.claimed) {
@@ -140,15 +135,10 @@ async function openRobuxDeliveryTicket(confirmation: {
   ticketStatus: string;
 }) {
   const robux = getRobuxPaymentService();
-  try {
-    await synchronizeRobuxCustomerRankRole({
-      discordGuildId: confirmation.discordGuildId,
-      buyerDiscordId: confirmation.buyerDiscordId,
-    });
-  } catch (error) {
-    // Never hold a paid buyer's ticket hostage to Discord role permissions.
-    logWebhookError("robux_customer_rank_role", error);
-  }
+  deferRankRoleSync("robux_customer_rank_role", () => synchronizeRobuxCustomerRankRole({
+    discordGuildId: confirmation.discordGuildId,
+    buyerDiscordId: confirmation.buyerDiscordId,
+  }));
   const claim = await robux.claimTicket(confirmation.orderId);
   if (!claim.claimed) {
     if (claim.ticketStatus === "creating") {
@@ -179,7 +169,25 @@ async function openRobuxDeliveryTicket(confirmation: {
   }
 }
 
+/** Role provisioning can outlast a webhook. The paid ticket always goes first. */
+function deferRankRoleSync(operation: string, synchronize: () => Promise<unknown>) {
+  try {
+    after(async () => {
+      try {
+        await synchronize();
+      } catch (error) {
+        logWebhookError(operation, error);
+      }
+    });
+  } catch (error) {
+    logWebhookError(operation, error);
+  }
+}
+
 function logWebhookError(operation: string, error: unknown) {
   const message = error instanceof Error ? error.message : "erro desconhecido";
-  console.error(`[payment-webhook:${operation}] ${message}`);
+  const details = error instanceof DiscordApiError
+    ? ` [${error.method} ${error.path}; código=${error.discordCode ?? "desconhecido"}]`
+    : "";
+  console.error(`[payment-webhook:${operation}] ${message}${details}`);
 }

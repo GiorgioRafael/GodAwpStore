@@ -9,7 +9,7 @@ import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reco
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /** Persist before acknowledging; Discord work runs after the response. */
 export async function POST(request: Request) {

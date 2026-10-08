@@ -8,6 +8,7 @@ import { reconcileRobuxOrders } from "@/lib/robux/reconciliation";
 import { reconcileRobuxCustomerRankRoles } from "@/lib/robux/customer-rank-role-sync";
 import { reconcileEclipsePayments } from "@/lib/eclipsepay/reconciliation";
 import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reconciliation";
+import { reconcilePaidOrderTickets } from "@/lib/payments/paid-ticket-reconciliation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ export async function GET(request: Request) {
       reconcileLeadRecoveryOffers(),
       reconcileRouletteRedemptionTickets(),
       reconcileLatePaidOrderTickets(),
+      reconcilePaidOrderTickets(),
       reconcileRobuxOrders(),
       reconcileRobuxCustomerRankRoles(),
       reconcileEclipsePayments(10),
@@ -45,6 +47,7 @@ export async function GET(request: Request) {
       leadRecovery,
       rouletteRedemptions,
       latePayments,
+      paidOrders,
       robux,
       robuxRanks,
       eclipsepay,
@@ -59,6 +62,7 @@ export async function GET(request: Request) {
         leadRecovery,
         rouletteRedemptions,
         latePayments,
+        paidOrders,
         robux,
         robuxRanks,
         eclipsepay,
