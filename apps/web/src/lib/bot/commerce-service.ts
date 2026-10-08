@@ -12,6 +12,7 @@ import type {
 import {
   calculateOrderTotalCents,
   LIVEPIX_MINIMUM_BRL_CENTS,
+  MAXIMUM_ORDER_QUANTITY,
 } from "@/lib/livepix/limits";
 import {
   applyBestCustomerDiscount,
@@ -19,7 +20,7 @@ import {
   minimumLivePixQuantityWithCustomerDiscount,
 } from "./customer-rank";
 import { MAXIMUM_CART_ITEMS as MAX_CART_ITEMS } from "./types";
-import { GW_UP_GUILD_ID } from "./gw-up-catalog";
+import { GW_UP_GUILD_ID, GW_UP_STORE_ID } from "./gw-up-catalog";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
@@ -89,7 +90,7 @@ export class BotCommerceService {
       this.repository.findPurchasableProduct(input.productId),
     ]);
 
-    if (!product || product.unlimitedStock) {
+    if (!product || product.catalogStoreId === GW_UP_STORE_ID) {
       return { kind: "product_unavailable" };
     }
     if (!guild.whitelistEntryId) {
@@ -126,11 +127,13 @@ export class BotCommerceService {
       };
     }
 
-    const availableStock = await this.repository.countAvailableStock(product.id);
-    if (availableStock < input.quantity) {
-      return availableStock < 1
-        ? { kind: "out_of_stock" }
-        : { kind: "insufficient_stock", availableStock };
+    if (!product.unlimitedStock) {
+      const availableStock = await this.repository.countAvailableStock(product.id);
+      if (availableStock < input.quantity) {
+        return availableStock < 1
+          ? { kind: "out_of_stock" }
+          : { kind: "insufficient_stock", availableStock };
+      }
     }
 
     const commissionBps = await this.repository.getCommissionBps(guild.whitelistEntryId);
@@ -238,7 +241,7 @@ export class BotCommerceService {
     if (products.length !== productIds.length) {
       return { kind: "product_unavailable" };
     }
-    if (products.some(product => product.unlimitedStock) &&
+    if (products.some(product => product.catalogStoreId === GW_UP_STORE_ID) &&
       (!input.serviceRequirementsConfirmed || input.guild.discordGuildId !== GW_UP_GUILD_ID)) {
       return { kind: "product_unavailable" };
     }
@@ -354,7 +357,8 @@ export class BotCommerceService {
     if (!registeredGuild.whitelistEntryId) {
       return { kind: "guild_not_authorized" };
     }
-    if (products.length !== input.productIds.length) {
+    if (products.length !== input.productIds.length
+      || products.some(product => product.catalogStoreId === GW_UP_STORE_ID)) {
       return { kind: "product_unavailable" };
     }
 
@@ -367,7 +371,7 @@ export class BotCommerceService {
     const availableStocks = input.productIds.map(
       (productId) => stockByProduct.get(productId) ?? 0,
     );
-    if (availableStocks.some((availableStock) => availableStock < 1)) {
+    if (availableStocks.some((availableStock, index) => !orderedProducts[index]?.unlimitedStock && availableStock < 1)) {
       return { kind: "out_of_stock" };
     }
 
@@ -378,7 +382,7 @@ export class BotCommerceService {
     const minimum = minimumLivePixCartQuantitiesWithCustomerDiscount({
       lines: orderedProducts.map((product, index) => ({
         unitPriceCents: product!.minimumPriceCents,
-        availableStock: availableStocks[index]!,
+        availableStock: product!.unlimitedStock ? MAXIMUM_ORDER_QUANTITY : availableStocks[index]!,
       })),
       boosterConfiguration: registeredGuild.boosterDiscount,
       isServerBooster: input.isServerBooster,
@@ -395,6 +399,7 @@ export class BotCommerceService {
         productName: product!.name,
         quantity: minimum.quantities[index]!,
         availableStock: availableStocks[index]!,
+        ...(product!.unlimitedStock ? { unlimitedStock: true } : {}),
       })),
       totalPriceCents: minimum.totalPriceCents,
     };

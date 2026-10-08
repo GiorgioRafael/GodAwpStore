@@ -113,3 +113,25 @@ describe("SupabaseBotCommerceRepository.ensureGuild", () => {
     expect(guildQuery.update).not.toHaveBeenCalled();
   });
 });
+
+describe("SupabaseBotCommerceRepository.findPurchasableProduct", () => {
+  it("expõe catálogo e estoque ilimitado usando somente produtos ativos", async () => {
+    const productId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+    const storeId = "22222222-2222-4222-8222-222222222222";
+    const productQuery = queryReturning({ data: { id: productId, name: "Kitsune Permanente", minimum_price_cents: 20_000, substore_id: "substore", catalog_store_id: storeId, unlimited_stock: true }, error: null });
+    const substoreQuery = queryReturning({ data: { game_id: "game" }, error: null });
+    const gameQuery = queryReturning({ data: { id: "game" }, error: null });
+    const client = { from: vi.fn((table: string) => table === "products" ? productQuery : table === "substores" ? substoreQuery : gameQuery) };
+    expect(await new SupabaseBotCommerceRepository(client as never).findPurchasableProduct(productId))
+      .toEqual({ id: productId, name: "Kitsune Permanente", minimumPriceCents: 20_000, catalogStoreId: storeId, unlimitedStock: true });
+    expect(productQuery.eq).toHaveBeenCalledWith("status", "active");
+    expect(productQuery.is).toHaveBeenCalledWith("archived_at", null);
+  });
+  it("retorna indisponível quando o produto foi pausado", async () => {
+    const productQuery = queryReturning({ data: null, error: null });
+    const client = { from: vi.fn(() => productQuery) };
+    expect(await new SupabaseBotCommerceRepository(client as never).findPurchasableProduct("9a845b40-7c4e-4d25-9f3f-3cbd27f050c9"))
+      .toBeNull();
+    expect(client.from).toHaveBeenCalledTimes(1);
+  });
+});

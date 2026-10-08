@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { BotCommerceService } from "./commerce-service";
 import type { BotCommerceRepository, DiscordGuildIdentity } from "./types";
+import { GW_UP_STORE_ID } from "./gw-up-catalog";
 
 const guild: DiscordGuildIdentity = {
   discordGuildId: "123456789012345678",
@@ -787,7 +788,7 @@ describe("BotCommerceService", () => {
 
 describe("serviços de UP sem estoque finito", () => {
   const upGuild = { ...guild, discordGuildId: "1401264061101899820" };
-  const serviceProduct = { ...product, name: "Level · 100 níveis", unlimitedStock: true };
+  const serviceProduct = { ...product, name: "Level · 100 níveis", catalogStoreId: GW_UP_STORE_ID, unlimitedStock: true };
   const cartInput = { interactionId: input.interactionId, buyerDiscordId: input.buyerDiscordId, guild: upGuild, isServerBooster: false, items: [{ productId: product.id, quantity: 5 }] };
   function upRepository() {
     return repository({ findPurchasableProducts: vi.fn(async () => [serviceProduct]), countAvailableStocks: vi.fn(async () => new Map([[product.id, 0]])) });
@@ -804,6 +805,17 @@ describe("serviços de UP sem estoque finito", () => {
     expect(await service.purchaseCart({ ...cartInput, guild, serviceRequirementsConfirmed: true })).toEqual({ kind: "product_unavailable" });
     expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
   });
+  it("mantém serviços de UP no fluxo próprio, inclusive se o estoque for alterado no painel", async () => {
+    const repo = repository({
+      findPurchasableProduct: vi.fn(async () => ({ ...serviceProduct, unlimitedStock: false })),
+      findPurchasableProducts: vi.fn(async () => [serviceProduct]),
+    });
+    const service = new BotCommerceService(repo);
+    expect(await service.purchase({ ...input, guild: upGuild })).toEqual({ kind: "product_unavailable" });
+    expect(await service.prepareCartQuantities({ buyerDiscordId: input.buyerDiscordId, productIds: [product.id], guild: upGuild, isServerBooster: false }))
+      .toEqual({ kind: "product_unavailable" });
+    expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
+  });
   it("continua verificando estoque de produtos físicos no mesmo carrinho", async () => {
     const repo = repository({ findPurchasableProducts: vi.fn(async () => [serviceProduct, secondProduct]), countAvailableStocks: vi.fn(async () => new Map([[product.id, 0], [secondProduct.id, 1]])) });
     expect(await new BotCommerceService(repo).purchaseCart({ ...cartInput, serviceRequirementsConfirmed: true, items: [...cartInput.items, { productId: secondProduct.id, quantity: 2 }] })).toMatchObject({ kind: "insufficient_stock", productName: secondProduct.name, availableStock: 1 });
@@ -813,5 +825,66 @@ describe("serviços de UP sem estoque finito", () => {
     const repo = upRepository();
     expect(await new BotCommerceService(repo).prepareUpsell(cartInput)).toEqual({ kind: "not_offered" });
     expect(repo.createUpsellOffer).not.toHaveBeenCalled();
+  });
+});
+
+describe("frutas permanentes sem limite de estoque", () => {
+  const permanent = { ...product, name: "Kitsune Permanente", catalogStoreId: "22222222-2222-4222-8222-222222222222", unlimitedStock: true };
+  const cartInput = { interactionId: input.interactionId, buyerDiscordId: input.buyerDiscordId, guild, isServerBooster: false, items: [{ productId: product.id, quantity: 5 }] };
+  function permanentRepository(overrides: Partial<BotCommerceRepository> = {}) {
+    return repository({
+      findPurchasableProduct: vi.fn(async () => permanent),
+      findPurchasableProducts: vi.fn(async () => [permanent]),
+      countAvailableStock: vi.fn(async () => 0),
+      countAvailableStocks: vi.fn(async () => new Map([[product.id, 0]])),
+      ...overrides,
+    });
+  }
+  it("cria compra simples sem consultar estoque finito", async () => {
+    const repo = permanentRepository();
+    expect(await new BotCommerceService(repo).purchase({ ...input, quantity: 5 }))
+      .toMatchObject({ kind: "created", quantity: 5, totalPriceCents: 1_000 });
+    expect(repo.countAvailableStock).not.toHaveBeenCalled();
+    expect(repo.createAwaitingPaymentOrder).toHaveBeenCalledWith(expect.objectContaining({ product: permanent, quantity: 5 }));
+  });
+  it("cria carrinho sem exigir confirmação de requisitos de UP", async () => {
+    const repo = permanentRepository();
+    expect(await new BotCommerceService(repo).purchaseCart(cartInput))
+      .toMatchObject({ kind: "created", subtotalPriceCents: 1_000, totalPriceCents: 1_000 });
+    expect(repo.createAwaitingPaymentPurchase).toHaveBeenCalledOnce();
+  });
+  it("calcula o mínimo após desconto mesmo com estoque zero", async () => {
+    const discountedRank = { ...noRank, totalSpentCents: 500, currentRank: noRank.nextRank, nextRank: null, amountToNextRankCents: 0 };
+    const repo = permanentRepository({
+      findPurchasableProducts: vi.fn(async () => [{ ...permanent, minimumPriceCents: 100 }]),
+      getCustomerRankProgress: vi.fn(async () => discountedRank),
+    });
+    expect(await new BotCommerceService(repo).prepareCartQuantities({ buyerDiscordId: input.buyerDiscordId, productIds: [product.id], guild, isServerBooster: false }))
+      .toEqual({ kind: "ready", items: [{ productId: product.id, productName: permanent.name, quantity: 2, availableStock: 0, unlimitedStock: true }], totalPriceCents: 198 });
+  });
+  it("continua bloqueando quantidade indisponível de item finito no mesmo carrinho", async () => {
+    const repo = permanentRepository({
+      findPurchasableProducts: vi.fn(async () => [permanent, secondProduct]),
+      countAvailableStocks: vi.fn(async () => new Map([[product.id, 0], [secondProduct.id, 1]])),
+    });
+    expect(await new BotCommerceService(repo).purchaseCart({ ...cartInput, items: [...cartInput.items, { productId: secondProduct.id, quantity: 2 }] }))
+      .toEqual({ kind: "insufficient_stock", productName: secondProduct.name, availableStock: 1 });
+    expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
+  });
+  it("não abre formulário se o item finito do carrinho está esgotado", async () => {
+    const repo = permanentRepository({
+      findPurchasableProducts: vi.fn(async () => [permanent, secondProduct]),
+      countAvailableStocks: vi.fn(async () => new Map([[product.id, 0], [secondProduct.id, 0]])),
+    });
+    expect(await new BotCommerceService(repo).prepareCartQuantities({ buyerDiscordId: input.buyerDiscordId, productIds: [product.id, secondProduct.id], guild, isServerBooster: false }))
+      .toEqual({ kind: "out_of_stock" });
+  });
+  it("permite pausar a fruta no painel sem criar compra ou carrinho novo", async () => {
+    const repo = permanentRepository({ findPurchasableProduct: vi.fn(async () => null), findPurchasableProducts: vi.fn(async () => []) });
+    const service = new BotCommerceService(repo);
+    expect(await service.purchase(input)).toEqual({ kind: "product_unavailable" });
+    expect(await service.purchaseCart(cartInput)).toEqual({ kind: "product_unavailable" });
+    expect(repo.createAwaitingPaymentOrder).not.toHaveBeenCalled();
+    expect(repo.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
   });
 });

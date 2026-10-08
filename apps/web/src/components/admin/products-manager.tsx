@@ -206,7 +206,7 @@ function ProductForm({
           <Field
             label="Estoque disponível"
             htmlFor={`${formId}-stock`}
-            hint={product?.unlimited_stock ? "Serviço sem limite; use o Estado para pausar." : "unidades"}
+            hint={product?.unlimited_stock ? "Estoque sem limite; use o Estado para pausar." : "unidades"}
             error={fieldError(state, "stockQuantity")}
           >
             <Input
@@ -478,7 +478,7 @@ export function ProductsManager({ products, substores, stores }: ProductsManager
               <td className="px-5 py-4 text-sm font-medium text-foreground">{product.unlimited_stock ? "Sem limite" : available.toLocaleString("pt-BR")}</td>
               <td className="px-5 py-4">
                 <Badge tone={isLowStock ? "warning" : "neutral"}>
-                  {product.unlimited_stock ? "Serviço" : `${available}/${product.low_stock_threshold}`}
+                  {product.unlimited_stock ? "Sem limite" : `${available}/${product.low_stock_threshold}`}
                 </Badge>
               </td>
               <td className="px-5 py-4"><CatalogStatusBadge status={product.status} /></td>

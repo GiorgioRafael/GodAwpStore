@@ -54,6 +54,7 @@ export type PurchasableProduct = {
   id: string;
   name: string;
   minimumPriceCents: number;
+  catalogStoreId?: string;
   unlimitedStock?: boolean;
 };
 
@@ -270,6 +271,7 @@ export type CartQuantityPreparationResult =
         productName: string;
         quantity: number;
         availableStock: number;
+        unlimitedStock?: boolean;
       }>;
       totalPriceCents: number;
     }

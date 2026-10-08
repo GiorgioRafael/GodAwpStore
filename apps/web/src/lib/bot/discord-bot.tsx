@@ -355,6 +355,7 @@ export async function createNativeDiscordQuantityResponse(
           id: preparedItem.productId,
           name: preparedItem.productName,
           minimumPriceCents: 1,
+          unlimitedStock: preparedItem.unlimitedStock,
         },
         preparedItem.availableStock,
       ] as const
@@ -371,7 +372,7 @@ export async function createNativeDiscordQuantityResponse(
   if (!minimumQuantity) {
     return discordEphemeralText(customization.quantity.invalidPriceText);
   }
-  if (availableStock < minimumQuantity) {
+  if (!product.unlimitedStock && availableStock < minimumQuantity) {
     return discordEphemeralText(
       interpolateBotMessage(customization.quantity.insufficientStockText, {
         minimum_quantity: minimumQuantity,
@@ -851,7 +852,7 @@ function productSelectOption(product: BotCatalogProduct) {
       label={truncateSelectText(product.name)}
       value={encodeDiscordCartSelection(product.id, product.name)}
       description={truncateSelectText(
-        `Preço: ${formatBrl(product.priceCents)} | Estoque: ${formatStockCount(product.availableStock)}`,
+        `Preço: ${formatBrl(product.priceCents)} | Estoque: ${product.unlimitedStock ? "Sem limite" : formatStockCount(product.availableStock)}`,
       )}
     />
   );
@@ -901,7 +902,7 @@ export function selectedProductCard(
   const minimumTotalCents = minimumQuantity ? product.priceCents * minimumQuantity : 0;
   const canBuy =
     minimumQuantity !== null &&
-    product.availableStock >= minimumQuantity &&
+    (product.unlimitedStock || product.availableStock >= minimumQuantity) &&
     minimumTotalCents >= LIVEPIX_MINIMUM_BRL_CENTS;
   return (
     <Card
@@ -934,7 +935,7 @@ export function selectedProductCard(
       ) : null}
       {message.stockText ? (
         <CardText>
-          {interpolateBotMessage(message.stockText, { stock: stockLabel(product.availableStock) })}
+          {interpolateBotMessage(message.stockText, { stock: product.unlimitedStock ? "Sem limite" : stockLabel(product.availableStock) })}
         </CardText>
       ) : null}
       {minimumQuantity ? (

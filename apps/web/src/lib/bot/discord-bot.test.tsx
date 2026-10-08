@@ -601,6 +601,49 @@ describe("Discord catalog cards", () => {
     expect(serialized).toContain('"id":"choose_quantity"');
   });
 
+  it.each([true, false])("mostra disponibilidade correta de fruta com estoque zero (sem limite=%s)", (unlimitedStock) => {
+    const selection = {
+      game: { id: "game", name: "Blox Fruits", substores: [] },
+      substore: { id: "permanentes", name: "Permanentes", title: "Frutas permanentes", description: "", colorHex: "#D4AF37", imageUrl: null, products: [] },
+      product: { id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9", name: "Kitsune Permanente", description: null, priceCents: 20_000, availableStock: 0, unlimitedStock, sortOrder: 0 },
+    };
+    const serialized = JSON.stringify(toCardElement(selectedProductCard(selection)));
+    if (unlimitedStock) {
+      expect(serialized).toContain("Sem limite");
+      expect(serialized).toContain('"id":"choose_quantity"');
+      expect(serialized).not.toContain("0 unidades");
+    } else {
+      expect(serialized).toContain("0 unidades");
+      expect(serialized).not.toContain('"id":"choose_quantity"');
+    }
+  });
+
+  it("mostra Sem limite no seletor público de permanentes", () => {
+    const [card] = catalogCards([{
+      id: "game", name: "Blox Fruits",
+      substores: [{
+        id: "permanentes", name: "Permanentes", title: "Frutas permanentes", description: "", colorHex: "#D4AF37", imageUrl: null,
+        products: [{ id: "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9", name: "Kitsune Permanente", description: null, priceCents: 20_000, availableStock: 0, unlimitedStock: true, sortOrder: 0 }],
+      }],
+    }]);
+    const serialized = JSON.stringify(toCardElement(card));
+    expect(serialized).toContain("Estoque: Sem limite");
+    expect(serialized).not.toContain("Estoque: 0");
+  });
+
+  it.each([false, true])("abre quantidade de permanente com estoque zero (pré-calculada=%s)", async (prepared) => {
+    const productId = "9a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+    const repository = {
+      findPurchasableProduct: vi.fn(async () => ({ id: productId, name: "Kitsune Permanente", minimumPriceCents: 20_000, unlimitedStock: true })),
+      countAvailableStock: vi.fn(async () => 0),
+    };
+    const response = await createNativeDiscordQuantityResponse(productId, repository, undefined,
+      prepared ? { kind: "ready", items: [{ productId, productName: "Kitsune Permanente", quantity: 1, availableStock: 0, unlimitedStock: true }], totalPriceCents: 20_000 } : undefined,
+    );
+    expect(response).toMatchObject({ type: 9, data: { components: [{ components: [expect.objectContaining({ value: "1", label: "Quantidade (mínimo 1)" })] }] } });
+    if (prepared) expect(repository.findPurchasableProduct).not.toHaveBeenCalled();
+  });
+
   it("recalcula o mínimo ao abrir o formulário, ignorando o valor antigo do botão", async () => {
     const interaction = parseNativeDiscordQuantityInteraction({
       type: 3,

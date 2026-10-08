@@ -382,6 +382,7 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       id: product.id,
       name: product.name,
       minimumPriceCents: safeInteger(product.minimum_price_cents),
+      catalogStoreId: product.catalog_store_id,
       unlimitedStock: "unlimited_stock" in product && product.unlimited_stock === true,
     };
   }
