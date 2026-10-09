@@ -10,13 +10,17 @@ Configure o serviço web pela interface/API atual da Railway:
 | Diretório raiz | Raiz deste repositório |
 | Build | `npm exec --workspace @godawp/web -- next build` |
 | Start | `node apps/web/scripts/start-railway.mjs` |
+| `RAILPACK_BUILD_CMD` no serviço web GWStore | `npm exec --workspace @godawp/web -- next build` |
+| `RAILPACK_START_CMD` no serviço web GWStore | `node apps/web/scripts/start-railway.mjs` |
 | Health check | `/api/health` |
 | Startup health timeout | 120 segundos |
 | Encerramento | Pelo menos 30 segundos de drain após SIGTERM |
 | Réplicas | 1 |
 | Sleep/serverless | Desativado |
 
-O build invoca o Next diretamente, sem executar o `postbuild` da Vercel que publica alterações no Discord. O novo serviço não usa o arquivo legado `railway.json` do worker.
+Neste projeto, o gerador Railpack dos deploys conectados ao GitHub ainda lê o `railway.json` da raiz, mesmo com os comandos web configurados no painel do serviço. Defina também `RAILPACK_BUILD_CMD` e `RAILPACK_START_CMD` com os valores da tabela **somente no serviço web GWStore** para garantir que o plano compile e inicie o Next. Preserve o `railway.json` da raiz e a configuração do serviço de convites.
+
+O build web invoca o Next diretamente, sem executar o `postbuild` da Vercel que publica alterações no Discord.
 
 Use as mesmas credenciais de produção do Supabase, Discord e provedores de pagamento. `NODE_ENV=production`, `NEXT_PUBLIC_STORE_NAME=GWStore` e `NEXT_PUBLIC_SITE_URL=https://gwstoreofc.com` precisam estar configurados antes do build; as variáveis `NEXT_PUBLIC_*` são incorporadas à aplicação compilada. Não copie `VERCEL`/`VERCEL_ENV` para simular a plataforma. O serviço lê a porta entregue em `PORT` e escuta em `0.0.0.0`.
 
@@ -48,9 +52,11 @@ O Owner precisa adicionar os callbacks HTTPS de `gwstoreofc.com`/`www.gwstoreofc
 
 Antes do cutover, valide `/auth/login` e o OAuth de sorteios pela ponte real. O proxy Vercel sobrescreve `X-GWStore-Public-Host` com o hostname da origem GW validada antes do rewrite; esse header preserva a origem mesmo quando a edge Railway substitui `X-Forwarded-Host`. A aplicação interpreta o header dedicado somente com a identidade de ambiente Railway e um Host do próprio serviço confirmado, aceitando apenas `gwstore.vercel.app`, `gwstoreofc.com` e `www.gwstoreofc.com`, sem porta, esquema ou lista de hosts. Acessos diretos aos domínios da loja, ao painel mestre e à THStore ignoram esses headers. `X-Forwarded-Host` continua como fallback sujeito à mesma lista. Redirecionamentos repetidos para a própria entrada de login indicam que essa origem não foi preservada e precisam ser corrigidos antes de ativar o fluxo.
 
-## Sincronização do Discord após o deploy
+## Sincronização opcional do Discord
 
-Execute uma vez, explicitamente, depois da troca da produção:
+A mudança de hospedagem preserva o alias público existente e o Supabase com as configurações de vitrines e tickets. A sincronização abaixo é opcional, para quando for necessário republicar vitrines, comandos ou controles. Ela executa os dez passos de publicação; a troca de hospedagem por si só não exige essa republicação.
+
+Quando houver necessidade de republicação, execute explicitamente após a troca da produção:
 
 ```sh
 node apps/web/scripts/sync-railway-production.mjs --confirm-production
