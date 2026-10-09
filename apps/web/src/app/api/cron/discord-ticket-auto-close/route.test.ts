@@ -18,6 +18,10 @@ const request = (authorization = "Bearer cron-secret") => new Request(
 );
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-secret");
+  vi.stubEnv("VERCEL", "");
+  vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", "");
+  vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "");
+  vi.stubEnv("RAILWAY_SERVICE_ID", "");
   mocks.brand.IS_GWSTORE = true;
   mocks.claims.mockResolvedValue({ completed: 0, failed: 0 });
   mocks.delivered.mockResolvedValue({ completed: 0, failed: 0 });
@@ -26,6 +30,28 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); });
 
 describe("fechamento automático de compras e vendas da GWStore", () => {
+  it("exige o segredo antes do noop e deixa a Railway cuidar das filas", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", "https://gwstore-web-production.up.railway.app");
+    expect((await GET(request("Bearer wrong-secret"))).status).toBe(401);
+    const response = await GET(request());
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ ok: true, status: "railway-managed" });
+    expect(mocks.claims).not.toHaveBeenCalled();
+    expect(mocks.delivered).not.toHaveBeenCalled();
+    expect(mocks.selling).not.toHaveBeenCalled();
+  });
+  it.each(["outside-vercel", "railway", "invalid-origin"])("continua executando com %s", async mode => {
+    vi.stubEnv("VERCEL", mode === "outside-vercel" ? "" : "1");
+    vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", mode === "invalid-origin"
+      ? "https://other-store.up.railway.app" : "https://gwstore-web-production.up.railway.app");
+    if (mode === "railway") vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "railway-environment");
+    expect((await GET(request())).status).toBe(200);
+    expect(mocks.claims).toHaveBeenCalledOnce();
+    expect(mocks.delivered).toHaveBeenCalledOnce();
+    expect(mocks.selling).toHaveBeenCalledOnce();
+  });
   it("recusa requisições sem segredo válido antes de acessar tickets", async () => {
     expect((await GET(request("Bearer wrong-secret"))).status).toBe(401);
     vi.stubEnv("CRON_SECRET", "");

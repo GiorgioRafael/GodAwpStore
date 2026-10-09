@@ -1,17 +1,26 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getStoreAuthSiteUrl } from "@/lib/env";
+import { getGwStoreLoginOrigin, getStoreAuthSiteUrl } from "@/lib/env";
+import { publicRequestOrigin } from "@/lib/public-request-origin";
 import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
 import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const siteOrigin = getStoreAuthSiteUrl(request.nextUrl.origin);
+  const requestOrigin = publicRequestOrigin(request);
+  const siteOrigin = getStoreAuthSiteUrl(requestOrigin);
   const next = safeInternalPath(request.nextUrl.searchParams.get("next"), siteOrigin);
+  const loginOrigin = getGwStoreLoginOrigin();
+  if (loginOrigin && requestOrigin !== loginOrigin && !isMasterAdminPath(next, requestOrigin)) {
+    const target = new URL("/auth/login", loginOrigin);
+    target.searchParams.set("next", next);
+    // Redirect before the SSR client can write a host-scoped PKCE verifier.
+    return NextResponse.redirect(target);
+  }
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
-    const login = isMasterAdminPath(next, request.nextUrl.origin)
+    const login = isMasterAdminPath(next, requestOrigin)
       ? masterAdminLoginHref(next, { setup: true })
       : "/login?setup=1";
     return NextResponse.redirect(new URL(login, siteOrigin));
@@ -29,7 +38,7 @@ export async function GET(request: NextRequest) {
   });
 
   if (error || !data.url) {
-    const login = isMasterAdminPath(next, request.nextUrl.origin)
+    const login = isMasterAdminPath(next, requestOrigin)
       ? masterAdminLoginHref(next, { error: "oauth" })
       : "/login?erro=oauth";
     return NextResponse.redirect(new URL(login, siteOrigin));

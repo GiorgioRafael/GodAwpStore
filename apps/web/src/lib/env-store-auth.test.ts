@@ -5,7 +5,7 @@ const brand = vi.hoisted(() => ({ gw: true }));
 vi.mock("server-only", () => ({}));
 vi.mock("./brand", () => ({ get IS_GWSTORE() { return brand.gw; } }));
 
-import { getSiteUrl, getStoreAuthSiteUrl } from "./env";
+import { getGwStoreLoginOrigin, getSiteUrl, getStoreAuthSiteUrl } from "./env";
 
 beforeEach(() => {
   brand.gw = true;
@@ -15,6 +15,9 @@ beforeEach(() => {
   vi.stubEnv("VERCEL_URL", "");
   vi.stubEnv("VERCEL_BRANCH_URL", "");
   vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
+  vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "");
+  vi.stubEnv("RAILWAY_STATIC_URL", "");
+  vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "");
 });
 
 afterEach(() => {
@@ -53,6 +56,20 @@ describe("shop OAuth origin", () => {
     vi.stubEnv("VERCEL_URL", new URL(origin).hostname);
 
     expect(getStoreAuthSiteUrl(origin)).toBe("https://gwstoreofc.com");
+  });
+
+  it.each([
+    ["RAILWAY_PUBLIC_DOMAIN", "gwstore-production.up.railway.app"],
+    ["RAILWAY_STATIC_URL", "https://gwstore-production.up.railway.app"],
+  ])("preserva PKCE no domínio Railway configurado em %s", (variable, configured) => {
+    vi.stubEnv(variable, configured);
+
+    expect(getStoreAuthSiteUrl("https://gwstore-production.up.railway.app"))
+      .toBe("https://gwstore-production.up.railway.app");
+    expect(getStoreAuthSiteUrl("http://gwstore-production.up.railway.app"))
+      .toBe("https://gwstoreofc.com");
+    expect(getStoreAuthSiteUrl("https://other-project.up.railway.app"))
+      .toBe("https://gwstoreofc.com");
   });
 
   it.each([
@@ -103,5 +120,33 @@ describe("shop OAuth origin", () => {
 
     expect(() => getStoreAuthSiteUrl("https://untrusted.example"))
       .toThrow("NEXT_PUBLIC_SITE_URL não configurada em produção.");
+  });
+});
+
+describe("temporary GW OAuth entry origin", () => {
+  it.each(["https://gwstore.vercel.app", "https://gwstoreofc.com", "https://www.gwstoreofc.com/"])(
+    "accepts only a known HTTPS origin: %s",
+    (origin) => {
+      vi.stubEnv("GWSTORE_LOGIN_ORIGIN", origin);
+      expect(getGwStoreLoginOrigin()).toBe(new URL(origin).origin);
+    },
+  );
+
+  it.each([
+    "", "http://gwstore.vercel.app", "https://101devs.com", "https://thstoreadm.vercel.app",
+    "https://external.example", "https://gwstore.vercel.app.external.example",
+    "https://user:password@gwstore.vercel.app", "https://gwstore.vercel.app:443",
+    "https://gwstore.vercel.app:444", "https://gwstore.vercel.app/auth/login",
+    "https://gwstore.vercel.app?next=/admin", "https://gwstore.vercel.app#fragment",
+    "https://gwstore.vercel.app,external.example",
+  ])("does not activate an invalid entry origin: %s", (origin) => {
+    vi.stubEnv("GWSTORE_LOGIN_ORIGIN", origin);
+    expect(getGwStoreLoginOrigin()).toBeNull();
+  });
+
+  it("does not change the THStore OAuth flow even if the setting is copied", () => {
+    brand.gw = false;
+    vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "https://gwstore.vercel.app");
+    expect(getGwStoreLoginOrigin()).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getStoreAuthSiteUrl } from "@/lib/env";
+import { publicRequestOrigin } from "@/lib/public-request-origin";
 
 import {
   discordAccountCreatedAt,
@@ -27,7 +28,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const siteOrigin = getStoreAuthSiteUrl(requestUrl.origin);
+  const siteOrigin = getStoreAuthSiteUrl(publicRequestOrigin(request));
   const stateToken = requestUrl.searchParams.get("state") ?? "";
   const code = requestUrl.searchParams.get("code") ?? "";
   const cookieToken = readCookie(request.headers.get("cookie"), GIVEAWAY_OAUTH_COOKIE);

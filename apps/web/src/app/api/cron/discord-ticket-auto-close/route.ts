@@ -2,6 +2,7 @@ import { IS_GWSTORE } from "@/lib/brand";
 import { reconcileDeliveredDiscordTicketAutoCloses } from "@/lib/bot/discord-ticket-auto-close";
 import { reconcileDiscordTicketCloseClaims } from "@/lib/bot/discord-ticket-close-reconciliation";
 import { reconcileCompletedGwStoreItemSellingTickets } from "@/lib/bot/discord-item-selling-server";
+import { shouldSkipVercelGwStoreCron } from "@/lib/railway-bridge";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,6 +14,11 @@ export async function GET(request: Request) {
   if (!cronSecret || request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
     return new Response("Unauthorized", {
       status: 401,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+  if (shouldSkipVercelGwStoreCron()) {
+    return Response.json({ ok: true, status: "railway-managed" }, {
       headers: { "Cache-Control": "no-store" },
     });
   }

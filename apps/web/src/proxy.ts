@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isPublicAdminPanelPath } from "@/lib/admin-routes";
 import { IS_GWSTORE } from "@/lib/brand";
 import { isGwStoreAdminOrigin, legacyStoreAdminRedirect, storeAdminRewritePath } from "@/lib/store-admin-routes";
+import { shouldProxyGwStoreToRailway } from "@/lib/railway-bridge";
+import { publicRequestOrigin } from "@/lib/public-request-origin";
 import {
   extractDiscordIdentity,
   extractGoogleIdentity,
@@ -17,8 +19,11 @@ import {
 } from "@/lib/master-admin-auth";
 
 export async function proxy(request: NextRequest) {
-  const origin = request.nextUrl.origin;
+  const origin = publicRequestOrigin(request);
   const pathname = request.nextUrl.pathname;
+  // Rewrites run after this proxy. Railway must receive the untouched URL and
+  // own its session refresh/auth checks, rather than authenticate twice here.
+  if (shouldProxyGwStoreToRailway(origin, pathname)) return NextResponse.next({ request });
   const isStoreOrigin = isGwStoreAdminOrigin(origin);
   const rewritePath = storeAdminRewritePath(pathname, origin);
   const legacyRedirect = (request.method === "GET" || request.method === "HEAD")
@@ -30,8 +35,7 @@ export async function proxy(request: NextRequest) {
 
   // Historical links move before rendering. POSTs keep reaching their Server Actions.
   if (legacyRedirect && !isSharedPixLink) {
-    const target = request.nextUrl.clone();
-    target.pathname = legacyRedirect;
+    const target = new URL(`${legacyRedirect}${request.nextUrl.search}`, origin);
     return NextResponse.redirect(target);
   }
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -92,8 +96,7 @@ export async function proxy(request: NextRequest) {
       return redirectPreservingSession(request, response, "/pagar");
     }
     if (legacyRedirect) {
-      const target = request.nextUrl.clone();
-      target.pathname = legacyRedirect;
+      const target = new URL(`${legacyRedirect}${request.nextUrl.search}`, origin);
       const redirect = NextResponse.redirect(target);
       for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
       return redirect;
@@ -123,7 +126,7 @@ function redirectPreservingSession(
   pathname: string,
   searchParams?: Record<string, string>,
 ) {
-  const target = new URL(pathname, request.nextUrl.origin);
+  const target = new URL(pathname, publicRequestOrigin(request));
   for (const [key, value] of Object.entries(searchParams ?? {})) {
     target.searchParams.set(key, value);
   }

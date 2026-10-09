@@ -33,7 +33,8 @@ export function isGwStoreAdminOrigin(origin: string): boolean {
     || hostname === parseHostname(process.env.MASTER_ADMIN_SITE_URL)) return false;
   const hosts = ["gwstoreofc.com", "www.gwstoreofc.com", "gwstore.vercel.app", "localhost", "127.0.0.1", "[::1]"];
   for (const configured of [process.env.NEXT_PUBLIC_SITE_URL, process.env.VERCEL_URL,
-    process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL]) {
+    process.env.VERCEL_BRANCH_URL, process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.RAILWAY_PUBLIC_DOMAIN, process.env.RAILWAY_STATIC_URL]) {
     const configuredHost = parseHostname(configured);
     if (configuredHost) hosts.push(configuredHost);
   }

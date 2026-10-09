@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   createGiveawayOAuthState: vi.fn(),
   getGiveawayOAuthContext: vi.fn(),
   signInWithOAuth: vi.fn(),
+  createServerSupabaseClient: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -17,9 +18,7 @@ vi.mock("@/lib/giveaways/repository", () => ({
   getGiveawayOAuthContext: mocks.getGiveawayOAuthContext,
 }));
 vi.mock("@/lib/supabase/server", () => ({
-  createServerSupabaseClient: vi.fn(async () => ({
-    auth: { signInWithOAuth: mocks.signInWithOAuth },
-  })),
+  createServerSupabaseClient: mocks.createServerSupabaseClient,
 }));
 
 import { GET } from "./route";
@@ -35,6 +34,10 @@ const giveaway = {
 beforeEach(() => {
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://gwstoreofc.com");
+  vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "");
+  vi.stubEnv("RAILWAY_SERVICE_ID", "");
+  vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "");
+  mocks.createServerSupabaseClient.mockResolvedValue({ auth: { signInWithOAuth: mocks.signInWithOAuth } });
   mocks.getGiveawayOAuthContext.mockResolvedValue(giveaway);
   mocks.createGiveawayOAuthState.mockReturnValue("signed-state");
   mocks.signInWithOAuth.mockResolvedValue({
@@ -49,6 +52,62 @@ afterEach(() => {
 });
 
 describe("giveaway OAuth start", () => {
+  it("inicia sorteio no legacy antes de gerar estado e PKCE, mantendo indicação validada", async () => {
+    vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "https://gwstore.vercel.app");
+    const ref = "22222222-2222-4222-8222-222222222222";
+
+    const response = await GET(new Request(`https://www.gwstoreofc.com/api/sorteios/oauth/iniciar?slug=abc123def456&ref=${ref}`));
+
+    expect(response.headers.get("location"))
+      .toBe(`https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&ref=${ref}`);
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(mocks.getGiveawayOAuthContext).not.toHaveBeenCalled();
+    expect(mocks.createGiveawayOAuthState).not.toHaveBeenCalled();
+    expect(mocks.createServerSupabaseClient).not.toHaveBeenCalled();
+    expect(mocks.signInWithOAuth).not.toHaveBeenCalled();
+  });
+
+  it("mantém modo visualizar e inicia OAuth quando já está no host legado", async () => {
+    vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "https://gwstore.vercel.app");
+    const response = await GET(new Request("https://gwstoreofc.com/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar"));
+    expect(response.headers.get("location"))
+      .toBe("https://gwstore.vercel.app/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar");
+
+    await GET(new Request(response.headers.get("location")!));
+    expect(mocks.signInWithOAuth).toHaveBeenCalledWith({ provider: "discord", options: {
+      redirectTo: "https://gwstore.vercel.app/api/sorteios/oauth/retorno?state=signed-state", scopes: "identify",
+    } });
+  });
+
+  it.each(["https://gwstore-web-production.up.railway.app", "https://0.0.0.0:8080"])(
+    "mantém query state e callback legado pela ponte Railway em %s",
+    async (actualOrigin) => {
+      vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "test-environment");
+      vi.stubEnv("RAILWAY_SERVICE_ID", "test-service");
+      vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "gwstore-web-production.up.railway.app");
+      vi.stubEnv("PORT", "8080");
+
+      const response = await GET(new Request(`${actualOrigin}/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar`, {
+        headers: {
+          host: "gwstore-web-production.up.railway.app",
+          "x-forwarded-host": "gwstore.vercel.app",
+          "x-forwarded-proto": "https",
+        },
+      }));
+
+      expect(mocks.signInWithOAuth).toHaveBeenCalledWith({
+        provider: "discord",
+        options: {
+          redirectTo: "https://gwstore.vercel.app/api/sorteios/oauth/retorno?state=signed-state",
+          scopes: "identify",
+        },
+      });
+      expect(response.headers.get("set-cookie")).toContain("gw_giveaway_oauth_state=signed-state");
+      expect(response.headers.get("set-cookie")).toContain("Path=/api/sorteios/oauth/retorno");
+      expect(response.headers.get("set-cookie")).not.toContain("Domain=");
+    },
+  );
+
   it.each([
     "https://gwstoreofc.com",
     "https://www.gwstoreofc.com",

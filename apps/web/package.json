@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node --conditions=react-server --import tsx scripts/reconcile-robux-orders.ts --deployment && node scripts/register-discord-commands.mjs --deployment && node --conditions=react-server --import tsx scripts/run-discord-storefront-repair.mjs --deployment && node scripts/refresh-discord-brand-banners.mjs --deployment && node --conditions=react-server --import tsx scripts/refresh-discord-product-emojis.ts --deployment && node scripts/refresh-discord-product-option-emojis.mjs --deployment && node --conditions=react-server --import tsx scripts/sync-discord-top-spenders.ts --deployment && node --conditions=react-server --import tsx scripts/sync-discord-item-selling.ts --deployment && node --conditions=react-server --import tsx scripts/sync-discord-ticket-categories.ts --deployment && node --conditions=react-server --import tsx scripts/sync-discord-up-services.ts --deployment",
+    "postbuild": "node --conditions=react-server --import tsx scripts/run-deployment-postbuild.ts",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",

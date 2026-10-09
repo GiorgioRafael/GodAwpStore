@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import { withMicrofrontends } from "@vercel/microfrontends/next/config";
+import { gwStoreRailwayRewrites, gwStoreRailwayServerActionOrigins } from "./src/lib/railway-bridge";
+
+const railwayServerActionOrigins = gwStoreRailwayServerActionOrigins();
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@godawp/domain"],
@@ -7,6 +10,14 @@ const nextConfig: NextConfig = {
   // as a native Node dependency; this bot only uses signed HTTP Interactions.
   serverExternalPackages: ["@chat-adapter/discord"],
   poweredByHeader: false,
+  ...(railwayServerActionOrigins ? {
+    experimental: { serverActions: { allowedOrigins: railwayServerActionOrigins } },
+  } : {}),
+  async rewrites() {
+    // beforeFiles also forwards _next assets from the current Railway build.
+    // Host conditions keep the 101Devs microfrontend and THStore on Vercel.
+    return { beforeFiles: gwStoreRailwayRewrites(), afterFiles: [], fallback: [] };
+  },
   async headers() {
     return [
       {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { getStoreAuthSiteUrl } from "@/lib/env";
+import { getGwStoreLoginOrigin, getStoreAuthSiteUrl } from "@/lib/env";
+import { publicRequestOrigin } from "@/lib/public-request-origin";
 import {
   createGiveawayOAuthState,
   GIVEAWAY_OAUTH_COOKIE,
@@ -18,7 +19,8 @@ const UUID_PATTERN =
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
-  const siteOrigin = getStoreAuthSiteUrl(requestUrl.origin);
+  const requestOrigin = publicRequestOrigin(request);
+  const siteOrigin = getStoreAuthSiteUrl(requestOrigin);
   const slug = requestUrl.searchParams.get("slug")?.trim().toLowerCase() ?? "";
   const intent = requestUrl.searchParams.get("modo") === "visualizar" ? "view" : "participate";
   const referralToken = intent === "participate"
@@ -26,6 +28,14 @@ export async function GET(request: Request) {
     : null;
   if (!SLUG_PATTERN.test(slug) || (referralToken && !UUID_PATTERN.test(referralToken))) {
     return redirectToGiveaway(siteOrigin, slug, "link_invalido");
+  }
+  const loginOrigin = getGwStoreLoginOrigin();
+  if (loginOrigin && requestOrigin !== loginOrigin) {
+    const target = new URL("/api/sorteios/oauth/iniciar", loginOrigin);
+    target.searchParams.set("slug", slug);
+    if (intent === "view") target.searchParams.set("modo", "visualizar");
+    if (referralToken) target.searchParams.set("ref", referralToken);
+    return NextResponse.redirect(target);
   }
 
   try {

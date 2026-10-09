@@ -3,6 +3,7 @@ vi.mock("@/lib/eclipsepay/reconciliation", () => ({ reconcileEclipsePayments: vi
 vi.mock("@/lib/eclipsepay/payment-link-reconciliation", () => ({ reconcileEclipsePaymentLinks: vi.fn().mockResolvedValue({ processed: 0, failed: 0 }) }));
 
 const mocks = vi.hoisted(() => ({
+  brand: { IS_GWSTORE: true },
   reconcileDiscordTicketCloseClaims: vi.fn(),
   reconcileDeliveredDiscordTicketAutoCloses: vi.fn(),
   reconcileGiveaways: vi.fn(),
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   reconcileRobuxCustomerRankRoles: vi.fn(),
   synchronizeGwStoreTopSpenders: vi.fn(),
 }));
+vi.mock("@/lib/brand", () => mocks.brand);
 
 vi.mock("@/lib/bot/discord-top-spenders", () => ({
   synchronizeGwStoreTopSpenders: mocks.synchronizeGwStoreTopSpenders,
@@ -96,6 +98,11 @@ const paidOrderResult = { checked: 1, opened: 1, skipped: 0, failed: 0, deferred
 
 beforeEach(() => {
   vi.stubEnv("CRON_SECRET", "cron-secret-value");
+  vi.stubEnv("VERCEL", "");
+  vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", "");
+  vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "");
+  vi.stubEnv("RAILWAY_SERVICE_ID", "");
+  mocks.brand.IS_GWSTORE = true;
   mocks.reconcileDiscordTicketCloseClaims.mockResolvedValue(result);
   mocks.reconcileDeliveredDiscordTicketAutoCloses.mockResolvedValue(
     deliveredTicketAutoCloseResult,
@@ -116,6 +123,33 @@ afterEach(() => {
 });
 
 describe("Discord ticket close reconciliation cron", () => {
+  it("autentica antes de retornar noop sem iniciar as filas da Vercel", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", "https://gwstore-web-production.up.railway.app");
+    const url = "https://gwstore.vercel.app/api/cron/discord-ticket-close-reconciliation";
+    expect((await GET(new Request(url))).status).toBe(401);
+    const response = await GET(new Request(url, { headers: { authorization: "Bearer cron-secret-value" } }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ ok: true, status: "railway-managed" });
+    for (const mock of Object.values(mocks)) {
+      if (typeof mock === "function") expect(mock).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each(["outside-vercel", "railway", "invalid-origin", "thstore"])("preserva as filas com %s", async mode => {
+    vi.stubEnv("VERCEL", mode === "outside-vercel" ? "" : "1");
+    vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", mode === "invalid-origin"
+      ? "https://other-store.up.railway.app" : "https://gwstore-web-production.up.railway.app");
+    if (mode === "railway") vi.stubEnv("RAILWAY_SERVICE_ID", "railway-service");
+    if (mode === "thstore") mocks.brand.IS_GWSTORE = false;
+    const response = await GET(new Request("https://gwstore.vercel.app/api/cron/discord-ticket-close-reconciliation",
+      { headers: { authorization: "Bearer cron-secret-value" } }));
+    expect(response.status).toBe(200);
+    expect(mocks.reconcileDiscordTicketCloseClaims).toHaveBeenCalledOnce();
+    expect(mocks.reconcilePaidOrderTickets).toHaveBeenCalledOnce();
+  });
+
   it.each([undefined, "Bearer wrong-secret", "cron-secret-value"])(
     "rejeita Authorization invalido: %s",
     async (authorization) => {

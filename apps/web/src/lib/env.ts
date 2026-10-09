@@ -83,6 +83,16 @@ export function getStoreAuthSiteUrl(requestOrigin?: string): string {
   return getSiteUrl();
 }
 
+/** Temporary OAuth entry host while custom callbacks await Supabase approval. */
+export function getGwStoreLoginOrigin(): string | null {
+  if (!IS_GWSTORE) return null;
+  const configured = process.env.GWSTORE_LOGIN_ORIGIN?.trim();
+  if (!configured || !/^https:\/\/(?:gwstore\.vercel\.app|gwstoreofc\.com|www\.gwstoreofc\.com)\/?$/i.test(configured)) {
+    return null;
+  }
+  return new URL(configured).origin;
+}
+
 export function getMasterAdminSiteUrl(requestOrigin?: string): string {
   const configured = process.env.MASTER_ADMIN_SITE_URL?.trim();
   if (configured) {

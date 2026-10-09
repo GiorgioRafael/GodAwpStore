@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   brand: { IS_GWSTORE: true }, enabled: true, db: { rpc: vi.fn(), from: vi.fn() },
@@ -18,6 +18,8 @@ const token = "a".repeat(64);
 const input = { amountCents: 4000, redirectUrl: `https://gwstore.vercel.app/pagamento/${id}` };
 beforeEach(() => {
   vi.clearAllMocks(); mocks.brand.IS_GWSTORE = true; mocks.enabled = true;
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://gwstore.vercel.app");
   vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "test-only");
   mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) });
   mocks.db.rpc.mockImplementation((name) => name === "prepare_eclipsepay_checkout"
@@ -25,6 +27,7 @@ beforeEach(() => {
     : Promise.resolve({ error: null }));
   mocks.eclipse.createCharge.mockResolvedValue({ id: operation, status: "pending", amountCents: 4000, brCode: "code", expiresAt: null });
 });
+afterEach(() => vi.unstubAllEnvs());
 describe("isolated payment provider routing", () => {
   it.each([1, 79, 80, 500, 999, 1000])("usa LivePix para uma cobrança nova de %i centavos", async (amountCents) => {
     const small = { ...input, amountCents };
@@ -99,6 +102,30 @@ describe("isolated payment provider routing", () => {
     expect(mocks.eclipse.createCharge).toHaveBeenCalledWith(id, { amountCents: 4000, description: `GWStore ${id}` });
     expect(mocks.db.rpc.mock.calls[1][0]).toBe("register_eclipsepay_operation");
     expect(result).toEqual({ reference: `ep:${operation}`, checkoutUrl: `https://gwstore.vercel.app/pagamento/pix/${token}` });
+  });
+  it.each(["https://gwstoreofc.com", "https://www.gwstoreofc.com", "https://gwstore-production.up.railway.app"])(
+    "gera checkout EclipsePay no endereço canônico %s preservando token e referência",
+    async (origin) => {
+      vi.stubEnv("NEXT_PUBLIC_SITE_URL", origin);
+
+      const result = await getPaymentClient().createPayment(input);
+
+      expect(result).toEqual({
+        reference: `ep:${operation}`,
+        checkoutUrl: `${origin}/pagamento/pix/${token}`,
+      });
+      expect(mocks.eclipse.createCharge).toHaveBeenCalledWith(id, {
+        amountCents: 4000, description: `GWStore ${id}`,
+      });
+      expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["", "http://gwstoreofc.com"])("não emite Pix sem endereço HTTPS válido de produção (%s)", async (origin) => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", origin);
+
+    await expect(getPaymentClient().createPayment(input)).rejects.toThrow("NEXT_PUBLIC_SITE_URL");
+    expect(mocks.db.rpc).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
   });
   it("usa a mesma intenção em tentativas repetidas e não cai no LivePix depois de timeout", async () => {
     mocks.eclipse.createCharge.mockRejectedValueOnce(new Error("timeout"));

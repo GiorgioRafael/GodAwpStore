@@ -1,6 +1,7 @@
 import "server-only";
 import { z } from "zod";
 import { IS_GWSTORE } from "@/lib/brand";
+import { getSiteUrl } from "@/lib/env";
 import { getLivePixClient, type LivePixPayment } from "@/lib/livepix/client";
 import { eclipseCheckoutSchema, eclipseDatabase, eclipsePayEnabled, getEclipsePayClient } from "@/lib/eclipsepay/runtime";
 
@@ -62,6 +63,7 @@ export function getPaymentClient() {
       if (input.amountCents < 80 || input.amountCents > ECLIPSE_MAX_AMOUNT_CENTS) {
         throw new Error("O Pix EclipsePay aceita até R$ 1.000,00 por pedido. Ajuste a quantidade ou fale com a loja.");
       }
+      const checkoutOrigin = getSiteUrl();
       const { data, error } = await db.rpc("prepare_eclipsepay_checkout", { p_order_id: id, p_amount_cents: input.amountCents }).single();
       if (error || !data) throw new Error("Não foi possível preparar o Pix.");
       const checkout = eclipseCheckoutSchema.parse(data);
@@ -71,7 +73,10 @@ export function getPaymentClient() {
         p_order_id: id, p_operation_id: charge.id, p_br_code: charge.brCode ?? null, p_expires_at: charge.expiresAt,
       });
       if (registrationError) throw new Error("O Pix está sendo registrado. Tente novamente em instantes.");
-      return { reference: `ep:${charge.id}`, checkoutUrl: `https://gwstore.vercel.app/pagamento/pix/${checkout.checkout_token}` };
+      return {
+        reference: `ep:${charge.id}`,
+        checkoutUrl: new URL(`/pagamento/pix/${checkout.checkout_token}`, checkoutOrigin).toString(),
+      };
     },
     async getPaymentByReference(reference: string): Promise<LivePixPayment> {
       if (!reference.startsWith("ep:")) return getLivePixClient().getPaymentByReference(reference);

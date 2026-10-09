@@ -4,7 +4,11 @@ const { brand } = vi.hoisted(() => ({ brand: { gw: true } }));
 vi.mock("./brand", () => ({ get IS_GWSTORE() { return brand.gw; } }));
 import { defaultStoreAdminPath, isGwStoreAdminOrigin, legacyStoreAdminRedirect, storeAdminHref, storeAdminRewritePath, storeAdminUrl } from "./store-admin-routes";
 
-beforeEach(() => { brand.gw = true; });
+beforeEach(() => {
+  brand.gw = true;
+  vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "");
+  vi.stubEnv("RAILWAY_STATIC_URL", "");
+});
 afterEach(() => vi.unstubAllEnvs());
 
 describe("endereços do painel da GWStore", () => {
@@ -57,6 +61,34 @@ describe("endereços do painel da GWStore", () => {
     vi.stubEnv("VERCEL_URL", "gwstore-build123-team.vercel.app");
     expect(isGwStoreAdminOrigin("https://loja.example.com")).toBe(true);
     expect(isGwStoreAdminOrigin("https://gwstore-build123-team.vercel.app")).toBe(true);
+  });
+
+  it.each([
+    ["RAILWAY_PUBLIC_DOMAIN", "gwstore-production.up.railway.app"],
+    ["RAILWAY_STATIC_URL", "https://gwstore-production.up.railway.app"],
+  ])("reconhece somente o domínio Railway exato configurado em %s", (variable, configured) => {
+    vi.stubEnv(variable, configured);
+
+    expect(isGwStoreAdminOrigin("https://gwstore-production.up.railway.app")).toBe(true);
+    expect(storeAdminRewritePath("/admin", "https://gwstore-production.up.railway.app"))
+      .toBe("/dashboard");
+    for (const origin of [
+      "https://other-project.up.railway.app",
+      "https://child.gwstore-production.up.railway.app",
+      "https://gwstore-production.up.railway.app.external.example",
+    ]) {
+      expect(isGwStoreAdminOrigin(origin)).toBe(false);
+      expect(storeAdminRewritePath("/admin", origin)).toBeNull();
+    }
+  });
+
+  it("mantém exclusão do master e ignora aliases Railway malformados", () => {
+    vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "101devs.com");
+    vi.stubEnv("RAILWAY_STATIC_URL", "ftp://external.example");
+
+    expect(isGwStoreAdminOrigin("https://101devs.com")).toBe(false);
+    expect(isGwStoreAdminOrigin("https://external.example")).toBe(false);
+    expect(isGwStoreAdminOrigin("https://other-project.up.railway.app")).toBe(false);
   });
 
   it("mantém URLs e raiz da THStore", () => {

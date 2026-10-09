@@ -59,6 +59,8 @@ const giveaway = {
 beforeEach(() => {
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://gwstoreofc.com");
+  vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "");
+  vi.stubEnv("RAILWAY_SERVICE_ID", "");
   mocks.verifyGiveawayOAuthState.mockReturnValue({
     giveawayId: giveaway.id,
     slug: giveaway.slug,
@@ -79,6 +81,36 @@ afterEach(() => {
 });
 
 describe("giveaway OAuth callback", () => {
+  it.each(["https://gwstore-web-production.up.railway.app", "http://127.0.0.1:8080"])(
+    "troca o código e volta ao sorteio legado com cookie privado pela ponte %s",
+    async (actualOrigin) => {
+      vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "test-environment");
+      vi.stubEnv("RAILWAY_SERVICE_ID", "test-service");
+      vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "gwstore-web-production.up.railway.app");
+      vi.stubEnv("PORT", "8080");
+      mocks.verifyGiveawayOAuthState.mockReturnValue({
+        giveawayId: giveaway.id, slug: giveaway.slug, referralToken: null, intent: "view",
+      });
+      mocks.from.mockReturnValue(existingEntryQuery({ access_token: "private-entry-token" }));
+
+      const response = await GET(new Request(`${actualOrigin}/api/sorteios/oauth/retorno?state=signed-state&code=oauth-code`, {
+        headers: {
+          host: "gwstore-web-production.up.railway.app",
+          "x-forwarded-host": "gwstore.vercel.app",
+          "x-forwarded-proto": "https",
+          cookie: "gw_giveaway_oauth_state=signed-state",
+        },
+      }));
+
+      expect(response.headers.get("location"))
+        .toBe("https://gwstore.vercel.app/sorteios/abc123def456?participacao=ja_cadastrado");
+      expect(mocks.exchangeCodeForSession).toHaveBeenCalledWith("oauth-code");
+      expect(response.headers.get("set-cookie")).toContain("gw_giveaway_entry_abc123def456=private-entry-token");
+      expect(response.headers.get("set-cookie")).not.toContain("Domain=");
+      expect(mocks.rpc).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     "https://gwstoreofc.com",
     "https://www.gwstoreofc.com",
