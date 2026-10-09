@@ -46,7 +46,7 @@ Enquanto um **Owner do projeto Supabase** não liberar os callbacks do domínio 
 
 O Owner precisa adicionar os callbacks HTTPS de `gwstoreofc.com`/`www.gwstoreofc.com` para `/auth/callback` e `/api/sorteios/oauth/retorno`, com padrões de query compatíveis com `next` e `state`, preservando o callback legado e o painel mestre. Só remova `GWSTORE_LOGIN_ORIGIN` depois de validar esses fluxos no domínio novo. Se o alias público Railway também for usado para login direto, ele precisa de callbacks autorizados.
 
-Antes do cutover, valide `/auth/login` e o OAuth de sorteios pela ponte real: a resolução da origem pública precisa receber o `X-Forwarded-Host` original da Vercel através da edge Railway. Redirecionamentos repetidos para a própria entrada de login indicam que essa origem não foi preservada e precisam ser corrigidos antes de ativar o fluxo.
+Antes do cutover, valide `/auth/login` e o OAuth de sorteios pela ponte real. O proxy Vercel sobrescreve `X-GWStore-Public-Host` com o hostname da origem GW validada antes do rewrite; esse header preserva a origem mesmo quando a edge Railway substitui `X-Forwarded-Host`. A aplicação interpreta o header dedicado somente com a identidade de ambiente Railway e um Host do próprio serviço confirmado, aceitando apenas `gwstore.vercel.app`, `gwstoreofc.com` e `www.gwstoreofc.com`, sem porta, esquema ou lista de hosts. Acessos diretos aos domínios da loja, ao painel mestre e à THStore ignoram esses headers. `X-Forwarded-Host` continua como fallback sujeito à mesma lista. Redirecionamentos repetidos para a própria entrada de login indicam que essa origem não foi preservada e precisam ser corrigidos antes de ativar o fluxo.
 
 ## Sincronização do Discord após o deploy
 

@@ -59,7 +59,10 @@ describe("login e retorno do painel /admin da loja", () => {
     vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "gwstore-web-production.up.railway.app");
 
     const response = await login(new NextRequest("https://gwstore-web-production.up.railway.app/auth/login?next=%2Fadmin", {
-      headers: { "x-forwarded-host": "gwstore.vercel.app" },
+      headers: {
+        "x-gwstore-public-host": "gwstore.vercel.app",
+        "x-forwarded-host": "gwstore-web-production.up.railway.app",
+      },
     }));
 
     expect(response.headers.get("location")).toBe("https://discord.com/oauth2/authorize");
@@ -96,7 +99,8 @@ describe("login e retorno do painel /admin da loja", () => {
     vi.stubEnv("PORT", "8080");
     const headers = {
       host: "gwstore-web-production.up.railway.app",
-      "x-forwarded-host": browserHost,
+      "x-gwstore-public-host": browserHost,
+      "x-forwarded-host": "gwstore-web-production.up.railway.app",
       "x-forwarded-proto": "https",
     };
     const browserOrigin = `https://${browserHost}`;
@@ -130,7 +134,7 @@ describe("login e retorno do painel /admin da loja", () => {
     vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", "gwstore-web-production.up.railway.app");
 
     const response = await callback(new NextRequest("https://gwstoreofc.com/auth/callback?code=valid&next=%2Fadmin", {
-      headers: { "x-forwarded-host": "101devs.com" },
+      headers: { "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "101devs.com" },
     }));
 
     expect(response.headers.get("location")).toBe("https://gwstoreofc.com/admin");

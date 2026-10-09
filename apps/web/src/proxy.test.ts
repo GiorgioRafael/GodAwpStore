@@ -48,14 +48,41 @@ describe("link de pagamento compartilhado com compradores", () => {
     for (const host of ["gwstore.vercel.app", "gwstoreofc.com", "www.gwstoreofc.com"]) {
       for (const method of ["GET", "POST"]) {
         for (const path of ["/admin/pedidos?status=paid", "/pedidos", "/auth/callback?code=oauth-code", "/api/webhooks/discord"]) {
-          const response = await proxy(new NextRequest(`https://${host}${path}`, { method }));
+          const response = await proxy(new NextRequest(`https://${host}${path}`, { method, headers: {
+            "x-gwstore-public-host": "101devs.com", "x-forwarded-host": "evil.example",
+            authorization: "Bearer original", "content-type": "application/json",
+          } }));
           expect(response.headers.get("x-middleware-next")).toBe("1");
           expect(response.headers.get("location")).toBeNull();
           expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+          expect(response.headers.get("x-middleware-request-x-gwstore-public-host")).toBe(host);
+          expect(response.headers.get("x-middleware-request-authorization")).toBe("Bearer original");
+          expect(response.headers.get("x-middleware-request-content-type")).toBe("application/json");
         }
       }
     }
     expect(mocks.getUser).not.toHaveBeenCalled();
+  });
+
+  it("não consome nem altera o corpo assinado ou a query ao fixar a origem pública", async () => {
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", "https://gwstore-web-production.up.railway.app");
+    const body = '{ "paid": true, "value": 5.00, "item": "🍎" }\n';
+    const url = "https://gwstore.vercel.app/api/webhooks/payment?code=a%2Bb&tag=one&tag=two";
+    const request = new NextRequest(url, {
+      method: "POST", body, headers: {
+        "x-gwstore-public-host": "evil.example",
+        "x-signature": "signed-original-bytes",
+        "content-length": String(new TextEncoder().encode(body).length),
+      },
+    });
+    const response = await proxy(request);
+    expect(request.url).toBe(url);
+    expect(request.bodyUsed).toBe(false);
+    expect(await request.text()).toBe(body);
+    expect(response.headers.get("x-middleware-request-x-gwstore-public-host")).toBe("gwstore.vercel.app");
+    expect(response.headers.get("x-middleware-request-x-signature")).toBe("signed-original-bytes");
+    expect(response.headers.get("x-middleware-request-content-length")).toBe(String(new TextEncoder().encode(body).length));
   });
 
   it("preserva os gates mestre, TH e hosts desconhecidos com a ponte ativa", async () => {
@@ -64,10 +91,11 @@ describe("link de pagamento compartilhado com compradores", () => {
     mocks.getUser.mockResolvedValue({ data: { user: null } });
     for (const host of ["101devs.com", "thstore.vercel.app", "evil.example"]) {
       const response = await proxy(new NextRequest(`https://${host}/admin`, {
-        headers: { "x-forwarded-host": "gwstoreofc.com" },
+        headers: { "x-forwarded-host": "gwstoreofc.com", "x-gwstore-public-host": "gwstoreofc.com" },
       }));
       expect(response.headers.get("location")).not.toBeNull();
       expect(response.headers.get("x-middleware-next")).toBeNull();
+      expect(response.headers.get("x-middleware-request-x-gwstore-public-host")).toBeNull();
     }
     expect(mocks.getUser).toHaveBeenCalledTimes(3);
     mocks.gwStore = false;

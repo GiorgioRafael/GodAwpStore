@@ -26,14 +26,19 @@ export function publicRequestOrigin(request: Request): string {
     actualHost = host;
     protocol = `${forwardedProtocol}:`;
   } else {
-    // Direct shop/master requests never trust forwarded-host input.
+    // Direct shop/master requests never trust forwarding input.
     return url.origin;
   }
 
-  // A direct request to a shop host needs no forwarded-host interpretation.
+  // A direct request to a shop host needs no forwarding interpretation.
   if (GW_PUBLIC_HOSTS.has(actualHost)) return `${protocol}//${actualHost}`;
+  // Railway's edge can overwrite X-Forwarded-Host. The Vercel proxy replaces
+  // this dedicated header from its validated browser origin before rewriting.
+  // It has exactly the same narrow allowlist as the forwarded-host fallback.
+  const bridgeHost = request.headers.get("x-gwstore-public-host")?.toLowerCase() ?? "";
   const forwardedHost = request.headers.get("x-forwarded-host")?.toLowerCase() ?? "";
-  const publicHost = GW_PUBLIC_HOSTS.has(forwardedHost) ? forwardedHost : actualHost;
+  const publicHost = GW_PUBLIC_HOSTS.has(bridgeHost) ? bridgeHost
+    : GW_PUBLIC_HOSTS.has(forwardedHost) ? forwardedHost : actualHost;
   return `${protocol}//${publicHost}`;
 }
 

@@ -96,7 +96,8 @@ describe("giveaway OAuth callback", () => {
       const response = await GET(new Request(`${actualOrigin}/api/sorteios/oauth/retorno?state=signed-state&code=oauth-code`, {
         headers: {
           host: "gwstore-web-production.up.railway.app",
-          "x-forwarded-host": "gwstore.vercel.app",
+          "x-gwstore-public-host": "gwstore.vercel.app",
+          "x-forwarded-host": "gwstore-web-production.up.railway.app",
           "x-forwarded-proto": "https",
           cookie: "gw_giveaway_oauth_state=signed-state",
         },

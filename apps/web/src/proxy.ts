@@ -23,7 +23,13 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   // Rewrites run after this proxy. Railway must receive the untouched URL and
   // own its session refresh/auth checks, rather than authenticate twice here.
-  if (shouldProxyGwStoreToRailway(origin, pathname)) return NextResponse.next({ request });
+  if (shouldProxyGwStoreToRailway(origin, pathname)) {
+    const headers = new Headers(request.headers);
+    // Railway's edge replaces x-forwarded-host. This header comes only from
+    // the validated bridge URL, overwriting any value supplied by the client.
+    headers.set("x-gwstore-public-host", new URL(origin).hostname);
+    return NextResponse.next({ request: { headers } });
+  }
   const isStoreOrigin = isGwStoreAdminOrigin(origin);
   const rewritePath = storeAdminRewritePath(pathname, origin);
   const legacyRedirect = (request.method === "GET" || request.method === "HEAD")

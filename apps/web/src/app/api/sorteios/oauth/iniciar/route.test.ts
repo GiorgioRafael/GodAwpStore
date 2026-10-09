@@ -90,7 +90,8 @@ describe("giveaway OAuth start", () => {
       const response = await GET(new Request(`${actualOrigin}/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar`, {
         headers: {
           host: "gwstore-web-production.up.railway.app",
-          "x-forwarded-host": "gwstore.vercel.app",
+          "x-gwstore-public-host": "gwstore.vercel.app",
+          "x-forwarded-host": "gwstore-web-production.up.railway.app",
           "x-forwarded-proto": "https",
         },
       }));
@@ -149,7 +150,7 @@ describe("giveaway OAuth start", () => {
   it("ignora forwarded host e origem desconhecida ao montar o callback", async () => {
     await GET(new Request(
       "https://untrusted.example/api/sorteios/oauth/iniciar?slug=abc123def456&modo=visualizar",
-      { headers: { "x-forwarded-host": "101devs.com" } },
+      { headers: { "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "101devs.com" } },
     ));
 
     expect(mocks.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({

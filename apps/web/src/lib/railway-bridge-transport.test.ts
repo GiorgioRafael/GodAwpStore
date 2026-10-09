@@ -19,7 +19,7 @@ async function close(server: Server) {
 it("o proxy externo do Next preserva POST, bytes assinados, query, cookies e a origem pública", async () => {
   const signedBody = '{ "event": "payment.paid", "value": 5.00, "emoji": "🍎" }\n';
   const observed: { method?: string; url?: string; body?: Buffer; host?: string;
-    forwardedHost?: string; cookie?: string; origin?: string; signature?: string } = {};
+    forwardedHost?: string; publicHost?: string; cookie?: string; origin?: string; signature?: string } = {};
   const backend = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
@@ -29,6 +29,7 @@ it("o proxy externo do Next preserva POST, bytes assinados, query, cookies e a o
       body: Buffer.concat(chunks),
       host: request.headers.host,
       forwardedHost: request.headers["x-forwarded-host"],
+      publicHost: request.headers["x-gwstore-public-host"],
       cookie: request.headers.cookie,
       origin: request.headers.origin,
       signature: request.headers["x-signature"],
@@ -51,6 +52,7 @@ it("o proxy externo do Next preserva POST, bytes assinados, query, cookies e a o
         headers: {
           host: "gwstore.vercel.app",
           "x-forwarded-host": "evil.example",
+          "x-gwstore-public-host": "gwstore.vercel.app",
           cookie: "sb-pkce=original",
           origin: "https://gwstore.vercel.app",
           "x-signature": "signature-for-original-bytes",
@@ -70,6 +72,7 @@ it("o proxy externo do Next preserva POST, bytes assinados, query, cookies e a o
     expect(observed.body).toEqual(Buffer.from(signedBody));
     expect(observed.host).toBe(new URL(backendOrigin).host);
     expect(observed.forwardedHost).toBe("gwstore.vercel.app");
+    expect(observed.publicHost).toBe("gwstore.vercel.app");
     expect(observed.origin).toBe("https://gwstore.vercel.app");
     expect(observed.cookie).toBe("sb-pkce=original");
     expect(observed.signature).toBe("signature-for-original-bytes");

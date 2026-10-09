@@ -21,6 +21,38 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("public origin through the GW Railway bridge", () => {
   it.each(["gwstore.vercel.app", "gwstoreofc.com", "www.gwstoreofc.com"])(
+    "preserves browser origin %s even when the edge overwrites forwarded-host",
+    (host) => {
+      expect(publicRequestOrigin(request(railwayOrigin, {
+        "x-gwstore-public-host": host, "x-forwarded-host": railwayHost,
+      }))).toBe(`https://${host}`);
+    },
+  );
+
+  it("prefers the validated bridge header over a different known forwarded-host", () => {
+    expect(publicRequestOrigin(request(railwayOrigin, {
+      "x-gwstore-public-host": "GWSTORE.VERCEL.APP", "x-forwarded-host": "www.gwstoreofc.com",
+    }))).toBe("https://gwstore.vercel.app");
+  });
+
+  it.each([
+    "", "101devs.com", "www.101devs.com", "thstoreadm.vercel.app", "external.example",
+    "https://gwstore.vercel.app", "gwstore.vercel.app:443", "user@gwstore.vercel.app",
+    "gwstore.vercel.app,external.example", "gwstore.vercel.app/path",
+    "gwstore.vercel.app.external.example",
+  ])("ignores unsupported dedicated bridge host %s", (host) => {
+    expect(publicRequestOrigin(request(railwayOrigin, {
+      "x-gwstore-public-host": host, "x-forwarded-host": railwayHost,
+    }))).toBe(railwayOrigin);
+  });
+
+  it("retains the validated forwarded-host fallback when the dedicated header is invalid", () => {
+    expect(publicRequestOrigin(request(railwayOrigin, {
+      "x-gwstore-public-host": "101devs.com", "x-forwarded-host": "gwstore.vercel.app",
+    }))).toBe("https://gwstore.vercel.app");
+  });
+
+  it.each(["gwstore.vercel.app", "gwstoreofc.com", "www.gwstoreofc.com"])(
     "preserves browser origin %s through the configured Railway destination",
     (host) => {
       expect(publicRequestOrigin(request(railwayOrigin, { "x-forwarded-host": host })))
@@ -50,7 +82,9 @@ describe("public origin through the GW Railway bridge", () => {
     "https://gwstore.vercel.app", "https://gwstoreofc.com", "https://www.gwstoreofc.com",
     "https://101devs.com", "https://thstoreadm.vercel.app", "https://other.up.railway.app",
   ])("ignores forged forwarding headers on a direct origin %s", (origin) => {
-    expect(publicRequestOrigin(request(origin, { "x-forwarded-host": "gwstore.vercel.app" })))
+    expect(publicRequestOrigin(request(origin, {
+      "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "gwstore.vercel.app",
+    })))
       .toBe(origin);
   });
 
@@ -59,7 +93,9 @@ describe("public origin through the GW Railway bridge", () => {
     (variable) => {
       vi.stubEnv(variable, "");
 
-      expect(publicRequestOrigin(request(railwayOrigin, { "x-forwarded-host": "gwstore.vercel.app" })))
+      expect(publicRequestOrigin(request(railwayOrigin, {
+        "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "gwstore.vercel.app",
+      })))
         .toBe(railwayOrigin);
     },
   );
@@ -72,14 +108,18 @@ describe("public origin through the GW Railway bridge", () => {
   ])("does not establish a bridge with an invalid configured alias %s", (configured) => {
     vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", configured);
 
-    expect(publicRequestOrigin(request(railwayOrigin, { "x-forwarded-host": "gwstore.vercel.app" })))
+    expect(publicRequestOrigin(request(railwayOrigin, {
+      "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "gwstore.vercel.app",
+    })))
       .toBe(railwayOrigin);
   });
 
   it("does not interpret forwarding for a THStore deployment", () => {
     brand.gw = false;
 
-    expect(publicRequestOrigin(request(railwayOrigin, { "x-forwarded-host": "gwstore.vercel.app" })))
+    expect(publicRequestOrigin(request(railwayOrigin, {
+      "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "gwstore.vercel.app",
+    })))
       .toBe(railwayOrigin);
   });
 
@@ -87,14 +127,26 @@ describe("public origin through the GW Railway bridge", () => {
     "resolves NextNode binding %s only with the known host and HTTPS edge protocol",
     (binding) => {
       expect(publicRequestOrigin(request(binding, {
-        host: railwayHost, "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": "https",
+        host: railwayHost, "x-gwstore-public-host": "gwstore.vercel.app",
+        "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": "https",
+      }))).toBe("https://gwstore.vercel.app");
+    },
+  );
+
+  it.each(["https://0.0.0.0:8080", "https://127.0.0.1:8080", "http://localhost:8080"])(
+    "preserves the dedicated bridge host through NextNode binding %s",
+    (binding) => {
+      expect(publicRequestOrigin(request(binding, {
+        host: railwayHost, "x-gwstore-public-host": "gwstore.vercel.app",
+        "x-forwarded-host": railwayHost, "x-forwarded-proto": "https",
       }))).toBe("https://gwstore.vercel.app");
     },
   );
 
   it("uses the direct custom Host on the local binding and ignores forwarded-host spoofing", () => {
     expect(publicRequestOrigin(request("https://0.0.0.0:8080", {
-      host: "www.gwstoreofc.com", "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": "https",
+      host: "www.gwstoreofc.com", "x-gwstore-public-host": "gwstore.vercel.app",
+      "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": "https",
     }))).toBe("https://www.gwstoreofc.com");
   });
 
@@ -103,7 +155,8 @@ describe("public origin through the GW Railway bridge", () => {
     `${railwayHost}:443`, `${railwayHost},gwstore.vercel.app`, "https://gwstore.vercel.app",
   ])("rejects unknown or malformed HTTP Host on the local binding: %s", (host) => {
     expect(publicRequestOrigin(request("https://0.0.0.0:8080", {
-      host, "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": "https",
+      host, "x-gwstore-public-host": "gwstore.vercel.app",
+      "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": "https",
     }))).toBe("https://0.0.0.0:8080");
   });
 
@@ -118,13 +171,16 @@ describe("public origin through the GW Railway bridge", () => {
 
   it.each(["", "http", "https,http", "ftp"])("rejects insecure or ambiguous binding protocol: %s", (protocol) => {
     expect(publicRequestOrigin(request("https://0.0.0.0:8080", {
-      host: railwayHost, "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": protocol,
+      host: railwayHost, "x-gwstore-public-host": "gwstore.vercel.app",
+      "x-forwarded-host": "gwstore.vercel.app", "x-forwarded-proto": protocol,
     }))).toBe("https://0.0.0.0:8080");
   });
 
   it("does not use forwarded headers from an HTTP Railway origin in production", () => {
     const origin = `http://${railwayHost}`;
-    expect(publicRequestOrigin(request(origin, { "x-forwarded-host": "gwstore.vercel.app" })))
+    expect(publicRequestOrigin(request(origin, {
+      "x-gwstore-public-host": "gwstore.vercel.app", "x-forwarded-host": "gwstore.vercel.app",
+    })))
       .toBe(origin);
   });
 });
