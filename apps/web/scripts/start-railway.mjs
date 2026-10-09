@@ -38,7 +38,7 @@ export async function waitForRailwayWebServer({
  * Forward signals directly to Next so in-flight requests and after() can drain.
  * @param {{ env?: Record<string, string | undefined>, processHandle?: Pick<NodeJS.Process, 'once' | 'removeListener' | 'exitCode'>,
  * spawnProcess?: typeof spawn, fetcher?: typeof fetch, logger?: Pick<Console, 'info' | 'warn' | 'error'>,
- * shutdownTimeoutMs?: number }} options
+ * shutdownTimeoutMs?: number }} [options]
  */
 export function startRailwayWeb({
   env = process.env,
@@ -47,7 +47,7 @@ export function startRailwayWeb({
   fetcher = fetch,
   logger = console,
   shutdownTimeoutMs = 30_000,
-}) {
+} = {}) {
   const config = readRailwayRuntimeConfig(env);
   const scheduler = config.cronEnabled ? createRailwayScheduler({
     port: config.port, secret: config.cronSecret, fetcher, logger,

@@ -2,10 +2,13 @@
 import { EventEmitter } from "node:events";
 import type { ChildProcess, spawn } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const { defaultSpawn } = vi.hoisted(() => ({ defaultSpawn: vi.fn() }));
+vi.mock("node:child_process", () => ({ spawn: defaultSpawn }));
 import { startRailwayWeb, waitForRailwayWebServer } from "./start-railway.mjs";
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 
 function processFixture() {
   const handle = Object.assign(new EventEmitter(), { exitCode: undefined as number | undefined });
@@ -19,6 +22,24 @@ function processFixture() {
 }
 
 describe("Railway Next launcher", () => {
+  it("starts without an options argument, matching the deployed entrypoint", () => {
+    vi.stubEnv("GW_CRON_ENABLED", "false");
+    vi.stubEnv("PORT", "8091");
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const child = Object.assign(new EventEmitter(), { kill: vi.fn(() => true) });
+    defaultSpawn.mockReturnValue(child);
+    const previousExitCode = process.exitCode;
+    try {
+      expect(startRailwayWeb()).toBe(child);
+      expect(defaultSpawn).toHaveBeenCalledWith(process.execPath,
+        [expect.stringMatching(/next[\/]dist[\/]bin[\/]next$/), "start", "--hostname", "0.0.0.0", "--port", "8091"],
+        expect.objectContaining({ env: expect.objectContaining({ NODE_ENV: "production" }), stdio: "inherit" }));
+    } finally {
+      child.emit("exit", 0);
+      process.exitCode = previousExitCode;
+    }
+  });
+
   it("starts Next directly on the platform port and leaves jobs disabled before cutover", () => {
     const fixture = processFixture();
     const fetcher = vi.fn();
