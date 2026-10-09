@@ -2,6 +2,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const routingBrand = vi.hoisted(() => ({ isGwStore: true }));
+vi.mock("@/lib/brand", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/brand")>(),
+  get IS_GWSTORE() { return routingBrand.isGwStore; },
+}));
+
 const actionMocks = vi.hoisted(() => ({
   deleteCatalogStoreAction: vi.fn(async () => ({
     ok: true,
@@ -40,7 +46,7 @@ const secondGame = {
 };
 
 describe("gerenciamento de lojas do catálogo", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => { vi.clearAllMocks(); routingBrand.isGwStore = true; });
 
   it("confirma a exclusão de uma loja secundária vazia", async () => {
     const user = userEvent.setup();
@@ -70,9 +76,19 @@ describe("gerenciamento de lojas do catálogo", () => {
     expect(screen.getByRole("button", { name: "Confirmar exclusão" })).toBeDisabled();
     expect(screen.getByRole("link", { name: "Organizar produtos desta loja" })).toHaveAttribute(
       "href",
-      `/estoque?loja=${secondaryStore.id}`,
+      `/admin/estoque?loja=${secondaryStore.id}`,
     );
     expect(actionMocks.deleteCatalogStoreAction).not.toHaveBeenCalled();
+  });
+
+  it("mantém o destino do estoque da THStore sem o prefixo admin", async () => {
+    routingBrand.isGwStore = false;
+    const user = userEvent.setup();
+    renderManager([{ ...secondaryStore, productCount: 3 }]);
+    await user.click(screen.getByRole("button", { name: "Excluir loja Mundo 2" }));
+    expect(screen.getByRole("link", { name: "Organizar produtos desta loja" })).toHaveAttribute(
+      "href", `/estoque?loja=${secondaryStore.id}`,
+    );
   });
 
   it("protege a loja principal", () => {

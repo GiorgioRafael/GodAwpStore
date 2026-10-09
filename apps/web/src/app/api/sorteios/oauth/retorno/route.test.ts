@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
+vi.mock("@/lib/brand", () => ({ IS_GWSTORE: true }));
+
 vi.mock("@/lib/giveaways/discord-membership", () => ({
   addDiscordGuildMember: mocks.addDiscordGuildMember,
   getDiscordGuildMembership: mocks.getDiscordGuildMembership,
@@ -54,6 +57,8 @@ const giveaway = {
 };
 
 beforeEach(() => {
+  vi.stubEnv("NODE_ENV", "production");
+  vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://gwstoreofc.com");
   mocks.verifyGiveawayOAuthState.mockReturnValue({
     giveawayId: giveaway.id,
     slug: giveaway.slug,
@@ -70,9 +75,54 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("giveaway OAuth callback", () => {
+  it.each([
+    "https://gwstoreofc.com",
+    "https://www.gwstoreofc.com",
+    "https://gwstore.vercel.app",
+  ])("conclui o OAuth e mantém a credencial privada na origem %s", async (origin) => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", origin === "https://gwstore.vercel.app"
+      ? "https://gwstoreofc.com" : "https://gwstore.vercel.app");
+    mocks.verifyGiveawayOAuthState.mockReturnValue({
+      giveawayId: giveaway.id,
+      slug: giveaway.slug,
+      referralToken: null,
+      intent: "view",
+    });
+    mocks.from.mockReturnValue(existingEntryQuery({ access_token: "private-entry-token" }));
+
+    const response = await GET(request(origin));
+
+    expect(response.headers.get("location"))
+      .toBe(`${origin}/sorteios/abc123def456?participacao=ja_cadastrado`);
+    expect(mocks.exchangeCodeForSession).toHaveBeenCalledWith("oauth-code");
+    const cookie = response.headers.get("set-cookie") ?? "";
+    expect(cookie).toContain("gw_giveaway_oauth_state=;");
+    expect(cookie).toContain("Path=/api/sorteios/oauth/retorno");
+    expect(cookie).toContain("gw_giveaway_entry_abc123def456=private-entry-token");
+    expect(cookie).toContain("Path=/sorteios/abc123def456");
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("Secure");
+    expect(cookie).not.toContain("Domain=");
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["https://gwstoreofc.com", null],
+    ["https://gwstoreofc.com", "different-state"],
+    ["https://gwstore.vercel.app", null],
+    ["https://gwstore.vercel.app", "different-state"],
+  ])("rejeita estado sem cookie correspondente em %s (%s)", async (origin, cookieToken) => {
+    const response = await GET(request(origin, cookieToken));
+
+    expect(response.headers.get("location")).toBe(`${origin}/?erro=sessao_expirada`);
+    expect(mocks.verifyGiveawayOAuthState).not.toHaveBeenCalled();
+    expect(mocks.exchangeCodeForSession).not.toHaveBeenCalled();
+  });
+
   it("redireciona o participante com token privado diferente do link de convite", async () => {
     mocks.verifyGiveawayOAuthState.mockReturnValue({
       giveawayId: giveaway.id,
@@ -289,10 +339,10 @@ describe("giveaway OAuth callback", () => {
   });
 });
 
-function request() {
+function request(origin = "https://gwstore.vercel.app", cookieToken: string | null = "signed-state") {
   return new Request(
-    "https://gwstore.vercel.app/api/sorteios/oauth/retorno?state=signed-state&code=oauth-code",
-    { headers: { cookie: "gw_giveaway_oauth_state=signed-state" } },
+    `${origin}/api/sorteios/oauth/retorno?state=signed-state&code=oauth-code`,
+    { headers: cookieToken ? { cookie: `gw_giveaway_oauth_state=${cookieToken}` } : {} },
   );
 }
 

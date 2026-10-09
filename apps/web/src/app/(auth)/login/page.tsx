@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowRight, LockKeyhole, MessageCircleMore, ShieldCheck,
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 export const metadata: Metadata = {
   title: "Entrar",
@@ -14,7 +15,7 @@ export default async function LoginPage({
   searchParams: Promise<{ setup?: string; erro?: string; next?: string }>;
 }) {
   const query = await searchParams;
-  const authHref = `/auth/login?next=${encodeURIComponent(query.next ?? "/")}`;
+  const authHref = `/auth/login?next=${encodeURIComponent(query.next ?? storeAdminHref("/"))}`;
   const feedback = query.setup
     ? "O login ainda precisa das variáveis do Supabase e do Discord neste ambiente."
     : query.erro
@@ -51,8 +52,7 @@ export default async function LoginPage({
           <ArrowRight aria-hidden="true" className="size-4" />
         </LinkButton>
 
-        {/* A raiz do site é o painel, então é aqui que cai quem só queria
-            jogar. Sem esta saída ele lê "apenas IDs autorizados" e desiste. */}
+        {/* Quem veio jogar também precisa encontrar a saída para a roleta. */}
         {ROULETTE_AVAILABLE ? (
           <LinkButton href="/roleta" variant="secondary" size="lg" className="mt-3 w-full justify-between px-4">
             <span className="flex items-center gap-2.5">

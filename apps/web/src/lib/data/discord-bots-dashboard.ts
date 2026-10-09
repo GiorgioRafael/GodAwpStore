@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requireMasterAdmin } from "@/lib/master-auth-session";
+import { storeAdminUrl } from "@/lib/store-admin-routes";
 import {
   calculateRevenueChange,
   calculateCommissionFromGross,
@@ -75,7 +76,7 @@ const REMOTE_SERVICES = [
 ] as const;
 
 const GWSTORE_ADMIN_URL =
-  process.env.GWSTORE_ADMIN_URL?.trim() || "https://gwstore.vercel.app";
+  storeAdminUrl(process.env.GWSTORE_ADMIN_URL?.trim() || "https://gwstoreofc.com/admin");
 
 function safeInteger(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value ?? 0);

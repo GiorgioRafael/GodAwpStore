@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/form-field";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 export type CatalogStoreManagerStore = {
   id: string;
@@ -319,7 +320,7 @@ function DeleteCatalogStoreDialog({
               <p className="text-sm leading-5">
                 Esta loja ainda tem {store.productCount} produto(s). Mova-os para outra loja antes de excluir.
               </p>
-              <LinkButton href={`/estoque?loja=${store.id}`} variant="secondary" size="sm">
+              <LinkButton href={storeAdminHref(`/estoque?loja=${store.id}`)} variant="secondary" size="sm">
                 Organizar produtos desta loja
               </LinkButton>
             </div>

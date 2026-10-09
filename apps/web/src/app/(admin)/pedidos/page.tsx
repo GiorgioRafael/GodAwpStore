@@ -33,7 +33,8 @@ import {
   type OrdersPeriodKey,
   type OrdersStatusFilter,
 } from "@/lib/orders-period";
-import { buildOrdersHref } from "@/lib/orders-query";
+import { buildOrdersHref as buildLegacyOrdersHref, type OrdersQueryState } from "@/lib/orders-query";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 export const metadata: Metadata = { title: "Pedidos" };
 
@@ -80,6 +81,10 @@ function dateTime(value: string): string {
 
 function summaryHref(period: OrdersPeriodKey): string {
   return buildOrdersHref({ period, status: "all", page: 1 });
+}
+
+function buildOrdersHref(state: OrdersQueryState): string {
+  return storeAdminHref(buildLegacyOrdersHref(state));
 }
 
 function MetricCard({
@@ -298,7 +303,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 <Filter aria-hidden="true" className="size-4" />
                 Aplicar datas
               </Button>
-              <LinkButton href="/pedidos" variant="secondary">Limpar tudo</LinkButton>
+              <LinkButton href={storeAdminHref("/pedidos")} variant="secondary">Limpar tudo</LinkButton>
             </div>
           </form>
         </div>

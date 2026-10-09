@@ -3,6 +3,7 @@ import Link from "next/link";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { cn } from "@/components/ui/cn";
 import { STORE_NAME } from "@/lib/brand";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 export function Brand({
   compact = false,
@@ -13,7 +14,7 @@ export function Brand({
 }) {
   return (
     <Link
-      href="/"
+      href={storeAdminHref("/")}
       className={cn(
         "inline-flex items-center gap-3 rounded-xl focus-visible:outline-none",
         compact && "gap-2",

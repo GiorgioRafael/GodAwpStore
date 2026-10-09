@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getMasterAdminSiteUrl, getSiteUrl } from "@/lib/env";
+import { getMasterAdminSiteUrl, getStoreAuthSiteUrl } from "@/lib/env";
 import { AUTH_NEXT_COOKIE } from "@/lib/auth-next";
 import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
     request.cookies.get(AUTH_NEXT_COOKIE)?.value ??
     null;
   const next = safeInternalPath(requested, request.nextUrl.origin);
-  const siteOrigin = isMasterAdminPath(next)
+  const siteOrigin = isMasterAdminPath(next, request.nextUrl.origin)
     ? getMasterAdminSiteUrl(request.nextUrl.origin)
-    : getSiteUrl(request.nextUrl.origin);
+    : getStoreAuthSiteUrl(request.nextUrl.origin);
   const supabase = await createServerSupabaseClient();
 
   if (!code || !supabase) {
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
  * authorised IDs only — which reads as a refusal, not as "try again".
  */
 function failed(siteOrigin: string, next: string) {
-  const target = isMasterAdminPath(next)
+  const target = isMasterAdminPath(next, siteOrigin)
     ? new URL(masterAdminLoginHref(next, { error: "callback" }), siteOrigin)
     : next.startsWith("/roleta")
       ? new URL("/roleta?erro=login", siteOrigin)

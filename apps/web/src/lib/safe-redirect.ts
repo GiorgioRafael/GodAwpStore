@@ -1,7 +1,9 @@
+import { defaultStoreAdminPath } from "./store-admin-routes";
+
 export function safeInternalPath(
   value: string | null,
   siteOrigin: string,
-  fallback = "/dashboard",
+  fallback = defaultStoreAdminPath(siteOrigin),
 ): string {
   if (!value || !value.startsWith("/") || value.includes("\\")) return fallback;
 

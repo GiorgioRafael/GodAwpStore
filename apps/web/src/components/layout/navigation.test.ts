@@ -14,11 +14,11 @@ describe("navegação da customização do bot", () => {
       expect.arrayContaining([
         expect.objectContaining({
           label: "Sorteios",
-          href: "/sorteios",
+          href: "/admin/sorteios",
         }),
         expect.objectContaining({
           label: "Customização do bot",
-          href: "/customizacao-bot",
+          href: "/admin/customizacao-bot",
         }),
       ]),
     );
@@ -29,9 +29,9 @@ describe("navegação da customização do bot", () => {
     const management = navigationGroups.find((group) => group.label === "Gestão");
     const hrefs = management?.items.map((item) => item.href) ?? [];
 
-    expect(hrefs).toContain("/resgates");
-    expect(hrefs).toContain("/metricas-roleta");
-    expect(hrefs.indexOf("/metricas-roleta")).toBe(hrefs.indexOf("/resgates") + 1);
+    expect(hrefs).toContain("/admin/resgates");
+    expect(hrefs).toContain("/admin/metricas-roleta");
+    expect(hrefs.indexOf("/admin/metricas-roleta")).toBe(hrefs.indexOf("/admin/resgates") + 1);
     expect(getCurrentPageLabel("/metricas-roleta")).toBe("Roleta");
   });
 
@@ -50,9 +50,16 @@ describe("navegação da customização do bot", () => {
   });
 
   it("encontra áreas por nome ou grupo sem depender de acentos", () => {
-    expect(filterNavigationGroups("operacao pedidos").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/pedidos"]);
-    expect(filterNavigationGroups("configuracoes").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/configuracoes"]);
+    expect(filterNavigationGroups("operacao pedidos").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/admin/pedidos"]);
+    expect(filterNavigationGroups("configuracoes").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/admin/configuracoes"]);
     expect(filterNavigationGroups("área inexistente")).toEqual([]);
     expect(filterNavigationGroups(" ")).toEqual(navigationGroups);
+  });
+
+  it("marca somente a visão geral em /admin e reconhece a navegação com prefixo", () => {
+    expect(isNavigationItemActive("/admin", "/admin")).toBe(true);
+    expect(isNavigationItemActive("/admin/pedidos", "/admin")).toBe(false);
+    expect(getCurrentPageLabel("/admin/pedidos")).toBe("Pedidos");
+    expect(getCurrentPageLabel("/admin/configuracoes", "#vitrines")).toBe("Vitrines do Discord");
   });
 });

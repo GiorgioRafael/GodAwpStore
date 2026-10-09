@@ -21,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { AuditRow, DashboardSummary, PaidPixMetrics, ProductStockRow } from "@/lib/data/admin-repository";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 const actionLabels: Record<string, string> = {
   "game.create": "Jogo criado",
@@ -107,7 +108,7 @@ export function DashboardOverview({ summary, paidPix, lowStock, audit }: {
         title="Visão geral da loja"
         description="Confira as vendas e encontre rapidamente o que precisa fazer na operação."
         actions={
-          <LinkButton href="/pedidos?period=today">
+          <LinkButton href={storeAdminHref("/pedidos?period=today")}>
             Ver pedidos de hoje
             <ArrowRight aria-hidden="true" className="size-4" />
           </LinkButton>
@@ -121,7 +122,7 @@ export function DashboardOverview({ summary, paidPix, lowStock, audit }: {
           { href: "/catalogo/produtos", label: "Gerenciar produtos", detail: "Preços, disponibilidade e catálogo", icon: Tags },
           { href: "/configuracoes#vitrines", label: "Publicar vitrines", detail: "Canais de compra no Discord", icon: Megaphone },
         ].map(({ href, label, detail, icon: Icon }) => (
-          <Link key={href} href={href} className="group flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-gold/40 hover:bg-surface-elevated">
+          <Link key={href} href={storeAdminHref(href)} className="group flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-gold/40 hover:bg-surface-elevated">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-gold/[0.07] text-gold"><Icon aria-hidden="true" className="size-[18px]" /></span>
             <div className="min-w-0 flex-1"><p className="text-sm font-medium text-foreground">{label}</p><p className="mt-1 text-xs leading-5 text-muted">{detail}</p></div>
             <ArrowRight aria-hidden="true" className="size-4 shrink-0 text-muted transition-transform group-hover:translate-x-0.5" />
@@ -190,7 +191,7 @@ export function DashboardOverview({ summary, paidPix, lowStock, audit }: {
               <h2 className="text-base font-semibold tracking-tight">Atividade recente</h2>
               <p className="mt-1 text-sm text-muted">Pagamentos, entregas e alterações administrativas.</p>
             </div>
-            <Link href="/auditoria" className="shrink-0 text-sm font-medium text-gold-bright hover:underline">Ver histórico</Link>
+            <Link href={storeAdminHref("/auditoria")} className="shrink-0 text-sm font-medium text-gold-bright hover:underline">Ver histórico</Link>
           </CardHeader>
           <CardContent className="pt-2">
             {audit.length === 0 ? (
@@ -252,7 +253,7 @@ export function DashboardOverview({ summary, paidPix, lowStock, audit }: {
                 ))}
               </ul>
             )}
-            <LinkButton href="/estoque" variant="secondary" className="mt-4 w-full">Abrir estoque</LinkButton>
+            <LinkButton href={storeAdminHref("/estoque")} variant="secondary" className="mt-4 w-full">Abrir estoque</LinkButton>
           </CardContent>
         </Card>
       </section>

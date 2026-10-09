@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSiteUrl } from "@/lib/env";
+import { storeAdminUrl } from "@/lib/store-admin-routes";
 import type { ServiceDashboardSnapshot } from "@/lib/master-dashboard-contract";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
@@ -141,7 +142,7 @@ export async function getLocalServiceDashboardSnapshot(): Promise<ServiceDashboa
     service: {
       id: serviceId(name),
       name,
-      adminPanelUrl: getSiteUrl(),
+      adminPanelUrl: storeAdminUrl(getSiteUrl()),
     },
     monthlyRevenue: keys.map((key) => ({ monthStart: key, ...(monthly.get(key) ?? { grossRevenueCents: 0, paidOrdersCount: 0 }) })),
     bots: guilds.map((guild) => {

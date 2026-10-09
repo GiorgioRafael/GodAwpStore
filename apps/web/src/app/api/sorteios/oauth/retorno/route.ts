@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { getStoreAuthSiteUrl } from "@/lib/env";
+
 import {
   discordAccountCreatedAt,
   discordAvatarUrl,
@@ -25,6 +27,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const siteOrigin = getStoreAuthSiteUrl(requestUrl.origin);
   const stateToken = requestUrl.searchParams.get("state") ?? "";
   const code = requestUrl.searchParams.get("code") ?? "";
   const cookieToken = readCookie(request.headers.get("cookie"), GIVEAWAY_OAUTH_COOKIE);
@@ -76,7 +79,7 @@ export async function GET(request: Request) {
         .maybeSingle();
       if (existingEntryError) throw new Error(existingEntryError.message);
       return successRedirect(
-        requestUrl.origin,
+        siteOrigin,
         state.slug,
         { participacao: existingEntry ? "ja_cadastrado" : "nao_cadastrado" },
         existingEntry?.access_token ?? null,
@@ -110,7 +113,7 @@ export async function GET(request: Request) {
         throw new Error(privateEntryError?.message || "Credencial privada da entrada não encontrada.");
       }
       return successRedirect(
-        requestUrl.origin,
+        siteOrigin,
         state.slug,
         { participacao: data.was_created ? "cadastrado" : "ja_cadastrado" },
         privateEntry.access_token,
@@ -143,7 +146,7 @@ export async function GET(request: Request) {
         throw new GiveawayOAuthError("convite_invalido");
       }
       if (existingClaim.join_completed_at) {
-        return successRedirect(requestUrl.origin, state.slug, {
+        return successRedirect(siteOrigin, state.slug, {
           convite: existingClaim.status === "valid" ? "valido" : "em_validacao",
         });
       }
@@ -187,7 +190,7 @@ export async function GET(request: Request) {
       .single();
     if (completionError || !completed) throw mapDatabaseError(completionError?.message);
     return successRedirect(
-      requestUrl.origin,
+      siteOrigin,
       state.slug,
       { convite: initiallyValid ? "valido" : "em_validacao" },
     );
@@ -197,7 +200,7 @@ export async function GET(request: Request) {
       const message = error instanceof Error ? error.message : "erro desconhecido";
       console.error(`[giveaway:oauth:callback] ${message}`);
     }
-    return successRedirect(requestUrl.origin, slug, { erro: code });
+    return successRedirect(siteOrigin, slug, { erro: code });
   }
 }
 

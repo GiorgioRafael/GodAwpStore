@@ -1,3 +1,5 @@
+import { storeAdminRewritePath } from "./store-admin-routes";
+
 export const MASTER_ADMIN_ROOT = "/admin";
 
 /**
@@ -12,8 +14,10 @@ export const MASTER_ADMIN_LEGACY_ROOT = "/admin/discordbots";
 export const MASTER_ADMIN_LOGIN = `${MASTER_ADMIN_LEGACY_ROOT}/login`;
 export const MASTER_ADMIN_ACCESS_DENIED = `${MASTER_ADMIN_LEGACY_ROOT}/acesso-negado`;
 
-export function isMasterAdminPath(value: string) {
+export function isMasterAdminPath(value: string, origin?: string) {
   const pathname = value.split(/[?#]/, 1)[0] ?? "";
+  // Only known shop routes change identity provider. Unknown master pages stay gated by Google.
+  if (origin && storeAdminRewritePath(pathname, origin)) return false;
   return pathname === MASTER_ADMIN_ROOT || pathname.startsWith(`${MASTER_ADMIN_ROOT}/`);
 }
 

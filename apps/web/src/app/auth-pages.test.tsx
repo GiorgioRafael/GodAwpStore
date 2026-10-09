@@ -15,7 +15,7 @@ describe("páginas de autenticação", () => {
     expect(screen.getByRole("heading", { name: "Entre no painel" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Continuar com Discord/i })).toHaveAttribute(
       "href",
-      "/auth/login?next=%2F",
+      "/auth/login?next=%2Fadmin",
     );
   });
 

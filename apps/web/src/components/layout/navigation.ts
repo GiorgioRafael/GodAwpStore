@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import { IS_GWSTORE } from "@/lib/brand";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 export interface NavigationItem {
   label: string;
@@ -42,7 +43,7 @@ const rouletteItems: NavigationItem[] =
       ]
     : [];
 
-export const navigationGroups: NavigationGroup[] = [
+const legacyNavigationGroups: NavigationGroup[] = [
   {
     items: [{ label: "Visão geral", href: "/", icon: LayoutDashboard }],
   },
@@ -87,19 +88,26 @@ export const navigationGroups: NavigationGroup[] = [
   },
 ];
 
+export const navigationGroups: NavigationGroup[] = legacyNavigationGroups.map(group => ({
+  ...group, items: group.items.map(item => ({ ...item, href: storeAdminHref(item.href) })),
+}));
+
 export const mobileNavigation: NavigationItem[] = [
   { label: "Início", href: "/", icon: LayoutDashboard },
   { label: "Produtos", href: "/catalogo/produtos", icon: PackageCheck },
   { label: "Pedidos", href: "/pedidos", icon: WalletCards },
-];
+].map(item => ({ ...item, href: storeAdminHref(item.href) }));
 
 export function isNavigationItemActive(pathname: string, href: string, hash = "") {
-  const [route, anchor] = href.split("#");
-  const matches = route === "/" ? pathname === "/" : pathname === route || pathname.startsWith(`${route}/`);
+  const canonicalPath = storeAdminHref(pathname);
+  const [route, anchor] = storeAdminHref(href).split("#");
+  const legacyRoute = IS_GWSTORE && route.startsWith("/admin/") ? route.slice("/admin".length) : route;
+  const matches = route === storeAdminHref("/") ? canonicalPath === route :
+    canonicalPath === route || canonicalPath.startsWith(`${route}/`) || pathname === legacyRoute || pathname.startsWith(`${legacyRoute}/`);
   if (!matches) return false;
   if (anchor) return hash === `#${anchor}`;
   const anchoredPage = navigationGroups.some((group) => group.items.some((item) =>
-    item.href === `${pathname}${hash}` && item.href.includes("#"),
+    item.href === `${canonicalPath}${hash}` && item.href.includes("#"),
   ));
   return !anchoredPage;
 }

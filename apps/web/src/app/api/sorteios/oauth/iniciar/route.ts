@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { getSiteUrl } from "@/lib/env";
+import { getStoreAuthSiteUrl } from "@/lib/env";
 import {
   createGiveawayOAuthState,
   GIVEAWAY_OAUTH_COOKIE,
@@ -18,25 +18,26 @@ const UUID_PATTERN =
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
+  const siteOrigin = getStoreAuthSiteUrl(requestUrl.origin);
   const slug = requestUrl.searchParams.get("slug")?.trim().toLowerCase() ?? "";
   const intent = requestUrl.searchParams.get("modo") === "visualizar" ? "view" : "participate";
   const referralToken = intent === "participate"
     ? requestUrl.searchParams.get("ref")?.trim().toLowerCase() || null
     : null;
   if (!SLUG_PATTERN.test(slug) || (referralToken && !UUID_PATTERN.test(referralToken))) {
-    return redirectToGiveaway(requestUrl.origin, slug, "link_invalido");
+    return redirectToGiveaway(siteOrigin, slug, "link_invalido");
   }
 
   try {
     const giveaway = await getGiveawayOAuthContext(slug, referralToken);
-    if (!giveaway) return redirectToGiveaway(requestUrl.origin, slug, "link_invalido");
+    if (!giveaway) return redirectToGiveaway(siteOrigin, slug, "link_invalido");
     const now = Date.now();
     if (intent === "participate" && (
       (giveaway.status !== "scheduled" && giveaway.status !== "active") ||
       Date.parse(giveaway.startsAt) > now ||
       Date.parse(giveaway.endsAt) <= now
     )) {
-      return redirectToGiveaway(requestUrl.origin, slug, "fora_do_periodo");
+      return redirectToGiveaway(siteOrigin, slug, "fora_do_periodo");
     }
 
     const secret = getGiveawayOAuthStateSecret();
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
     if (!supabase) throw new Error("Supabase não configurado.");
     const callback = new URL(
       "/api/sorteios/oauth/retorno",
-      getSiteUrl(requestUrl.origin),
+      siteOrigin,
     );
     callback.searchParams.set("state", state);
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -71,7 +72,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "erro desconhecido";
     console.error(`[giveaway:oauth:start] ${message}`);
-    return redirectToGiveaway(requestUrl.origin, slug, "configuracao");
+    return redirectToGiveaway(siteOrigin, slug, "configuracao");
   }
 }
 

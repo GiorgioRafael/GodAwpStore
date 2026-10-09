@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { TableEmptyRow, TableShell } from "@/components/ui/table-shell";
 import { listDeliveryLog } from "@/lib/data/admin-repository";
 import { resolveOrdersPage } from "@/lib/orders-period";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 
 export const metadata: Metadata = { title: "Entregas" };
 
@@ -29,7 +30,7 @@ function deliveryDate(row: { discord_ticket_delivery_completed_at: string | null
 }
 
 function pageHref(page: number) {
-  return page <= 1 ? "/entregas" : `/entregas?page=${page}`;
+  return storeAdminHref(page <= 1 ? "/entregas" : `/entregas?page=${page}`);
 }
 
 export default async function DeliveryLogPage({ searchParams }: DeliveryLogPageProps) {

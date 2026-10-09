@@ -7,9 +7,9 @@ describe("destino depois do login com Discord", () => {
 
   it("o fallback é do painel, então perder o next joga o jogador no painel", () => {
     // É a razão de o destino viajar também num cookie: sem next, o callback
-    // manda para /dashboard, o proxy vê um não-admin e responde acesso negado —
+    // manda para /admin, o proxy vê um não-admin e responde acesso negado —
     // um login que funcionou, relatado como recusado.
-    expect(safeInternalPath(null, site)).toBe("/dashboard");
+    expect(safeInternalPath(null, site)).toBe("/admin");
   });
 
   it("preserva a roleta quando o next chega", () => {
@@ -19,9 +19,9 @@ describe("destino depois do login com Discord", () => {
 
   it("recusa destino externo, mesmo vindo do cookie", () => {
     // O cookie é entrada como qualquer outra: passa pela mesma validação.
-    expect(safeInternalPath("https://evil.example/roleta", site)).toBe("/dashboard");
+    expect(safeInternalPath("https://evil.example/roleta", site)).toBe("/admin");
     // Protocolo-relativo também sai do site, e também é recusado.
-    expect(safeInternalPath("//evil.example", site)).toBe("/dashboard");
-    expect(safeInternalPath("/\\evil.example", site)).toBe("/dashboard");
+    expect(safeInternalPath("//evil.example", site)).toBe("/admin");
+    expect(safeInternalPath("/\\evil.example", site)).toBe("/admin");
   });
 });

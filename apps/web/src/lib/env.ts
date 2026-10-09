@@ -1,5 +1,8 @@
 import "server-only";
 
+import { IS_GWSTORE } from "./brand";
+import { isGwStoreAdminOrigin } from "./store-admin-routes";
+
 export type SupabasePublicConfig = {
   url: string;
   publishableKey: string;
@@ -57,6 +60,27 @@ export function getSiteUrl(requestOrigin?: string): string {
   }
 
   return "http://localhost:3000";
+}
+
+/** Keep OAuth callbacks on the host that owns the PKCE and state cookies. */
+export function getStoreAuthSiteUrl(requestOrigin?: string): string {
+  if (!IS_GWSTORE) return getSiteUrl(requestOrigin);
+  if (requestOrigin) {
+    try {
+      const url = new URL(requestOrigin);
+      const production = process.env.NODE_ENV === "production";
+      const allowedProtocol = url.protocol === "https:"
+        || (!production && url.protocol === "http:");
+      const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+      if (allowedProtocol && !url.username && !url.password
+        && (!production || !localHost) && isGwStoreAdminOrigin(url.origin)) {
+        return url.origin;
+      }
+    } catch {
+      // Unrecognized origins use the configured shop URL.
+    }
+  }
+  return getSiteUrl();
 }
 
 export function getMasterAdminSiteUrl(requestOrigin?: string): string {

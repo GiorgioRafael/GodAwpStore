@@ -12,6 +12,7 @@ import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card"
 import { cn } from "@/components/ui/cn";
 import { Input, Select } from "@/components/ui/form-field";
 import { MAXIMUM_WHEEL_SLOTS, rouletteSlotKeys } from "@/lib/roulette/demo";
+import { storeAdminHref } from "@/lib/store-admin-routes";
 import { HIGHLIGHTED_PRIZE_COUNT, highlightedPrizeValues } from "@/lib/roulette/wheel";
 import {
   slotChanceShares,
@@ -417,7 +418,7 @@ export function RouletteWheelEditor({
 
           <p className="text-xs leading-5 text-muted">
             O valor de cada prêmio é o preço do item{" "}
-            <Link href="/catalogo/produtos" className="font-medium text-gold hover:underline">
+            <Link href={storeAdminHref("/catalogo/produtos")} className="font-medium text-gold hover:underline">
               no catálogo
             </Link>{" "}
             — a roleta sempre puxa de lá, então não existe preço só-da-roleta para sair do lugar.

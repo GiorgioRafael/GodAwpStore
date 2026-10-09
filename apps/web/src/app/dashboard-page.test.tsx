@@ -10,7 +10,7 @@ const repository = vi.hoisted(() => ({
 
 vi.mock("@/lib/data/admin-repository", () => repository);
 
-import DashboardPage from "@/app/(admin)/page";
+import DashboardPage from "@/app/(admin)/dashboard/page";
 
 describe("painel de métricas", () => {
   it("mostra receita e períodos somente a partir das métricas de Pix confirmados", async () => {

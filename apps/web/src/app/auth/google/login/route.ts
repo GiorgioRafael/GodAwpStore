@@ -8,6 +8,11 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const siteOrigin = getMasterAdminSiteUrl(request.nextUrl.origin);
+  // Create the PKCE cookie only after the browser reaches the callback's host.
+  if (request.nextUrl.origin !== siteOrigin) {
+    const target = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, siteOrigin);
+    return NextResponse.redirect(target);
+  }
   const next = safeInternalPath(
     request.nextUrl.searchParams.get("next"),
     siteOrigin,

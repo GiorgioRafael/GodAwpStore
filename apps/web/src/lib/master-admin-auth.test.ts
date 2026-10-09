@@ -25,6 +25,17 @@ describe("autenticação do painel mestre 101Devs", () => {
     expect(isMasterAdminPath("/dashboard")).toBe(false);
   });
 
+  it("separa o /admin da GWStore sem liberar páginas mestre conhecidas ou futuras", () => {
+    const gw = "https://gwstoreofc.com";
+    expect(isMasterAdminPath("/admin", gw)).toBe(false);
+    expect(isMasterAdminPath("/admin/pedidos?status=paid", gw)).toBe(false);
+    expect(isMasterAdminPath("/admin/configuracoes", gw)).toBe(false);
+    for (const path of ["/admin/gwstore", "/admin/loja-th", "/admin/sobremesas-fit", "/admin/discordbots/login", "/admin/aba-nova"]) {
+      expect(isMasterAdminPath(path, gw)).toBe(true);
+    }
+    expect(isMasterAdminPath("/admin", "https://101devs.com")).toBe(true);
+  });
+
   it("mantém o destino no login exclusivo da 101Devs", () => {
     expect(masterAdminLoginHref(`${MASTER_ADMIN_ROOT}?periodo=atual`)).toBe(
       "/admin/discordbots/login?next=%2Fadmin%3Fperiodo%3Datual",

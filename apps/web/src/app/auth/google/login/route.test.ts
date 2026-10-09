@@ -46,4 +46,11 @@ describe("GET /auth/google/login", () => {
     );
     expect(response.cookies.get("gw_auth_next")?.value).toBe("/admin/discordbots");
   });
+
+  it("reaches the master host before creating PKCE cookies when opened from GWStore", async () => {
+    const response = await GET(new NextRequest("https://gwstoreofc.com/auth/google/login?next=%2Fadmin%2Fgwstore"));
+    expect(response.headers.get("location")).toBe("https://101devs.com/auth/google/login?next=%2Fadmin%2Fgwstore");
+    expect(mocks.signInWithOAuth).not.toHaveBeenCalled();
+    expect(response.cookies.get("gw_auth_next")).toBeUndefined();
+  });
 });

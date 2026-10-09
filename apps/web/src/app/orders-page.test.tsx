@@ -6,6 +6,12 @@ const repository = vi.hoisted(() => ({
   getOrderDailySeries: vi.fn(),
   listOrders: vi.fn(),
 }));
+const routing = vi.hoisted(() => ({ isGwStore: true, redirect: vi.fn() }));
+vi.mock("@/lib/brand", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/brand")>(),
+  get IS_GWSTORE() { return routing.isGwStore; },
+}));
+vi.mock("next/navigation", () => ({ redirect: routing.redirect }));
 
 vi.mock("@/lib/data/admin-repository", () => repository);
 vi.mock("@/components/admin/orders-chart-loader", () => ({
@@ -39,6 +45,8 @@ const baseOrder = {
 describe("aba Pedidos", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    routing.isGwStore = true;
+    routing.redirect.mockImplementation(() => { throw new Error("redirect"); });
     repository.getOrderAnalyticsMetrics.mockResolvedValue({
       ordersTodayCount: 3,
       revenueTodayCents: 2_000,
@@ -85,11 +93,11 @@ describe("aba Pedidos", () => {
     expect(screen.getByTestId("orders-chart")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Pedidos hoje: 3/ })).toHaveAttribute(
       "href",
-      "/pedidos?period=today",
+      "/admin/pedidos?period=today",
     );
     expect(screen.getByRole("link", { name: "Pagos" })).toHaveAttribute(
       "href",
-      "/pedidos?period=today&status=paid",
+      "/admin/pedidos?period=today&status=paid",
     );
     expect(repository.listOrders).toHaveBeenCalledWith(expect.objectContaining({
       status: "all",
@@ -106,7 +114,7 @@ describe("aba Pedidos", () => {
     expect(screen.getByText("Mostrando 1–50 de 53")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Próxima" })).toHaveAttribute(
       "href",
-      "/pedidos?period=today&page=2",
+      "/admin/pedidos?period=today&page=2",
     );
   });
 
@@ -138,4 +146,32 @@ describe("aba Pedidos", () => {
     expect(screen.getByText("Nenhum pedido encontrado")).toBeInTheDocument();
     expect(screen.getByText("0 pedidos encontrados")).toBeInTheDocument();
   });
+
+  it.each([[true, "/admin"], [false, ""]] as const)(
+    "preserva datas, status e paginação nas URLs da loja (GW=%s)", async (isGwStore, prefix) => {
+      routing.isGwStore = isGwStore;
+      repository.listOrders.mockResolvedValue({ rows: [baseOrder], total: 101, page: 2, pageSize: 50, totalPages: 3 });
+      render(await OrdersPage({ searchParams: Promise.resolve({ period: "custom", from: "2026-10-01",
+        to: "2026-10-09", status: "paid", page: "2" }) }));
+      const filteredPath = `${prefix}/pedidos?period=custom&from=2026-10-01&to=2026-10-09&status=paid`;
+      expect(screen.getByRole("link", { name: "Anterior" })).toHaveAttribute("href", filteredPath);
+      expect(screen.getByRole("link", { name: "Próxima" })).toHaveAttribute("href", `${filteredPath}&page=3`);
+      expect(screen.getByRole("link", { name: "Pagos" })).toHaveAttribute("href", filteredPath);
+      expect(screen.getByRole("link", { name: "Limpar tudo" })).toHaveAttribute("href", `${prefix}/pedidos`);
+      const form = screen.getByRole("button", { name: "Aplicar datas" }).closest("form");
+      expect(form).toHaveAttribute("method", "get");
+      expect(form).not.toHaveAttribute("action");
+      expect(form?.querySelector('input[name="status"]')).toHaveAttribute("value", "paid");
+    },
+  );
+
+  it.each([[true, "/admin"], [false, ""]] as const)(
+    "corrige página fora do limite mantendo filtros e o painel da loja (GW=%s)", async (isGwStore, prefix) => {
+      routing.isGwStore = isGwStore;
+      repository.listOrders.mockResolvedValue({ rows: [], total: 51, page: 99, pageSize: 50, totalPages: 2 });
+      await expect(OrdersPage({ searchParams: Promise.resolve({ period: "7d", status: "paid", page: "99" }) }))
+        .rejects.toThrow("redirect");
+      expect(routing.redirect).toHaveBeenCalledWith(`${prefix}/pedidos?period=7d&status=paid&page=2`);
+    },
+  );
 });

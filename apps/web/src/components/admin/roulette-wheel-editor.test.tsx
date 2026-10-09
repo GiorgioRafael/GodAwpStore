@@ -4,6 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import { RouletteWheelEditor } from "./roulette-wheel-editor";
 
+const routingBrand = vi.hoisted(() => ({ isGwStore: true }));
+vi.mock("@/lib/brand", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/brand")>(),
+  get IS_GWSTORE() { return routingBrand.isGwStore; },
+}));
+
 vi.mock("@/app/actions/roulette-wheel", () => ({
   saveRouletteWheelAction: vi.fn(async () => ({ ok: true, message: "Roda salva." })),
 }));
@@ -12,6 +18,14 @@ const inactiveProductId = "10000000-0000-4000-8000-000000000001";
 const activeProductId = "10000000-0000-4000-8000-000000000002";
 
 describe("editor da roleta", () => {
+  it.each([[true, "/admin/catalogo/produtos"], [false, "/catalogo/produtos"]] as const)(
+    "abre o catálogo do painel da loja ao cadastrar prêmios (GW=%s)", (isGwStore, destination) => {
+      routingBrand.isGwStore = isGwStore;
+      render(<RouletteWheelEditor slots={[]} candidates={[]} markupBps={7000} feeBps={500} saleRateBps={5000} />);
+      expect(screen.getByRole("link", { name: "no catálogo" })).toHaveAttribute("href", destination);
+    },
+  );
+
   it("mostra claramente o prêmio que precisa ser substituído antes de salvar", async () => {
     const user = userEvent.setup();
     render(
