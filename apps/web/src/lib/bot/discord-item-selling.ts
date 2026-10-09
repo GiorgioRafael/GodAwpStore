@@ -113,7 +113,7 @@ export function sellingEntryMessage() {
       ]) },
       { name: "💎 SKINS", inline: false, value: sellingPriceTable([
         ["Rabid", 400], ["Banner Doghouse", 250], ["Banner Vibeframes", 150],
-        ["Kitsune Galaxy", 140], ["Dragon Ember", 120], ["Kitsune Imperial", 120],
+        ["Kitsune Galaxy", 170], ["Dragon Ember", 130], ["Kitsune Imperial", 150],
         ["Meme Fruit", 120], ["Rumble Roxa", 80], ["Magnetic Arcsteel", 55],
         ["Rumble Vermelha", 45], ["Pain Super Spirit", 38], ["Divine Portal", 35],
         ["Dog Blade", 35], ["Runic Fiend", 35], ["Werewolf", 25], ["Yeti Fiend", 22],
