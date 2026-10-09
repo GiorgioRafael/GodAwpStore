@@ -4,6 +4,10 @@ O projeto Vercel `gwstore`, na equipe `ydps915s-projects`, atende
 `gwstoreofc.com` e `www.gwstoreofc.com`. A GoDaddy mantém os nameservers
 `ns51.domaincontrol.com` e `ns52.domaincontrol.com`.
 
+A aplicação da GWStore roda no serviço `gwstore-web` da Railway. A Vercel
+encaminha estes domínios e `gwstore.vercel.app` para esse serviço, mantendo
+os links e webhooks antigos. Veja [a configuração da migração](gwstore-railway.md).
+
 Registros indicados e verificados pela Vercel em 09/10/2026:
 
 | Tipo | Nome | Valor |
@@ -30,6 +34,11 @@ rotas conhecidas do painel da GWStore são reescritas; caminhos desconhecidos
 ou de administração mestre continuam protegidos pelo gate mestre.
 
 ## Autenticação
+
+Enquanto a conta Owner do Supabase não liberar os novos callbacks, a variável
+`GWSTORE_LOGIN_ORIGIN=https://gwstore.vercel.app` inicia o login no endereço
+legado antes de criar cookies PKCE. O painel fica nesse endereço durante a
+sessão; o domínio novo continua disponível para a página pública e pagamentos.
 
 O callback da aplicação precisa permanecer na origem onde foram criados os
 cookies de PKCE e de estado. `getStoreAuthSiteUrl` aceita somente origens da
