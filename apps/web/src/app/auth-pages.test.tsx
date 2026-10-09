@@ -17,6 +17,7 @@ describe("páginas de autenticação", () => {
       "href",
       "/auth/login?next=%2Fadmin",
     );
+    expect(screen.queryByRole("link", { name: /roleta/i })).not.toBeInTheDocument();
   });
 
   it("preserva o destino do painel no inÃ­cio do OAuth", async () => {

@@ -2,6 +2,7 @@ import type { LivePixCheckout, LivePixPayment } from "@/lib/livepix/client";
 import { LIVEPIX_MINIMUM_BRL_CENTS } from "@/lib/livepix/limits";
 import { reconciliationDigest } from "@/lib/livepix/payment-service";
 import { STORE_NAME } from "@/lib/brand";
+import { ROULETTE_AVAILABLE, ROULETTE_UNAVAILABLE_MESSAGE } from "./availability";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -68,6 +69,7 @@ export class RouletteCoinPurchaseService {
   ) {}
 
   async createCheckout(purchaseId: string, siteUrl: string): Promise<StoredRouletteCheckout> {
+    if (!ROULETTE_AVAILABLE) throw new Error(ROULETTE_UNAVAILABLE_MESSAGE);
     assertUuid(purchaseId);
 
     const claimToken = crypto.randomUUID();

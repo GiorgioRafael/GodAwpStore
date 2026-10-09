@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getMasterAdminSiteUrl, getStoreAuthSiteUrl } from "@/lib/env";
 import { publicRequestOrigin } from "@/lib/public-request-origin";
 import { AUTH_NEXT_COOKIE } from "@/lib/auth-next";
+import { gwStoreCustomerLoginHref, isGwStoreCustomerDestination } from "@/lib/gwstore-customer-auth";
 import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -23,12 +24,12 @@ export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
   if (!code || !supabase) {
-    return failed(siteOrigin, next);
+    return failed(siteOrigin, next, requestOrigin);
   }
 
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
-    return failed(siteOrigin, next);
+    return failed(siteOrigin, next, requestOrigin);
   }
 
   const response = NextResponse.redirect(new URL(next, siteOrigin));
@@ -41,10 +42,12 @@ export async function GET(request: NextRequest) {
  * login told a player, in the store's own words, that the panel is for
  * authorised IDs only — which reads as a refusal, not as "try again".
  */
-function failed(siteOrigin: string, next: string) {
+function failed(siteOrigin: string, next: string, requestOrigin: string) {
   const target = isMasterAdminPath(next, siteOrigin)
     ? new URL(masterAdminLoginHref(next, { error: "callback" }), siteOrigin)
-    : next.startsWith("/roleta")
+    : isGwStoreCustomerDestination(next, requestOrigin)
+      ? new URL(gwStoreCustomerLoginHref(next, { error: "callback" }), siteOrigin)
+      : next.startsWith("/roleta")
       ? new URL("/roleta?erro=login", siteOrigin)
       : new URL("/login?erro=callback", siteOrigin);
   const response = NextResponse.redirect(target);

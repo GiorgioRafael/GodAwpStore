@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { rpc, createAdminSupabaseClient, loadBotRuntimeSettings, resolveGwStoreOrderTicketKind } = vi.hoisted(
+const { rpc, sourceQuery, from, createAdminSupabaseClient, loadBotRuntimeSettings, resolveGwStoreOrderTicketKind } = vi.hoisted(
   () => {
     const rpc = vi.fn();
+    const sourceQuery = vi.fn();
+    const from = vi.fn(() => ({ select: vi.fn(() => ({ in: sourceQuery })) }));
     return {
-      rpc,
-      createAdminSupabaseClient: vi.fn(() => ({ rpc })),
+      rpc, sourceQuery, from,
+      createAdminSupabaseClient: vi.fn(() => ({ rpc, from })),
       loadBotRuntimeSettings: vi.fn(),
       resolveGwStoreOrderTicketKind: vi.fn(),
     };
@@ -81,6 +83,7 @@ const INPUT = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sourceQuery.mockResolvedValue({ data: [{ id: ORDER_ID, payment_reference: "discord:legacy-interaction" }], error: null });
   resolveGwStoreOrderTicketKind.mockReset().mockResolvedValue("purchase");
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("DISCORD_APPLICATION_ID", BOT_ID);
@@ -201,6 +204,57 @@ describe("canal de recuperação de pagamento atrasado", () => {
 });
 
 describe("varredura dos pagamentos atrasados", () => {
+  it("ignora um pedido web persistido sem criar canal ou registrar ticket Discord", async () => {
+    const fetcher = vi.fn();
+    rpc.mockResolvedValue({ data: [{
+      late_order_id: ORDER_ID, late_guild_discord_id: GUILD_ID,
+      late_buyer_discord_id: BUYER_ID, late_product_name: "Prize",
+      late_quantity: 1, late_amount_cents: 100, late_detected_at: "2026-10-09T18:00:00Z",
+    }], error: null });
+    sourceQuery.mockResolvedValue({ data: [{ id: ORDER_ID, payment_reference: "web:417805df-0000-4000-8000-000000000002" }], error: null });
+    await expect(reconcileLatePaidOrderTickets({ fetcher })).resolves.toEqual({ pending: 1, opened: 0, failed: 0 });
+    expect(from).toHaveBeenCalledWith("orders");
+    expect(sourceQuery).toHaveBeenCalledWith("id", [ORDER_ID]);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalledWith("record_late_payment_ticket", expect.anything());
+  });
+
+  it.each([
+    { data: null, error: { message: "DB unavailable" } },
+    { data: [], error: null },
+  ])("falha sem Discord se a origem persistida não puder ser verificada", async sourceResult => {
+    const fetcher = vi.fn();
+    rpc.mockResolvedValue({ data: [{ late_order_id: ORDER_ID }], error: null });
+    sourceQuery.mockResolvedValue(sourceResult);
+    await expect(reconcileLatePaidOrderTickets({ fetcher })).resolves.toEqual({ pending: 1, opened: 0, failed: 1 });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalledWith("record_late_payment_ticket", expect.anything());
+  });
+
+  it("continua recuperando a compra do bot em um lote misto com compra web", async () => {
+    const webOrderId = "417805df-0000-4000-8000-000000000002";
+    const candidate = { late_guild_discord_id: GUILD_ID, late_buyer_discord_id: BUYER_ID,
+      late_product_name: "Prize", late_quantity: 1, late_amount_cents: 100,
+      late_detected_at: "2026-10-09T18:00:00Z" };
+    rpc.mockImplementation(async name => name === "list_late_paid_orders_without_ticket"
+      ? { data: [{ ...candidate, late_order_id: webOrderId }, { ...candidate, late_order_id: ORDER_ID }], error: null }
+      : { data: [], error: null });
+    sourceQuery.mockResolvedValue({ data: [
+      { id: webOrderId, payment_reference: "web:417805df-0000-4000-8000-000000000003" },
+      { id: ORDER_ID, payment_reference: "discord:123456789012345678" },
+    ], error: null });
+    const { fetcher } = stubDiscord();
+    await expect(reconcileLatePaidOrderTickets({ fetcher })).resolves.toEqual({ pending: 2, opened: 1, failed: 0 });
+    expect(rpc).toHaveBeenCalledWith("record_late_payment_ticket", { p_order_id: ORDER_ID, p_channel_id: CHANNEL_ID });
+    expect(rpc).not.toHaveBeenCalledWith("record_late_payment_ticket", { p_order_id: webOrderId, p_channel_id: expect.anything() });
+  });
+
+  it("não consulta a origem quando não há pagamentos atrasados", async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    await expect(reconcileLatePaidOrderTickets()).resolves.toEqual({ pending: 0, opened: 0, failed: 0 });
+    expect(from).not.toHaveBeenCalled();
+  });
+
   it("abre o canal e registra para não repetir na próxima passagem", async () => {
     const { fetcher } = stubDiscord();
     rpc.mockImplementation(async (name: string) =>

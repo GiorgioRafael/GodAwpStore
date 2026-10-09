@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getGwStoreLoginOrigin, getStoreAuthSiteUrl } from "@/lib/env";
 import { publicRequestOrigin } from "@/lib/public-request-origin";
 import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
+import { gwStoreCustomerLoginHref, isGwStoreCustomerDestination } from "@/lib/gwstore-customer-auth";
 import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -11,6 +12,7 @@ export async function GET(request: NextRequest) {
   const requestOrigin = publicRequestOrigin(request);
   const siteOrigin = getStoreAuthSiteUrl(requestOrigin);
   const next = safeInternalPath(request.nextUrl.searchParams.get("next"), siteOrigin);
+  const isCustomer = isGwStoreCustomerDestination(next, requestOrigin);
   const loginOrigin = getGwStoreLoginOrigin();
   if (loginOrigin && requestOrigin !== loginOrigin && !isMasterAdminPath(next, requestOrigin)) {
     const target = new URL("/auth/login", loginOrigin);
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
   if (!supabase) {
     const login = isMasterAdminPath(next, requestOrigin)
       ? masterAdminLoginHref(next, { setup: true })
-      : "/login?setup=1";
+      : isCustomer ? gwStoreCustomerLoginHref(next, { setup: true }) : "/login?setup=1";
     return NextResponse.redirect(new URL(login, siteOrigin));
   }
 
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
   if (error || !data.url) {
     const login = isMasterAdminPath(next, requestOrigin)
       ? masterAdminLoginHref(next, { error: "oauth" })
-      : "/login?erro=oauth";
+      : isCustomer ? gwStoreCustomerLoginHref(next, { error: "oauth" }) : "/login?erro=oauth";
     return NextResponse.redirect(new URL(login, siteOrigin));
   }
 

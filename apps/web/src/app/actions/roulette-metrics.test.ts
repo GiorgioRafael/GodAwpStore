@@ -9,6 +9,7 @@ const { requireAdmin, update, maybeSingle, from } = vi.hoisted(() => {
 });
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/brand", () => ({ STORE_SLUG: "thstore" }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireAdmin }));
 vi.mock("@/lib/supabase/server", () => ({

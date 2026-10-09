@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import type { AdminActionState } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
+import {
+  ROULETTE_AVAILABLE,
+  ROULETTE_UNAVAILABLE_MESSAGE,
+} from "@/lib/roulette/availability";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 /** 0% to 1000%: an item bought for R$ 1,00 and listed at R$ 11,00. */
@@ -21,6 +25,10 @@ export async function saveRouletteRatesAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
+  if (!ROULETTE_AVAILABLE) {
+    return { ok: false, message: ROULETTE_UNAVAILABLE_MESSAGE };
+  }
+
   const markupBps = percentToBps(formData.get("markupPercent"));
   const feeBps = percentToBps(formData.get("feePercent"));
   const saleRateBps = percentToBps(formData.get("salePercent"));

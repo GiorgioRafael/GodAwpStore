@@ -2,6 +2,7 @@ import "server-only";
 
 import { getAdminSession } from "@/lib/auth";
 import { getSiteUrl } from "@/lib/env";
+import { ROULETTE_AVAILABLE } from "./availability";
 
 export type RouletteOverlayLink =
   | { status: "ready"; url: string }
@@ -22,6 +23,7 @@ export type RouletteOverlayLink =
  * to anybody who asked.
  */
 export async function getRouletteOverlayLink(): Promise<RouletteOverlayLink> {
+  if (!ROULETTE_AVAILABLE) return { status: "forbidden" };
   const session = await getAdminSession();
   if (session.status !== "authorized") return { status: "forbidden" };
 

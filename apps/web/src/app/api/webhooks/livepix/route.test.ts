@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   completeRobuxTicket: vi.fn(),
   failRobuxTicket: vi.fn(),
   reconcileLatePaidOrderTickets: vi.fn(),
+  fulfillWebOrderIfApplicable: vi.fn(),
   afterTasks: [] as Array<() => void | Promise<void>>,
 }));
 
@@ -39,6 +40,7 @@ vi.mock("@/lib/bot/discord-ticket", () => ({
 vi.mock("@/lib/bot/late-payment-ticket", () => ({
   reconcileLatePaidOrderTickets: mocks.reconcileLatePaidOrderTickets,
 }));
+vi.mock("@/lib/shop/fulfillment", () => ({ fulfillWebOrderIfApplicable: mocks.fulfillWebOrderIfApplicable }));
 vi.mock("@/lib/bot/discord-customer-rank", () => ({
   synchronizeDiscordCustomerRankRole: mocks.synchronizeDiscordCustomerRankRole,
 }));
@@ -82,6 +84,30 @@ afterEach(() => {
 });
 
 describe("LivePix webhook route", () => {
+  it.each(["paid", "cancelled"])("pagamento web %s usa chat persistido sem claim/ticket/rank Discord", async orderStatus => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus, firstConfirmation: true });
+    mocks.fulfillWebOrderIfApplicable.mockResolvedValue(true);
+    const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ received: true, chat: "web" });
+    expect(mocks.claimTicket).not.toHaveBeenCalled();
+    expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
+    expect(mocks.reconcileLatePaidOrderTickets).not.toHaveBeenCalled();
+    expect(mocks.synchronizeDiscordCustomerRankRole).not.toHaveBeenCalled();
+    if (orderStatus === "paid") expect(mocks.requestDiscordStorefrontSync).toHaveBeenCalledWith(orderId);
+    else expect(mocks.requestDiscordStorefrontSync).not.toHaveBeenCalled();
+  });
+  it("origem web desconhecida retorna retry sem tentar abrir Discord", async () => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus: "paid" });
+    mocks.fulfillWebOrderIfApplicable.mockRejectedValue(new Error("DB indisponível"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect((await POST(webhookRequest(JSON.stringify(webhookPayload())))).status).toBe(503);
+    expect(mocks.claimTicket).not.toHaveBeenCalled();
+    expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
   it("rejeita payload inválido antes de consultar serviços", async () => {
     const response = await POST(webhookRequest("{"));
     expect(response.status).toBe(400);

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
 import { LinkButton } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import {
   paymentReturnCopy,
   resolvePaymentReturnStatus,
 } from "@/lib/livepix/payment-return";
-import { STORE_NAME } from "@/lib/brand";
+import { IS_GWSTORE, STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 export const metadata: Metadata = {
@@ -49,11 +50,16 @@ async function readPaymentStatus(orderId: string) {
 
   const { data, error } = await client
     .from("orders")
-    .select("status,payment_status,discord_ticket_status,late_payment_detected_at,stock_commit_failure_reason")
+    .select("status,payment_status,discord_ticket_status,late_payment_detected_at,stock_commit_failure_reason,payment_reference")
     .eq("id", orderId)
     .maybeSingle();
   if (error) return "unknown" as const;
-  if (data) return resolvePaymentReturnStatus(data);
+  if (data) {
+    // Existing provider checkouts may still point at this historical URL.
+    // The destination page authenticates the buyer before exposing the order.
+    if (IS_GWSTORE && data.payment_reference?.startsWith("web:")) redirect(`/minhas-compras/${orderId}`);
+    return resolvePaymentReturnStatus(data);
+  }
 
   const { data: robux, error: robuxError } = await client
     .from("robux_orders")

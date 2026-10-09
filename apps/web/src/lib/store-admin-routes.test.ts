@@ -99,4 +99,16 @@ describe("endereços do painel da GWStore", () => {
     expect(storeAdminRewritePath("/admin", "https://gwstoreofc.com")).toBeNull();
     expect(defaultStoreAdminPath("https://thstore.vercel.app")).toBe("/dashboard");
   });
+
+  it("mapeia o atendimento de pedidos web e apenas filhos com UUID", () => {
+    const path = "/atendimento-loja/10000000-0000-4000-8000-000000000001";
+    expect(storeAdminHref(path)).toBe(`/admin${path}`);
+    expect(storeAdminRewritePath(`/admin${path}`, "https://gwstoreofc.com")).toBe(path);
+    expect(legacyStoreAdminRedirect(path, "https://gwstoreofc.com")).toBe(`/admin${path}`);
+    expect(storeAdminRewritePath("/admin/atendimento-loja/aba-nova", "https://gwstoreofc.com")).toBeNull();
+    expect(storeAdminRewritePath(`/admin${path}`, "https://101devs.com")).toBeNull();
+    brand.gw = false;
+    expect(storeAdminHref(path)).toBe(path);
+    expect(storeAdminRewritePath(`/admin${path}`, "https://thstore.vercel.app")).toBeNull();
+  });
 });

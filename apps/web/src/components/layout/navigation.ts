@@ -1,5 +1,6 @@
 import {
   Megaphone,
+  MessageSquare,
   Bot,
   Boxes,
   ChartNoAxesCombined,
@@ -34,7 +35,7 @@ export interface NavigationGroup {
   items: NavigationItem[];
 }
 
-/** A roleta roda só na GWStore, então as páginas dela não aparecem nas outras. */
+/** A navegação mostra a roleta somente nas lojas onde ela continua disponível. */
 const rouletteItems: NavigationItem[] =
   ROULETTE_AVAILABLE
     ? [
@@ -60,6 +61,7 @@ const legacyNavigationGroups: NavigationGroup[] = [
     label: "Operação",
     items: [
       { label: "Pedidos", href: "/pedidos", icon: ClipboardList },
+      ...(IS_GWSTORE ? [{ label: "Pedidos da loja", href: "/atendimento-loja", icon: MessageSquare }] : []),
       { label: "Entregas", href: "/entregas", icon: PackageCheck },
       ...(IS_GWSTORE ? [{ label: "Pagamentos Pix", href: "/pagamentos-pix", icon: WalletCards }] : []),
       { label: "Saldos", href: "/saldos", icon: Coins },

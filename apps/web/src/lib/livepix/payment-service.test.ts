@@ -1,6 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+const brand = vi.hoisted(() => ({ isGwStore: true }));
+vi.mock("@/lib/brand", () => ({ get IS_GWSTORE() { return brand.isGwStore; }, STORE_NAME: "GWStore" }));
 
 import { LivePixPaymentService, type LivePixPaymentRepository } from "./payment-service";
 
@@ -20,6 +22,7 @@ function repository(overrides: Partial<LivePixPaymentRepository> = {}): LivePixP
       amountCents: 500,
       currency: "BRL",
       paymentExpiresAt: "2099-07-16T15:00:00.000Z",
+      paymentReference: "discord:123456789012345678",
     })),
     claimCheckout: vi.fn(async () => ({ claimed: true, checkout: null })),
     registerCheckout: vi.fn(async (input) => ({
@@ -74,6 +77,8 @@ function client() {
 }
 
 describe("LivePixPaymentService", () => {
+  beforeEach(() => { brand.isGwStore = true; });
+
   it("cria checkout com retorno exclusivo do pedido e o persiste", async () => {
     const repo = repository();
     const api = client();
@@ -88,6 +93,43 @@ describe("LivePixPaymentService", () => {
       amountCents: 500,
       redirectUrl: `https://gwstore.vercel.app/pagamento/${orderId}`,
     });
+  });
+
+  it("retorna a compra web persistida ao pedido privado no site", async () => {
+    const repo = repository();
+    vi.mocked(repo.findPayableOrder).mockResolvedValueOnce({
+      id: orderId, status: "awaiting_payment", amountCents: 500, currency: "BRL",
+      paymentExpiresAt: "2099-07-16T15:00:00.000Z", paymentReference: `web:${crypto.randomUUID()}`,
+    });
+    const api = client();
+    await new LivePixPaymentService(repo, api).createCheckout(orderId, "https://gwstoreofc.com");
+    expect(api.createPayment).toHaveBeenCalledWith({ amountCents: 500,
+      redirectUrl: `https://gwstoreofc.com/minhas-compras/${orderId}` });
+  });
+
+  it.each([null, "discord:123456789012345678"])("mantém retorno do bot quando a fonte persistida é %s", async paymentReference => {
+    const repo = repository();
+    vi.mocked(repo.findPayableOrder).mockResolvedValueOnce({
+      id: orderId, status: "awaiting_payment", amountCents: 500, currency: "BRL",
+      paymentExpiresAt: "2099-07-16T15:00:00.000Z", paymentReference,
+    });
+    const api = client();
+    await new LivePixPaymentService(repo, api).createCheckout(orderId, "https://gwstoreofc.com");
+    expect(api.createPayment).toHaveBeenCalledWith({ amountCents: 500,
+      redirectUrl: `https://gwstoreofc.com/pagamento/${orderId}` });
+  });
+
+  it("preserva o retorno da THStore mesmo diante de uma referência web", async () => {
+    brand.isGwStore = false;
+    const repo = repository();
+    vi.mocked(repo.findPayableOrder).mockResolvedValueOnce({
+      id: orderId, status: "awaiting_payment", amountCents: 500, currency: "BRL",
+      paymentExpiresAt: "2099-07-16T15:00:00.000Z", paymentReference: `web:${crypto.randomUUID()}`,
+    });
+    const api = client();
+    await new LivePixPaymentService(repo, api).createCheckout(orderId, "https://thstore.vercel.app");
+    expect(api.createPayment).toHaveBeenCalledWith({ amountCents: 500,
+      redirectUrl: `https://thstore.vercel.app/pagamento/${orderId}` });
   });
 
   it("reutiliza checkout existente sem criar outra cobrança", async () => {
@@ -118,6 +160,7 @@ describe("LivePixPaymentService", () => {
         amountCents: 500,
         currency: "BRL",
         paymentExpiresAt: "2026-07-16T15:00:00.000Z",
+        paymentReference: "discord:123456789012345678",
       })),
     });
     const api = client();

@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 
 import type { AdminActionState } from "@/app/actions/admin";
 import { requireAdmin } from "@/lib/auth";
+import {
+  ROULETTE_AVAILABLE,
+  ROULETTE_UNAVAILABLE_MESSAGE,
+} from "@/lib/roulette/availability";
 import { MAXIMUM_WHEEL_SLOTS } from "@/lib/roulette/demo";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -23,6 +27,10 @@ export async function saveRouletteWheelAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
+  if (!ROULETTE_AVAILABLE) {
+    return { ok: false, message: ROULETTE_UNAVAILABLE_MESSAGE };
+  }
+
   const slots: Array<{
     prize_key: string;
     product_id: string;
@@ -112,6 +120,10 @@ export async function toggleRouletteAction(
   _previousState: AdminActionState,
   formData: FormData,
 ): Promise<AdminActionState> {
+  if (!ROULETTE_AVAILABLE) {
+    return { ok: false, message: ROULETTE_UNAVAILABLE_MESSAGE };
+  }
+
   const enabled = formData.get("enabled") === "on";
 
   try {

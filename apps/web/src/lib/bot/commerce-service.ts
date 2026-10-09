@@ -26,7 +26,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 
 export class BotCommerceService {
-  constructor(private readonly repository: BotCommerceRepository) {}
+  constructor(
+    private readonly repository: BotCommerceRepository,
+    private readonly checkoutSource: "discord" | "web" = "discord",
+  ) {}
 
   listCatalog(): Promise<BotCatalogGame[]> {
     return this.repository.listCatalog();
@@ -178,7 +181,7 @@ export class BotCommerceService {
     serviceRequirementsConfirmed?: boolean;
   }): Promise<CartPurchaseResult> {
     if (
-      !SNOWFLAKE_PATTERN.test(input.interactionId) ||
+      !(this.checkoutSource === "web" ? UUID_PATTERN : SNOWFLAKE_PATTERN).test(input.interactionId) ||
       !SNOWFLAKE_PATTERN.test(input.buyerDiscordId) ||
       !isValidGuild(input.guild) ||
       input.items.length < 1 ||

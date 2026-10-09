@@ -200,6 +200,29 @@ describe("link de pagamento compartilhado com compradores", () => {
     }
   });
 
+  it("libera só as páginas do comprador GW e preserva a sessão de usuários sem permissão admin", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "buyer" } } });
+    mocks.refreshCookies = true;
+    const orderId = "10000000-0000-4000-8000-000000000001";
+    for (const path of ["/entrar", "/entrar/", "/minhas-compras", `/minhas-compras/${orderId}`]) {
+      const response = await proxy(new NextRequest(`https://gwstoreofc.com${path}`));
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(response.cookies.get("sb-refreshed")?.value).toBe("session");
+    }
+    for (const path of ["/entrar/admin", "/minhas-compras/admin", "/admin/pedidos", "/admin/atendimento-loja", `/admin/atendimento-loja/${orderId}`]) {
+      const response = await proxy(new NextRequest(`https://gwstoreofc.com${path}`));
+      expect(new URL(response.headers.get("location")!).pathname).toBe("/acesso-negado");
+    }
+    mocks.gwStore = false;
+    mocks.getUser.mockResolvedValue({ data: { user: null } });
+    const th = await proxy(new NextRequest("https://thstore.vercel.app/entrar"));
+    expect(new URL(th.headers.get("location")!).pathname).toBe("/login");
+    mocks.gwStore = true;
+    const master = await proxy(new NextRequest("https://101devs.com/entrar"));
+    expect(new URL(master.headers.get("location")!).pathname).toBe("/login");
+  });
+
   it("preserva o login Google do painel mestre em 101Devs e nas abas mestre", async () => {
     mocks.getUser.mockResolvedValue({ data: { user: { id: "admin" } } });
     for (const href of ["https://101devs.com/admin", "https://gwstoreofc.com/admin/gwstore", "https://gwstoreofc.com/admin/discordbots", "https://gwstoreofc.com/admin/aba-nova"]) {

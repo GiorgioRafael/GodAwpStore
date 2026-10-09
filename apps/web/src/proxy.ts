@@ -6,6 +6,7 @@ import { IS_GWSTORE } from "@/lib/brand";
 import { isGwStoreAdminOrigin, legacyStoreAdminRedirect, storeAdminRewritePath } from "@/lib/store-admin-routes";
 import { shouldProxyGwStoreToRailway } from "@/lib/railway-bridge";
 import { publicRequestOrigin } from "@/lib/public-request-origin";
+import { isGwStoreCustomerPagePath } from "@/lib/gwstore-customer-auth";
 import {
   extractDiscordIdentity,
   extractGoogleIdentity,
@@ -35,7 +36,8 @@ export async function proxy(request: NextRequest) {
   const legacyRedirect = (request.method === "GET" || request.method === "HEAD")
     ? legacyStoreAdminRedirect(pathname, origin) : null;
   const isSharedPixLink = IS_GWSTORE && request.method === "GET" && pathname.replace(/\/$/, "") === "/pagamentos-pix";
-  const isPublic = isPublicAdminPanelPath(pathname) || (isStoreOrigin && pathname === "/");
+  const isCustomerPage = isStoreOrigin && isGwStoreCustomerPagePath(pathname);
+  const isPublic = isPublicAdminPanelPath(pathname) || isCustomerPage;
   const isMasterAdmin = isMasterAdminPath(pathname, origin);
   const next = `${pathname}${request.nextUrl.search}`;
 

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { after } from "next/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
 import { IS_GWSTORE } from "@/lib/brand";
 import { eclipseDatabase } from "@/lib/eclipsepay/runtime";
 import { reconcileEclipsePayments } from "@/lib/eclipsepay/reconciliation";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import { PixControls } from "./controls";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +14,20 @@ export const metadata: Metadata = { title: "Pagamento Pix · GWStore", robots: {
 export default async function EclipseCheckoutPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   if (!IS_GWSTORE || !/^[a-f0-9]{64}$/.test(token)) notFound();
-  const { data: checkout, error } = await eclipseDatabase().from("eclipsepay_checkouts")
-    .select("amount_cents,operation_status,order_kind,br_code,expires_at,processed_at")
+  const database = eclipseDatabase();
+  const { data: checkout, error } = await database.from("eclipsepay_checkouts")
+    .select("order_id,amount_cents,operation_status,order_kind,br_code,expires_at,processed_at")
     .eq("checkout_token", token).maybeSingle();
   if (error) throw new Error("Pagamento temporariamente indisponível. Atualize a página.");
   if (!checkout) notFound();
+  if (checkout.order_kind === "items") {
+    const { data: order, error: orderError } = await database.from("orders")
+      .select("payment_reference").eq("id", checkout.order_id).maybeSingle();
+    if (orderError || !order) throw new Error("Pedido temporariamente indisponível. Atualize a página.");
+    // Web payments stay in the authenticated order workspace, including links
+    // already issued before private delivery moved from Discord to the site.
+    if (order.payment_reference?.startsWith("web:")) redirect(`/minhas-compras/${checkout.order_id}`);
+  }
   const status = checkout.operation_status as string;
   const expired = isExpired(checkout.expires_at);
   const pending = status === "pending";
@@ -37,11 +47,11 @@ export default async function EclipseCheckoutPage({ params }: { params: Promise<
         <img className="mx-auto mt-5 rounded-xl" src={qr} alt="QR Code do pagamento Pix" width={280} height={280} />
       </>}
       {pending && !code && !expired && <p className="mt-5 text-sm">Preparando seu código Pix. Esta página atualiza automaticamente.</p>}
-      {status === "completed" && <p className="mt-5 text-sm">{!checkout.processed_at ? "Seu Pix foi confirmado. Estamos finalizando o pedido; não pague novamente." : checkout.order_kind === "coins" ? "Suas moedas foram creditadas. Volte à roleta." : "Volte ao Discord para acompanhar seu ticket privado de entrega."}</p>}
+      {status === "completed" && <p className="mt-5 text-sm">{!checkout.processed_at ? "Seu Pix foi confirmado. Estamos finalizando o pedido; não pague novamente." : checkout.order_kind === "coins" ? ROULETTE_AVAILABLE ? "Suas moedas foram creditadas. Volte à roleta." : "Seu pagamento anterior foi confirmado. Fale com a equipe da GWStore para conferir o saldo ou solicitar atendimento." : "Volte ao Discord para acompanhar seu ticket privado de entrega."}</p>}
       {(status === "failed" || expired) && status !== "completed" && <p className="mt-5 text-sm">Não pague um código vencido. Se já pagou, aguarde a confirmação ou fale com a equipe no Discord.</p>}
       {status === "refunded" && <p className="mt-5 text-sm">A EclipsePay informou um estorno. Fale com a equipe da GWStore antes de tentar novamente.</p>}
       <PixControls code={code} pending={pending || status === "completed" && !checkout.processed_at} />
-      {checkout.order_kind === "coins" && status === "completed" && <a className="mt-4 block text-primary underline" href="/roleta">Voltar à roleta</a>}
+      {ROULETTE_AVAILABLE && checkout.order_kind === "coins" && status === "completed" && <a className="mt-4 block text-primary underline" href="/roleta">Voltar à roleta</a>}
       <p className="mt-4 text-xs text-muted">Nunca envie comprovantes com dados sensíveis no chat público. A confirmação é feita diretamente com o provedor.</p>
     </section>
   </main>;

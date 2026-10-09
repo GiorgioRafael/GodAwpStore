@@ -5,6 +5,7 @@ import { DEFAULT_TICKET_CLOSE_ADMIN_DISCORD_USER_IDS } from "@/lib/bot/ticket-cl
 import { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } from "@/lib/bot/ticket-notifications";
 
 const mocks = vi.hoisted(() => ({
+  isGwStore: true,
   requireAdmin: vi.fn(),
   createServerSupabaseClient: vi.fn(),
   createAdminSupabaseClient: vi.fn(),
@@ -16,6 +17,10 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/brand", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/brand")>(),
+  get IS_GWSTORE() { return mocks.isGwStore; },
+}));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/auth", () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock("@/lib/supabase/server", () => ({
@@ -383,7 +388,8 @@ describe("action de produtos", () => {
     });
   });
 
-  it("remove da vitrine o produto zerado que possui histórico", async () => {
+  it.each([true, false])("remove da vitrine o produto zerado que possui histórico (GW=%s)", async isGwStore => {
+    mocks.isGwStore = isGwStore;
     const productId = "7e8d6368-eb5a-4a52-b4f6-5e3d79b364ae";
     const rpc = vi.fn(async () => ({
       data: null,
@@ -419,9 +425,11 @@ describe("action de produtos", () => {
     expect(mocks.synchronizePublishedDiscordStorefronts).toHaveBeenCalledOnce();
     expect(result).toEqual({
       ok: true,
-      message:
-        "Produto removido da loja. O histórico de estoque, pedidos, sorteios e roleta foi preservado. Vitrine do Discord sincronizada.",
+      message: isGwStore
+        ? "Produto removido da loja. O histórico vinculado foi preservado. Vitrine do Discord sincronizada."
+        : "Produto removido da loja. O histórico de estoque, pedidos, sorteios e roleta foi preservado. Vitrine do Discord sincronizada.",
     });
+    mocks.isGwStore = true;
   });
 });
 

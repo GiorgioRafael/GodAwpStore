@@ -485,6 +485,9 @@ type OrderRow = {
   discord_ticket_delivery_completed_by_discord_user_id: string | null;
   game_nickname: string | null;
   game_nickname_submitted_at: string | null;
+  web_buyer_auth_user_id: string | null;
+  web_buyer_name: string | null;
+  web_items_snapshot: Json | null;
   paid_at: string | null;
   delivered_at: string | null;
   cancelled_at: string | null;
@@ -1294,6 +1297,24 @@ export type Database = {
             ["id"]
           >,
         ];
+      };
+      web_order_chats: {
+        Row: { order_id: string; created_at: string };
+        Insert: { order_id: string; created_at?: string };
+        Update: { order_id?: string; created_at?: string };
+        Relationships: [Relationship<"web_order_chats_order_id_fkey", ["order_id"], "orders", ["id"], true>];
+      };
+      web_order_messages: {
+        Row: { id: string; order_id: string; author_auth_user_id: string | null; author_role: "buyer" | "staff" | "system"; author_name: string; body: string; system_event: string | null; created_at: string };
+        Insert: { id?: string; order_id: string; author_auth_user_id?: string | null; author_role: "buyer" | "staff" | "system"; author_name: string; body: string; system_event?: string | null; created_at?: string };
+        Update: { body?: string };
+        Relationships: [Relationship<"web_order_messages_order_id_fkey", ["order_id"], "web_order_chats", ["order_id"]>];
+      };
+      eclipsepay_checkouts: {
+        Row: { order_id: string; order_kind: "items" | "robux" | "coins"; amount_cents: number; checkout_token: string; operation_id: string | null; br_code: string | null; expires_at: string | null; operation_status: "pending" | "completed" | "failed" | "refunded"; provider_updated_at: string | null; confirmed_at: string | null; processed_at: string | null; next_check_at: string; lease_token: string | null; lease_until: string | null; review_required: boolean; created_at: string; fee_cents: number | null; net_cents: number | null };
+        Insert: { order_id: string; order_kind: "items" | "robux" | "coins"; amount_cents: number };
+        Update: { br_code?: string | null; expires_at?: string | null; operation_status?: "pending" | "completed" | "failed" | "refunded" };
+        Relationships: [];
       };
       robux_orders: {
         Row: RobuxOrderRow;

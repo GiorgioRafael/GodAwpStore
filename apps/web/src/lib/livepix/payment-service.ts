@@ -2,7 +2,7 @@ import "server-only";
 
 import type { LivePixCheckout, LivePixPayment } from "./client";
 import { LIVEPIX_MINIMUM_BRL_CENTS } from "./limits";
-import { STORE_NAME } from "@/lib/brand";
+import { IS_GWSTORE, STORE_NAME } from "@/lib/brand";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -12,6 +12,7 @@ export type PayableOrder = {
   amountCents: number;
   currency: string;
   paymentExpiresAt: string | null;
+  paymentReference: string | null;
 };
 
 export type StoredCheckout = {
@@ -114,7 +115,9 @@ export class LivePixPaymentService {
     try {
       checkout = await this.client.createPayment({
         amountCents: order.amountCents,
-        redirectUrl: `${origin}/pagamento/${order.id}`,
+        // The persisted source owns the delivery destination. Browser input
+        // cannot turn a Discord purchase into a private website order.
+        redirectUrl: `${origin}/${IS_GWSTORE && order.paymentReference?.startsWith("web:") ? "minhas-compras" : "pagamento"}/${order.id}`,
       });
     } catch (error) {
       await this.repository.releaseCheckoutClaim(order.id, claimToken).catch(() => undefined);

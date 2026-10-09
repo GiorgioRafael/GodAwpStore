@@ -12,6 +12,7 @@ import { getLivePixPaymentService } from "@/lib/livepix/runtime";
 import { getRobuxPaymentService } from "@/lib/robux/payment-service";
 import { synchronizeRobuxCustomerRankRole } from "@/lib/robux/customer-rank-role-sync";
 import { getRouletteCoinPurchaseService } from "@/lib/roulette/runtime";
+import { fulfillWebOrderIfApplicable } from "@/lib/shop/fulfillment";
 
 export async function fulfillVerifiedPayment(input: { providerPaymentId: string; providerReference: string }) {
   const payments = getLivePixPaymentService();
@@ -49,6 +50,14 @@ export async function fulfillVerifiedPayment(input: { providerPaymentId: string;
         : Response.json({ received: true, ignored: true });
     }
 
+    // The paid-chat trigger already persists this within payment confirmation;
+    // retries repair it and never fall through to a Discord claim or late ticket.
+    if (await fulfillWebOrderIfApplicable(confirmation.orderId)) {
+      if (["paid", "processing", "delivered"].includes(confirmation.orderStatus)) {
+        await enqueueStorefrontSync(confirmation.orderId);
+      }
+      return Response.json({ received: true, chat: "web" });
+    }
     if (!["paid", "processing", "delivered"].includes(confirmation.orderStatus)) {
       // The money landed on an order the deadline had already cancelled. This
       // used to return 200 and drop it: the buyer was charged, got no item and
@@ -69,24 +78,7 @@ export async function fulfillVerifiedPayment(input: { providerPaymentId: string;
       return Response.json({ received: true, ticket: "late_payment_recovery" });
     }
 
-    try {
-      const requested = await requestDiscordStorefrontSync(
-        confirmation.orderId,
-      );
-      if (requested) {
-        after(async () => {
-          await drainDiscordStorefrontSyncQueue().catch((error) => {
-            // The durable request remains pending, so a provider replay or the
-            // next payment can retry without delaying this buyer's ticket.
-            logWebhookError("storefront", error);
-          });
-        });
-      }
-    } catch (error) {
-      // Payment and ticket delivery remain authoritative if queue persistence
-      // is temporarily unavailable.
-      logWebhookError("storefront_queue", error);
-    }
+    await enqueueStorefrontSync(confirmation.orderId);
 
     deferRankRoleSync("customer_rank_role", () => synchronizeDiscordCustomerRankRole({
       discordGuildId: confirmation.discordGuildId,
@@ -123,6 +115,19 @@ export async function fulfillVerifiedPayment(input: { providerPaymentId: string;
   } catch (error) {
     logWebhookError("processing", error);
     return Response.json({ error: "Processamento temporariamente indisponível." }, { status: 503 });
+  }
+}
+
+async function enqueueStorefrontSync(orderId: string) {
+  try {
+    const requested = await requestDiscordStorefrontSync(orderId);
+    if (requested) after(async () => {
+      await drainDiscordStorefrontSyncQueue().catch(error => logWebhookError("storefront", error));
+    });
+  } catch (error) {
+    // The verified payment and private chat remain authoritative. Persisted
+    // storefront requests are idempotent and can be retried by provider replay.
+    logWebhookError("storefront_queue", error);
   }
 }
 

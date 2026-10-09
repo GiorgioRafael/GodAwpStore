@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
 import { Field, Input, Select, Textarea } from "@/components/ui/form-field";
 import type { CatalogStoreRow, ProductRow, SubstoreRow } from "@/lib/data/admin-repository";
+import { IS_GWSTORE } from "@/lib/brand";
 
 interface ProductsManagerProps {
   products: ProductRow[];
@@ -632,7 +633,9 @@ function DeleteProductDialog({
           </div>
         ) : (
           <p className="rounded-xl border border-border bg-surface-muted p-3 text-xs leading-5 text-muted">
-            Sem histórico, o cadastro é apagado de vez. Com pedidos, estoque, sorteios ou roleta, ele é removido da loja e arquivado automaticamente para não quebrar os registros antigos.
+            {IS_GWSTORE
+              ? "Sem histórico, o cadastro é apagado de vez. Com registros vinculados, ele é removido da loja e arquivado automaticamente para preservar o histórico."
+              : "Sem histórico, o cadastro é apagado de vez. Com pedidos, estoque, sorteios ou roleta, ele é removido da loja e arquivado automaticamente para não quebrar os registros antigos."}
           </p>
         )}
         <ActionFeedback state={state} />

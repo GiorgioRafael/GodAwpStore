@@ -43,7 +43,7 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
   async findPayableOrder(orderId: string): Promise<PayableOrder | null> {
     const { data, error } = await this.client
       .from("orders")
-      .select("id,status,sale_price_cents,currency_code,payment_expires_at")
+      .select("id,status,sale_price_cents,currency_code,payment_expires_at,payment_reference")
       .eq("id", orderId)
       .maybeSingle();
     assertQuery(error, "pedido para pagamento");
@@ -54,6 +54,7 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
           amountCents: safeInteger(data.sale_price_cents),
           currency: data.currency_code,
           paymentExpiresAt: data.payment_expires_at,
+          paymentReference: data.payment_reference,
         }
       : null;
   }

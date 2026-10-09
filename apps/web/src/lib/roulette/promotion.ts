@@ -11,6 +11,7 @@ import {
   ROULETTE_BRANDING,
   type RouletteBranding,
 } from "@/lib/roulette/branding";
+import { ROULETTE_AVAILABLE, ROULETTE_UNAVAILABLE_MESSAGE } from "./availability";
 
 const SNOWFLAKE_PATTERN = /^[0-9]{15,22}$/;
 const ROULETTE_CHANNEL_NAME = "🎰┊roleta";
@@ -56,6 +57,7 @@ export async function publishRoulettePromotion(
   },
   options: { fetcher?: typeof fetch; siteUrl?: string } = {},
 ): Promise<RoulettePromotionPublication> {
+  if (!ROULETTE_AVAILABLE) throw new Error(ROULETTE_UNAVAILABLE_MESSAGE);
   validatePromotionInput(input);
   const fetcher = options.fetcher ?? fetch;
   const siteUrl = normalizeSiteUrl(options.siteUrl);

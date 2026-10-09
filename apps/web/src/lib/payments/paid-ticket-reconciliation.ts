@@ -14,7 +14,7 @@ export type PaidTicketCandidate = Pick<Order,
   | "id" | "status" | "payment_status" | "paid_at"
   | "discord_ticket_status" | "discord_ticket_channel_id"
   | "discord_ticket_closed_at" | "stock_committed_at" | "stock_released_at"
->;
+> & { payment_reference?: string | null };
 
 type TicketPayments = Pick<LivePixPaymentService, "claimTicket" | "completeTicket" | "failTicket">;
 type Dependencies = {
@@ -72,7 +72,7 @@ export async function reconcilePaidOrderTickets(options: Dependencies & {
     ? Math.max(1, Math.min(MAXIMUM_BATCH_SIZE, Math.trunc(requestedLimit)))
     : MAXIMUM_BATCH_SIZE;
   const { data, error } = await client.from("orders")
-    .select("id,status,payment_status,paid_at,discord_ticket_status,discord_ticket_channel_id,discord_ticket_closed_at,stock_committed_at,stock_released_at")
+    .select("id,status,payment_status,paid_at,discord_ticket_status,discord_ticket_channel_id,discord_ticket_closed_at,stock_committed_at,stock_released_at,payment_reference")
     .eq("payment_status", "paid")
     .in("status", [...ORDER_STATUSES])
     .not("paid_at", "is", null)
@@ -81,6 +81,7 @@ export async function reconcilePaidOrderTickets(options: Dependencies & {
     .is("stock_released_at", null)
     .not("stock_committed_at", "is", null)
     .in("discord_ticket_status", [...TICKET_STATUSES])
+    .or("payment_reference.is.null,payment_reference.not.like.web:%")
     .or(`discord_ticket_status.neq.creating,discord_ticket_claimed_at.is.null,discord_ticket_claimed_at.lte.${staleClaimAt}`)
     .order("updated_at")
     .order("id")
@@ -119,7 +120,7 @@ export async function reconcilePaidOrderTickets(options: Dependencies & {
 }
 
 function isEligiblePaidOrder(order: PaidTicketCandidate) {
-  return order.payment_status === "paid" && order.paid_at !== null
+  return !order.payment_reference?.startsWith("web:") && order.payment_status === "paid" && order.paid_at !== null
     && ORDER_STATUSES.some(status => status === order.status)
     && TICKET_STATUSES.some(status => status === order.discord_ticket_status)
     && order.discord_ticket_channel_id === null && order.discord_ticket_closed_at === null

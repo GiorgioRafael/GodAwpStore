@@ -1,9 +1,10 @@
 import { render, screen, cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ from: vi.fn(), createAdminSupabaseClient: vi.fn() }));
+const mocks = vi.hoisted(() => ({ from: vi.fn(), createAdminSupabaseClient: vi.fn(), isGwStore: true }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient: mocks.createAdminSupabaseClient }));
+vi.mock("@/lib/brand", () => ({ get IS_GWSTORE() { return mocks.isGwStore; }, STORE_NAME: "GWStore" }));
 import PaymentReturnPage from "./pagamento/[orderId]/page";
 
 const id = "550e8400-e29b-41d4-a716-446655440000";
@@ -22,6 +23,7 @@ function setup(orders: unknown, robux: unknown, itemError: unknown = null) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.isGwStore = true;
   mocks.createAdminSupabaseClient.mockReturnValue({ from: mocks.from });
 });
 afterEach(cleanup);
@@ -45,6 +47,20 @@ describe("retorno de pedidos de itens e Robux", () => {
     render(await PaymentReturnPage({ params: Promise.resolve({ orderId: id }) }));
     expect(screen.getByRole("heading", { name: "Pagamento confirmado" })).toBeInTheDocument();
     expect(mocks.from).toHaveBeenCalledExactlyOnceWith("orders");
+  });
+  it.each(["awaiting_payment", "paid", "cancelled", "delivered"])("retorna checkout web antigo ao pedido autenticado (%s)", async status => {
+    setup({ ...paid, status, payment_reference: `web:${id}` }, null);
+    await expect(PaymentReturnPage({ params: Promise.resolve({ orderId: id }) })).rejects.toMatchObject({
+      digest: `NEXT_REDIRECT;replace;/minhas-compras/${id};307;`,
+    });
+    expect(mocks.from).toHaveBeenCalledExactlyOnceWith("orders");
+  });
+  it("preserva a página de retorno da THStore", async () => {
+    mocks.isGwStore = false;
+    setup({ ...paid, payment_reference: `web:${id}`, late_payment_detected_at: null, stock_commit_failure_reason: null }, null);
+    render(await PaymentReturnPage({ params: Promise.resolve({ orderId: id }) }));
+    expect(screen.getByRole("heading", { name: "Pagamento confirmado" })).toBeInTheDocument();
+    expect(screen.getByText(/ticket privado já foi criado no Discord/)).toBeInTheDocument();
   });
   it("não mascara erro de leitura como ausência de pedido", async () => {
     setup(null, paid, { message: "unavailable" });

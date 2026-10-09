@@ -4,8 +4,13 @@ const STORE_PANEL_PATHS = new Set([
   "/dashboard", "/auditoria", "/catalogo/jogos", "/catalogo/produtos", "/catalogo/sublojas",
   "/configuracoes", "/customizacao-bot", "/estoque", "/entregas", "/metricas-roleta",
   "/pagamentos-pix", "/pedidos", "/resgates", "/saldos", "/saques", "/servidores",
-  "/sorteios", "/whitelist",
+  "/sorteios", "/whitelist", "/atendimento-loja",
 ]);
+const SHOP_ORDER_ADMIN_PATH = /^\/atendimento-loja\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isStorePanelPath(pathname: string): boolean {
+  return STORE_PANEL_PATHS.has(pathname) || SHOP_ORDER_ADMIN_PATH.test(pathname);
+}
 
 /** URLs shown to the shop owner; the THStore keeps its existing addresses. */
 export function storeAdminHref(path: string): string {
@@ -13,7 +18,7 @@ export function storeAdminHref(path: string): string {
   const [pathname] = path.split(/[?#]/, 1);
   const suffix = path.slice(pathname.length);
   if (pathname === "/" || pathname === "/dashboard") return `/admin${suffix}`;
-  return STORE_PANEL_PATHS.has(pathname) ? `/admin${path}` : path;
+  return isStorePanelPath(pathname) ? `/admin${path}` : path;
 }
 
 /** Panel links returned to the master dashboard also need the shop prefix. */
@@ -47,14 +52,14 @@ export function storeAdminRewritePath(pathname: string, origin: string): string 
   const path = trimTrailingSlash(pathname);
   if (path === "/admin" || path === "/admin/dashboard") return "/dashboard";
   const internal = path.startsWith("/admin/") ? path.slice("/admin".length) : "";
-  return STORE_PANEL_PATHS.has(internal) ? internal : null;
+  return isStorePanelPath(internal) ? internal : null;
 }
 
 export function legacyStoreAdminRedirect(pathname: string, origin: string): string | null {
   if (!isGwStoreAdminOrigin(origin)) return null;
   const path = trimTrailingSlash(pathname);
   if (path === "/admin/dashboard") return "/admin";
-  return STORE_PANEL_PATHS.has(path) ? storeAdminHref(path) : null;
+  return isStorePanelPath(path) ? storeAdminHref(path) : null;
 }
 
 export function defaultStoreAdminPath(origin?: string): string {

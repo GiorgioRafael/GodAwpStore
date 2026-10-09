@@ -6,6 +6,7 @@ import { extractDiscordIdentity, type AdminIdentity } from "@/lib/auth-identity"
 import { getAdminSession } from "@/lib/auth";
 import {
   ROULETTE_AVAILABLE,
+  ROULETTE_LEGACY_SETTLEMENT_AVAILABLE,
   ROULETTE_UNAVAILABLE_MESSAGE,
 } from "@/lib/roulette/availability";
 import { getSiteUrl } from "@/lib/env";
@@ -105,6 +106,8 @@ export type RouletteCoinPurchaseStatusResult =
 export async function startRouletteCoinPurchase(
   coinQuantity: number,
 ): Promise<RouletteCoinPurchaseResult> {
+  if (!ROULETTE_AVAILABLE) return { ok: false, message: ROULETTE_UNAVAILABLE_MESSAGE };
+
   if (
     !Number.isSafeInteger(coinQuantity) ||
     coinQuantity < MINIMUM_COIN_PURCHASE ||
@@ -164,7 +167,7 @@ export async function getRouletteCoinPurchaseStatus(
   if (!UUID_PATTERN.test(purchaseId)) {
     return { ok: false, message: "Compra inválida." };
   }
-  const session = await readRouletteSession();
+  const session = await readRouletteSession({ allowLegacySettlement: true });
   if ("message" in session) return { ok: false, message: session.message };
   const { supabase } = session;
 
@@ -173,7 +176,12 @@ export async function getRouletteCoinPurchaseStatus(
   });
   const purchase = data?.[0];
   if (error || !purchase) {
-    return { ok: false, message: "Compra não encontrada. Abra um novo Pix." };
+    return {
+      ok: false,
+      message: ROULETTE_AVAILABLE
+        ? "Compra não encontrada. Abra um novo Pix."
+        : "Compra não encontrada. Fale com a equipe da loja.",
+    };
   }
   if (purchase.purchase_status !== "awaiting_payment") {
     return {
@@ -281,7 +289,7 @@ export async function redeemRoulettePrizes(
   const items = normalizeSelection(selection);
   if (!items) return { ok: false, message: "Escolha ao menos um item válido." };
 
-  const session = await readRouletteSession();
+  const session = await readRouletteSession({ allowLegacySettlement: true });
   if ("message" in session) return { ok: false, message: session.message };
 
   const { data, error } = await session.supabase.rpc("redeem_roulette_prizes", {
@@ -300,8 +308,9 @@ export async function redeemRoulettePrizes(
   if (error?.code === "P0016") {
     return {
       ok: false,
-      message:
-        "Um dos itens está sem estoque agora. Você pode vender de volta ou tentar o resgate mais tarde.",
+      message: ROULETTE_AVAILABLE
+        ? "Um dos itens está sem estoque agora. Você pode vender de volta ou tentar o resgate mais tarde."
+        : "Um dos prêmios está sem estoque agora. Fale com a equipe para concluir a entrega.",
     };
   }
   if (error || !redemption) {
@@ -331,6 +340,7 @@ export async function redeemRoulettePrizes(
 }
 
 export async function logoutRoulette() {
+  if (!ROULETTE_AVAILABLE) redirect("/");
   const supabase = await createServerSupabaseClient();
   await supabase?.auth.signOut();
   redirect("/roleta");
@@ -343,8 +353,10 @@ type RouletteSession = {
   identity: AdminIdentity;
 };
 
-async function readRouletteSession(): Promise<RouletteSession | { message: string }> {
-  if (!ROULETTE_AVAILABLE) {
+async function readRouletteSession(
+  options: { allowLegacySettlement?: boolean } = {},
+): Promise<RouletteSession | { message: string }> {
+  if (!ROULETTE_AVAILABLE && !(options.allowLegacySettlement && ROULETTE_LEGACY_SETTLEMENT_AVAILABLE)) {
     return { message: ROULETTE_UNAVAILABLE_MESSAGE };
   }
 

@@ -1133,7 +1133,9 @@ async function removeHistoricalProductFromCatalog(
   revalidatePath("/dashboard");
   revalidatePath("/configuracoes");
   return synchronizeCatalogStorefront(
-    "Produto removido da loja. O histórico de estoque, pedidos, sorteios e roleta foi preservado.",
+    IS_GWSTORE
+      ? "Produto removido da loja. O histórico vinculado foi preservado."
+      : "Produto removido da loja. O histórico de estoque, pedidos, sorteios e roleta foi preservado.",
   );
 }
 

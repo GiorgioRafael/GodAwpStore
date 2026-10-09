@@ -64,6 +64,7 @@ describe("recuperação de tickets de itens e serviços pagos", () => {
   });
 
   it.each([
+    { payment_reference: "web:550e8400-e29b-41d4-a716-446655440000" },
     { payment_status: "pending" }, { payment_status: "refunded" }, { paid_at: null },
     { status: "cancelled" }, { status: "refunded" },
     { discord_ticket_status: "closed" }, { discord_ticket_status: "open" },
@@ -165,6 +166,7 @@ describe("fila de recuperação de tickets pagos", () => {
     expect(query.is).toHaveBeenCalledWith("stock_released_at", null);
     expect(query.not).toHaveBeenCalledWith("stock_committed_at", "is", null);
     expect(query.or).toHaveBeenCalledWith("discord_ticket_status.neq.creating,discord_ticket_claimed_at.is.null,discord_ticket_claimed_at.lte.2026-10-08T03:05:00.000Z");
+    expect(query.or).toHaveBeenCalledWith("payment_reference.is.null,payment_reference.not.like.web:%");
     expect(query.order).toHaveBeenCalledWith("updated_at");
     expect(query.limit).toHaveBeenCalledWith(15);
     expect(query.update).toHaveBeenCalledWith({ updated_at: "2026-10-08T03:10:00.000Z" });

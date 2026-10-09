@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { cn } from "@/components/ui/cn";
 import { Field, Input, Textarea } from "@/components/ui/form-field";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 import {
   BOT_MESSAGE_FIELD_LIMITS,
   BOT_MESSAGE_TOKEN_ALLOWLIST,
@@ -139,7 +140,9 @@ const BANNER_FIELDS: Array<{
   {
     key: "ticketUrl",
     label: "Ticket e entrega",
-    description: "Aparece no ticket aberto após o pagamento, inclusive em resgates da roleta.",
+    description: ROULETTE_AVAILABLE
+      ? "Aparece no ticket aberto após o pagamento, inclusive em resgates da roleta."
+      : "Aparece no ticket aberto após a confirmação do pagamento.",
   },
   {
     key: "robuxUrl",

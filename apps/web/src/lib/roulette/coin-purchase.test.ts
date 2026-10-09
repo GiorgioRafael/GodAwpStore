@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("./availability", () => ({ ROULETTE_AVAILABLE: true }));
 
 import {
   RouletteCoinPurchaseService,

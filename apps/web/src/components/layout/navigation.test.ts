@@ -24,15 +24,13 @@ describe("navegação da customização do bot", () => {
     );
   });
 
-  it("mantém as páginas da roleta juntas no grupo de gestão", () => {
-    // A roleta só existe na GWStore, que é a loja padrão em teste.
+  it("não oferece páginas da roleta na GWStore", () => {
     const management = navigationGroups.find((group) => group.label === "Gestão");
     const hrefs = management?.items.map((item) => item.href) ?? [];
 
-    expect(hrefs).toContain("/admin/resgates");
-    expect(hrefs).toContain("/admin/metricas-roleta");
-    expect(hrefs.indexOf("/admin/metricas-roleta")).toBe(hrefs.indexOf("/admin/resgates") + 1);
-    expect(getCurrentPageLabel("/metricas-roleta")).toBe("Roleta");
+    expect(hrefs).not.toContain("/admin/resgates");
+    expect(hrefs).not.toContain("/admin/metricas-roleta");
+    expect(filterNavigationGroups("roleta")).toEqual([]);
   });
 
   it("marca a rota e suas páginas filhas como ativas", () => {
@@ -50,7 +48,7 @@ describe("navegação da customização do bot", () => {
   });
 
   it("encontra áreas por nome ou grupo sem depender de acentos", () => {
-    expect(filterNavigationGroups("operacao pedidos").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/admin/pedidos"]);
+    expect(filterNavigationGroups("operacao pedidos").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/admin/pedidos", "/admin/atendimento-loja"]);
     expect(filterNavigationGroups("configuracoes").flatMap((group) => group.items).map((item) => item.href)).toEqual(["/admin/configuracoes"]);
     expect(filterNavigationGroups("área inexistente")).toEqual([]);
     expect(filterNavigationGroups(" ")).toEqual(navigationGroups);
@@ -61,5 +59,6 @@ describe("navegação da customização do bot", () => {
     expect(isNavigationItemActive("/admin/pedidos", "/admin")).toBe(false);
     expect(getCurrentPageLabel("/admin/pedidos")).toBe("Pedidos");
     expect(getCurrentPageLabel("/admin/configuracoes", "#vitrines")).toBe("Vitrines do Discord");
+    expect(getCurrentPageLabel("/admin/atendimento-loja/10000000-0000-4000-8000-000000000001")).toBe("Pedidos da loja");
   });
 });

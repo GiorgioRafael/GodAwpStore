@@ -224,11 +224,29 @@ export async function reconcileLatePaidOrderTickets(
   }
 
   const pending = data ?? [];
+  if (pending.length === 0) return { pending: 0, opened: 0, failed: 0 };
+
+  // The RPC's legacy return shape has no order source. Read the persisted
+  // reference before talking to Discord, even when an older DB still returns
+  // web orders: those buyers receive their private conversation on the site.
+  const ids = pending.map(order => order.late_order_id).filter(id => UUID_PATTERN.test(id));
+  const references = new Map<string, string | null>();
+  if (ids.length > 0) {
+    const { data: orders, error: sourceError } = await client.from("orders")
+      .select("id,payment_reference").in("id", ids);
+    if (sourceError || !orders) {
+      console.error("[pagamento-atrasado] Não foi possível confirmar a origem dos pedidos; nenhuma conversa Discord foi aberta.");
+      return { pending: pending.length, opened: 0, failed: pending.length };
+    }
+    for (const order of orders) references.set(order.id, order.payment_reference);
+  }
   let opened = 0;
   let failed = 0;
 
   for (const order of pending) {
     try {
+      if (!references.has(order.late_order_id)) throw new Error("Origem do pedido não encontrada.");
+      if (references.get(order.late_order_id)?.startsWith("web:")) continue;
       const ticket = await ensureLatePaymentTicket(
         {
           orderId: order.late_order_id,

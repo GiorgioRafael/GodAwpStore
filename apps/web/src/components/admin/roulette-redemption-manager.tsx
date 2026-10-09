@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { TableEmptyRow, TableShell } from "@/components/ui/table-shell";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatCoins } from "@/lib/roulette/demo";
+import { ROULETTE_AVAILABLE } from "@/lib/roulette/availability";
 
 export type AdminRouletteRedemptionItem = {
   prizeKey: string;
@@ -78,8 +79,10 @@ export function RouletteRedemptionManager({
     return (
       <EmptyState
         icon={PackageCheck}
-        title="Nenhum resgate pedido"
-        description="Quando um jogador resgatar um prêmio da roleta, ele aparece aqui com o ticket do Discord para a entrega."
+        title={ROULETTE_AVAILABLE ? "Nenhum resgate pedido" : "Nenhum prêmio solicitado"}
+        description={ROULETTE_AVAILABLE
+          ? "Quando um jogador resgatar um prêmio da roleta, ele aparece aqui com o ticket do Discord para a entrega."
+          : "Os registros antigos de prêmios solicitados aparecem aqui para concluir o atendimento."}
       />
     );
   }
@@ -101,7 +104,7 @@ export function RouletteRedemptionManager({
       ))}
 
       <TableShell
-        caption="Resgates da roleta"
+        caption={ROULETTE_AVAILABLE ? "Resgates da roleta" : "Prêmios solicitados"}
         columns={["Itens", "Jogador", "Situação", "Ticket", "Ações"]}
       >
         {redemptions.length === 0 ? (
