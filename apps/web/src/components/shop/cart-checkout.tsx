@@ -71,7 +71,7 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
             <button type="button" className={styles.iconButton} disabled={busy} aria-label={`Remover ${line.product.name}`} onClick={() => onQuantity(line.productId, 0)}><Trash2 size={16} /></button></div>
         </div>)}</div>
         <div className={styles.totalRow}><span>Total dos produtos</span><strong>{formatShopPrice(total)}</strong></div>
-        <p className={styles.smallNote}>Descontos disponíveis e o valor final serão confirmados no pedido.</p>
+        <p className={styles.smallNote}>O valor final será confirmado no pedido.</p>
         {signedIn ? <>
           <label className={styles.field}>Seu usuário no Roblox<input required minLength={3} maxLength={20} pattern="[A-Za-z0-9_]{3,20}" autoComplete="off" placeholder="Nome da conta que receberá o item" value={nickname} disabled={busy} onChange={event => setNickname(event.target.value)} /></label>
           <p className={styles.smallNote}>Informe o nome de usuário, não o nome de exibição.</p>

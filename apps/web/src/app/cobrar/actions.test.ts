@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), createCharge: vi.fn(), getCharge: vi.fn(), writes: [] as Record<string, unknown>[] }));
@@ -10,7 +10,7 @@ vi.mock("@/lib/eclipsepay/runtime", async (importOriginal) => ({
   getEclipsePayClient: () => ({ createCharge: mocks.createCharge, getCharge: mocks.getCharge }),
 }));
 
-import { startPaymentLink } from "./actions";
+import { retryPaymentLink, startPaymentLink } from "./actions";
 
 const intentId = "550e8400-e29b-41d4-a716-446655440000";
 const operationId = "550e8400-e29b-41d4-a716-446655440001";
@@ -19,6 +19,7 @@ const token = "a".repeat(64);
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.writes.length = 0;
+  vi.stubEnv("PAYMENT_PROVIDER", "eclipsepay");
   vi.stubEnv("ECLIPSEPAY_API_KEY", "test-key");
   vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "test-secret");
   mocks.rpc.mockReturnValue({ single: async () => ({ data: {
@@ -40,6 +41,7 @@ beforeEach(() => {
     feeCents: 50, netCents: null, updatedAt: "2026-09-26T12:00:00Z", expiresAt: "2026-09-26T12:30:00Z",
   });
 });
+afterEach(() => vi.unstubAllEnvs());
 
 function form(amount = "25,00") {
   const data = new FormData();
@@ -50,6 +52,42 @@ function form(amount = "25,00") {
 }
 
 describe("link público Pix", () => {
+  it("bloqueia uma nova emissão ao repetir um link antigo com EclipsePay pausada", async () => {
+    vi.stubEnv("PAYMENT_PROVIDER", "livepix");
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mocks.from.mockReturnValue({ select: () => ({ eq: () => ({ maybeSingle: async () => ({
+      data: { id: intentId, amount_cents: 2500, operation_id: null, operation_status: "pending" }, error: null,
+    }) }) }) });
+    await retryPaymentLink(token);
+    expect(mocks.createCharge).not.toHaveBeenCalled();
+    expect(mocks.getCharge).not.toHaveBeenCalled();
+    expect(mocks.writes).toHaveLength(0);
+    consoleSpy.mockRestore();
+  });
+
+  it("consulta e preserva uma cobrança já emitida mesmo com EclipsePay pausada", async () => {
+    vi.stubEnv("PAYMENT_PROVIDER", "livepix");
+    mocks.from.mockReturnValueOnce({ select: () => ({ eq: () => ({ maybeSingle: async () => ({
+      data: { id: intentId, amount_cents: 2500, operation_id: operationId, operation_status: "pending" }, error: null,
+    }) }) }) });
+    mocks.getCharge.mockResolvedValue({
+      id: operationId, status: "completed", amountCents: 2500, brCode: null,
+      feeCents: 50, netCents: 2450, updatedAt: "2026-09-26T12:00:00Z", expiresAt: "2026-09-26T12:30:00Z",
+    });
+    await retryPaymentLink(token);
+    expect(mocks.createCharge).not.toHaveBeenCalled();
+    expect(mocks.getCharge).toHaveBeenCalledWith(operationId);
+    expect(mocks.writes[0]).toMatchObject({ operation_id: operationId, operation_status: "completed", confirmed_at: "2026-09-26T12:00:00Z" });
+  });
+
+  it("não cria intenção ou cobrança manual quando a loja usa apenas LivePix", async () => {
+    vi.stubEnv("PAYMENT_PROVIDER", "livepix");
+    expect(await startPaymentLink(intentId, { ok: false, message: "" }, form())).toEqual({
+      ok: false, message: "Esta cobrança está pausada. Compre pela loja para pagar com LivePix.",
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.createCharge).not.toHaveBeenCalled();
+  });
   it("congela os dados antes da API e mantém a mesma chave idempotente", async () => {
     const result = await startPaymentLink(intentId, { ok: false, message: "" }, form());
     expect(result).toEqual({ ok: true, token });

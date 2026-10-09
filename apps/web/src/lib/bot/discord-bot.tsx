@@ -43,6 +43,7 @@ import {
 import { SupabaseCustomerRankRepository } from "./customer-rank-repository";
 import { synchronizeDiscordCustomerRankRole, type CustomerRankRoleRepository } from "./discord-customer-rank";
 import { CUSTOMER_RANK_BUTTON_CUSTOM_ID } from "./customer-top-spenders";
+import { customerDiscountsEnabled } from "./customer-rank";
 import { fetchDiscordGuildIdentity, readDiscordInteraction } from "./discord-context";
 import { encodeDiscordCartSelection } from "./discord-cart-selection";
 import { scopeCatalogToDiscordChannel } from "./discord-storefront-scope";
@@ -880,7 +881,9 @@ function helpCard(
         ),
       )}
       <CardText>
-        🏆 Use **/rank** para ver seu total gasto, desconto atual e quanto falta para o próximo nível.
+        {customerDiscountsEnabled()
+          ? "🏆 Use **/rank** para ver seu total gasto, desconto atual e quanto falta para o próximo nível."
+          : "🏆 Use **/rank** para ver seu total gasto e quanto falta para o próximo nível. Os descontos estão temporariamente pausados."}
       </CardText>
     </Card>
   );

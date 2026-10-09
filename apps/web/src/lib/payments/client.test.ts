@@ -71,12 +71,51 @@ describe("isolated payment provider routing", () => {
     await getPaymentClient().createPayment({ ...input, amountCents: 1000 });
     expect(mocks.legacy.createPayment).toHaveBeenCalled();
   });
-  it("mantém LivePix quando EclipsePay não está habilitada", async () => {
+  it.each([100, 1000, 4000, 100000, 2000000])("flag off usa LivePix para pedido novo de %i sem depender de chaves Eclipse", async amountCents => {
     mocks.enabled = false;
-    await getPaymentClient().createPayment(input);
-    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(input);
-    expect(mocks.db.from).not.toHaveBeenCalled();
+    vi.stubEnv("ECLIPSEPAY_WEBHOOK_SECRET", "");
+    vi.stubEnv("ECLIPSEPAY_API_KEY", "");
+    const charge = { ...input, amountCents };
+    await getPaymentClient().createPayment(charge);
+    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(charge);
+    expect(mocks.db.from).toHaveBeenCalledWith("eclipsepay_checkouts");
     expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+    expect(mocks.db.rpc).not.toHaveBeenCalled();
+  });
+  it.each([null, operation])("flag off preserva intenção Eclipse (op=%s) sem segunda cobrança nem emissão Eclipse", async operationId => {
+    mocks.enabled = false;
+    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { order_id: id, amount_cents: 4000, operation_id: operationId }, error: null }) };
+    mocks.db.from.mockReturnValue(query);
+    await expect(getPaymentClient().createPayment({ ...input, redirectUrl: `https://gwstoreofc.com/minhas-compras/${id}` })).rejects.toThrow("já tem um Pix");
+    expect(query.eq).toHaveBeenCalledWith("order_id", id);
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+    expect(mocks.db.rpc).not.toHaveBeenCalled();
+  });
+  it("flag off falha fechada se não consegue verificar intenção Eclipse", async () => {
+    mocks.enabled = false;
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: null, error: { message: "DB indisponível" } }) });
+    await expect(getPaymentClient().createPayment(input)).rejects.toThrow("verificar");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("flag off não troca uma intenção cujo valor diverge", async () => {
+    mocks.enabled = false;
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { order_id: id, amount_cents: 3900 }, error: null }) });
+    await expect(getPaymentClient().createPayment(input)).rejects.toThrow("divergente");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("flag off preserva conciliação de fatura Eclipse já paga", async () => {
+    mocks.enabled = false;
+    const confirmedAt = "2026-10-09T12:00:00Z";
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: { amount_cents: 4000, operation_id: operation, confirmed_at: confirmedAt }, error: null }) });
+    mocks.eclipse.getCharge.mockResolvedValue({ id: operation, status: "completed", amountCents: 4000 });
+    await expect(getPaymentClient().findPaymentByReference(`ep:${operation}`)).resolves.toMatchObject({
+      id: operation, reference: `ep:${operation}`, proof: `eclipsepay:${operation}`, amountCents: 4000, createdAt: confirmedAt,
+    });
+    expect(mocks.eclipse.getCharge).toHaveBeenCalledWith(operation);
+    expect(mocks.legacy.getPaymentByReference).not.toHaveBeenCalled();
   });
   it("aplica o mesmo limite às compras de moedas da roleta", async () => {
     const roulette = { amountCents: 1000, redirectUrl: `https://gwstore.vercel.app/roleta?compra=${id}` };
@@ -90,6 +129,7 @@ describe("isolated payment provider routing", () => {
     await getPaymentClient().createPayment(input);
     expect(mocks.legacy.createPayment).toHaveBeenCalledWith(input);
     expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+    expect(mocks.db.from).not.toHaveBeenCalled();
   });
   it("mantém pedidos LivePix antigos no cliente antigo após a troca", async () => {
     await getPaymentClient().getPaymentByReference("old-livepix-reference");

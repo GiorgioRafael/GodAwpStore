@@ -46,11 +46,13 @@ export function getPaymentClient() {
       if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
         throw new Error("Valor Pix inválido.");
       }
-      if (!eclipsePayEnabled()) return getLivePixClient().createPayment(input);
+      // THStore never depends on the GW Eclipse tables or emergency switch.
+      if (!IS_GWSTORE) return getLivePixClient().createPayment(input);
+      const eclipseEnabled = eclipsePayEnabled();
       const url = new URL(input.redirectUrl);
       const id = z.uuid().parse(url.searchParams.get("compra") ?? url.pathname.split("/").at(-1));
       const db = eclipseDatabase();
-      if (input.amountCents <= LIVEPIX_MAX_AMOUNT_CENTS || input.amountCents > ECLIPSE_MAX_AMOUNT_CENTS) {
+      if (!eclipseEnabled || input.amountCents <= LIVEPIX_MAX_AMOUNT_CENTS || input.amountCents > ECLIPSE_MAX_AMOUNT_CENTS) {
         // An EclipsePay intent may already have issued a charge before routing
         // outside its range. Never switch an uncertain retry to LivePix.
         const { data: existing, error: lookupError } = await db.from("eclipsepay_checkouts")
@@ -58,6 +60,11 @@ export function getPaymentClient() {
         if (lookupError) throw new Error("Não foi possível verificar o Pix existente. Tente novamente.");
         if (!existing) return getLivePixClient().createPayment(input);
         if (Number(existing.amount_cents) !== input.amountCents) throw new Error("Valor Pix divergente do pedido.");
+        // The intent is persisted before the provider call. Even operation_id
+        // null may mean that Eclipse issued a charge but its response was lost.
+        // Flag-off stops issuance; registered invoices are reused by the order
+        // service and historical confirmations still use their ep: reference.
+        if (!eclipseEnabled) throw new Error("Este pedido já tem um Pix em preparação. Aguarde o atendimento para continuar com segurança.");
       }
       if (!process.env.ECLIPSEPAY_WEBHOOK_SECRET) throw new Error("Webhook EclipsePay não configurado.");
       if (input.amountCents < 80 || input.amountCents > ECLIPSE_MAX_AMOUNT_CENTS) {

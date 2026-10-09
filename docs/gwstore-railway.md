@@ -40,6 +40,14 @@ As chamadas usam `127.0.0.1`, autenticam com `CRON_SECRET` e recusam redirects. 
 
 `GET /api/health` retorna somente `{ "ok": true }` com `Cache-Control: no-store`. É liveness do processo; indisponibilidade transitória do Discord ou Supabase não derruba a aplicação. SIGTERM/SIGINT encerra o agendador e é encaminhado ao Next, que conclui requisições e callbacks `after()`. Após 30 segundos o launcher força o encerramento de um processo que não saiu. Saída inesperada do Next retorna código 1 para a política de restart.
 
+## Pausa de pagamentos e promoções
+
+No serviço web GWStore, `PAYMENT_PROVIDER=livepix` direciona novas compras do site e do bot para LivePix e pausa a emissão de links manuais EclipsePay. Preserve as credenciais EclipsePay e o webhook para conciliar cobranças antigas. Uma intenção EclipsePay ainda incerta bloqueia a troca de provedor daquele pedido; confirme o estado da cobrança antes de solicitar outro Pix.
+
+`GWSTORE_CUSTOMER_DISCOUNTS_ENABLED=false` pausa os descontos de booster e ranking em novos pedidos da GWStore. Os níveis, cargos, configurações de benefícios e valores de pedidos existentes permanecem registrados. Remova essa variável ou defina `true` para voltar a aplicar os benefícios configurados.
+
+As ofertas automáticas são controladas por `platform_settings.upsell_enabled` e `lead_recovery_enabled` no banco isolado da GWStore. A operação em `supabase/operations/pause-gwstore-promotions.sql` desativa ambas e invalida somente ofertas abertas, com guardas de projeto/guild. Para retomá-las, reative os dois controles; o histórico invalidado permanece auditável. Confira novamente as ofertas abertas após a pausa para cobrir uma chamada iniciada antes dela.
+
 ## Ponte da Vercel e login temporário
 
 A URL antiga `gwstore.vercel.app` permanece como ponte de compatibilidade para a Railway, inclusive links já enviados pelo bot. Configure `GWSTORE_RAILWAY_ORIGIN=https://gwstore-web-production.up.railway.app` **somente no deployment GWStore da Vercel**. O gate exige GWStore, execução Vercel e esse destino HTTPS exato. A ponte encaminha páginas, assets, cookies, query e POSTs sem alterar os bytes de webhooks assinados; a Railway aplica os gates de autenticação. Os hosts do painel mestre 101Devs e da THStore continuam fora da ponte.

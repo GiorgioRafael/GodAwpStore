@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { IS_GWSTORE } from "@/lib/brand";
+import { eclipsePayEnabled } from "@/lib/eclipsepay/runtime";
 import { PublicPaymentForm } from "./payment-form";
 import { PaymentBrand } from "./payment-brand";
 import styles from "./payment-link.module.css";
@@ -18,7 +19,7 @@ export default async function PublicPaymentPage({
 }: {
   searchParams: Promise<{ i?: string }>;
 }) {
-  if (!IS_GWSTORE) redirect("/");
+  if (!IS_GWSTORE || !eclipsePayEnabled()) redirect("/");
   const { i } = await searchParams;
   // The shareable URL is /pagar. The per-visitor URL keeps the same financial
   // intent across refreshes and uncertain provider responses.

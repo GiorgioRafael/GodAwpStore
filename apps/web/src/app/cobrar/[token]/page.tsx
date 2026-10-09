@@ -6,7 +6,7 @@ import QRCode from "qrcode";
 import { CircleAlert, CircleCheck, Clock3, LockKeyhole } from "lucide-react";
 
 import { IS_GWSTORE } from "@/lib/brand";
-import { eclipseDatabase } from "@/lib/eclipsepay/runtime";
+import { eclipseDatabase, eclipsePayEnabled } from "@/lib/eclipsepay/runtime";
 import { reconcileEclipsePaymentLinks } from "@/lib/eclipsepay/payment-link-reconciliation";
 import { PaymentBrand } from "@/app/pagar/payment-brand";
 import styles from "@/app/pagar/payment-link.module.css";
@@ -49,10 +49,12 @@ export default async function PaymentLinkPage({ params }: { params: Promise<{ to
       </h1>
       <p className={styles.amount}>{money(link.amount_cents)}</p>
       {pending && !link.operation_id && <>
-        <p className={styles.description}>A cobrança ainda está sendo preparada. Você pode tentar novamente sem gerar outra cobrança.</p>
-        <form action={retryPaymentLink.bind(null, token)} className={styles.receiptActions}>
+        <p className={styles.description}>{eclipsePayEnabled()
+          ? "A cobrança ainda está sendo preparada. Você pode tentar novamente sem gerar outra cobrança."
+          : "Esta cobrança está pausada. Fale com a loja antes de tentar outro pagamento."}</p>
+        {eclipsePayEnabled() && <form action={retryPaymentLink.bind(null, token)} className={styles.receiptActions}>
           <button className={styles.primaryButton}>Tentar gerar o Pix novamente</button>
-        </form>
+        </form>}
       </>}
       {pending && link.operation_id && <div className={styles.receiptBody}>
         {qr && <>
@@ -65,7 +67,7 @@ export default async function PaymentLinkPage({ params }: { params: Promise<{ to
       </div>}
       {status === "completed" && <p className={styles.description}>Recebemos a confirmação do provedor. Obrigado pelo pagamento.</p>}
       {status === "refunded" && <p className={styles.description}>O provedor informou estorno desta cobrança. Fale com a loja se precisar de ajuda.</p>}
-      {status === "failed" && <p className={styles.description}>Este Pix não pode mais ser pago. Abra o link público novamente para gerar outro.</p>}
+      {status === "failed" && <p className={styles.description}>Este Pix não pode mais ser pago. Fale com a loja para continuar.</p>}
       <p className={styles.receiptNote}><LockKeyhole aria-hidden="true" size={16} className={styles.finePrintIcon} /> A confirmação depende do estado da cobrança na EclipsePay. Não envie comprovantes ou dados bancários por mensagem.</p>
     </section>
   </main>;

@@ -1,3 +1,5 @@
+import { customerDiscountsEnabled } from "./customer-rank";
+
 export const GWSTORE_RANKING_GUILD_ID = "1401264061101899820";
 export const GWSTORE_RANKING_CHANNEL_ID = "1556055233937940614";
 export const TOP_SPENDERS_TITLE = "🏆 TOP 5 CLIENTES • GWSTORE";
@@ -63,7 +65,9 @@ export function topSpendersMessage(leaders: TopSpender[]) {
         "**Como funciona**",
         "Ranking geral pelo total pago em produtos e Robux neste servidor. Pedidos pendentes, cancelados e reembolsados não contam.",
         "",
-        "Clique em **Ver meu rank** para consultar seu total e seus descontos. Só você vê a resposta.",
+        customerDiscountsEnabled()
+          ? "Clique em **Ver meu rank** para consultar seu total e seus descontos. Só você vê a resposta."
+          : "Clique em **Ver meu rank** para consultar seu total e progresso. Os descontos estão temporariamente pausados. Só você vê a resposta.",
       ].join("\n"),
       footer: { text: "GWStore • Atualização automática a cada 3 horas" },
     }],

@@ -1,14 +1,35 @@
 /** @jsxImportSource chat */
 
 import { toCardElement } from "chat";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/lib/brand", () => ({ IS_GWSTORE: true, STORE_NAME_UPPER: "GWSTORE" }));
 
 import {
   customerRankCard,
   customerRankGuideCard,
 } from "./customer-rank-card";
 
+beforeEach(() => vi.stubEnv("GWSTORE_CUSTOMER_DISCOUNTS_ENABLED", "true"));
+afterEach(() => vi.unstubAllEnvs());
+
 describe("customerRankCard", () => {
+  it("mantém o progresso e informa a pausa sem prometer descontos automáticos", () => {
+    vi.stubEnv("GWSTORE_CUSTOMER_DISCOUNTS_ENABLED", "false");
+    const serialized = JSON.stringify(toCardElement(customerRankCard({ guildId: "guild-row", buyerDiscordId: "223456789012345678", totalSpentCents: 150_000,
+      currentRank: { code: "diamond_i", name: "Diamond I", roleName: "Cliente Diamond I", minimumSpendCents: 150_000, discountBps: 1_000, color: 1, sortOrder: 12 },
+      nextRank: null, amountToNextRankCents: 0 })));
+    expect(serialized).toContain("Cliente Diamond I");
+    expect(serialized).toContain("temporariamente pausados");
+    expect(serialized).not.toContain("10% de desconto");
+    expect(serialized).not.toContain("entra automaticamente");
+    const guide = JSON.stringify(toCardElement(customerRankGuideCard()));
+    expect(guide).toContain("Diamond V · R$ 5.000");
+    expect(guide).toContain("temporariamente pausados");
+    expect(guide).not.toContain("de desconto");
+    expect(guide).not.toContain("aplicado automaticamente");
+  });
+
   it("mostra gasto, desconto e quanto falta para o próximo nível", () => {
     const serialized = JSON.stringify(
       toCardElement(

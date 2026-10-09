@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { IS_GWSTORE } from "@/lib/brand";
-import { eclipseDatabase, eclipsePaymentLinkSchema, getEclipsePayClient } from "@/lib/eclipsepay/runtime";
+import { eclipseDatabase, eclipsePaymentLinkSchema, eclipsePayEnabled, getEclipsePayClient } from "@/lib/eclipsepay/runtime";
 import { parseBrlCents } from "@/lib/eclipsepay/payment-link-validation";
 
 const tokenSchema = z.string().regex(/^[0-9a-f]{64}$/);
@@ -24,6 +24,9 @@ export async function startPaymentLink(
 ): Promise<PaymentLinkResult> {
   if (!IS_GWSTORE || !z.uuid().safeParse(intentId).success) {
     return { ok: false, message: "Sessão de pagamento inválida. Atualize a página." };
+  }
+  if (!eclipsePayEnabled()) {
+    return { ok: false, message: "Esta cobrança está pausada. Compre pela loja para pagar com LivePix." };
   }
   if (!process.env.ECLIPSEPAY_API_KEY || !process.env.ECLIPSEPAY_WEBHOOK_SECRET) {
     return { ok: false, message: "Pagamento indisponível no momento." };
@@ -77,6 +80,9 @@ export async function retryPaymentLink(token: string): Promise<void> {
 }
 
 async function issueCharge(data: { id: string; amount_cents: number; operation_id: string | null }) {
+  // Existing receipts remain recoverable, but pausing the provider must also
+  // stop the public manual-payment route from issuing a new charge.
+  if (!data.operation_id && !eclipsePayEnabled()) throw new Error("Novas cobranças EclipsePay estão pausadas.");
   const charge = data.operation_id
     ? await getEclipsePayClient().getCharge(data.operation_id)
     : await getEclipsePayClient().createCharge(data.id, {

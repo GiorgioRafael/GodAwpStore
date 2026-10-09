@@ -1,5 +1,6 @@
 import type { BoosterDiscountConfiguration } from "./booster-discount";
 import { applyBoosterDiscount } from "./booster-discount";
+import { IS_GWSTORE } from "@/lib/brand";
 import {
   LIVEPIX_MINIMUM_BRL_CENTS,
   MAXIMUM_ORDER_QUANTITY,
@@ -39,18 +40,25 @@ export type AppliedCustomerDiscount = {
   discountReason: Exclude<CustomerDiscountReason, "upsell" | "lead_recovery">;
 };
 
+/** Temporary GW pause; earned levels and existing order totals stay intact. */
+export function customerDiscountsEnabled() {
+  return !IS_GWSTORE || process.env.GWSTORE_CUSTOMER_DISCOUNTS_ENABLED !== "false";
+}
+
 export function applyBestCustomerDiscount(
   subtotalPriceCents: number,
   boosterConfiguration: BoosterDiscountConfiguration,
   isServerBooster: boolean,
   rank: CustomerRankProgress,
 ): AppliedCustomerDiscount | null {
+  const discountsEnabled = customerDiscountsEnabled();
   const booster = applyBoosterDiscount(
     subtotalPriceCents,
     boosterConfiguration,
-    isServerBooster,
+    discountsEnabled && isServerBooster,
   );
   if (!booster) return null;
+  if (!discountsEnabled) return booster;
 
   const rankDiscountBps = rank.currentRank?.discountBps ?? 0;
   const rankDiscountAmountCents = calculateDiscountAmount(

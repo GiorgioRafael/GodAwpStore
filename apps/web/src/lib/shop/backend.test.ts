@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BotCommerceRepository, ExistingPurchase, PurchasableProduct } from "@/lib/bot/types";
+import type { CustomerRankProgress } from "@/lib/bot/customer-rank";
 import type { ShopActor, ShopOrderStatus } from "./types";
 vi.mock("server-only", () => ({}));
 const brand = vi.hoisted(() => ({ IS_GWSTORE: true }));
@@ -29,7 +30,7 @@ function setup() {
     ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: "seller-row", boosterDiscount: { enabled: true, discount_bps: 500, minimum_subtotal_cents: 0 } })),
     findPurchasableProducts: vi.fn(async (): Promise<PurchasableProduct[]> => [{ id: productId, name: "Produto", minimumPriceCents: 200, catalogStoreId: "normal" }]),
     countAvailableStocks: vi.fn(async () => new Map([[productId, 10]])),
-    getCustomerRankProgress: vi.fn(async () => ({ guildId: "guild-row", buyerDiscordId: actor.discordId, totalSpentCents: 0, currentRank: null, nextRank: null, amountToNextRankCents: 0 })),
+    getCustomerRankProgress: vi.fn(async (): Promise<CustomerRankProgress> => ({ guildId: "guild-row", buyerDiscordId: actor.discordId, totalSpentCents: 0, currentRank: null, nextRank: null, amountToNextRankCents: 0 })),
     getCommissionBps: vi.fn(async () => 1000),
     createAwaitingPaymentPurchase: vi.fn(async () => ({ id: orderId, status: "awaiting_payment" as const, created: true, outOfStock: false })),
   };
@@ -38,9 +39,32 @@ function setup() {
     readOrder: vi.fn(async () => status), createCheckout: vi.fn(async () => undefined) };
   return { repository, dependencies };
 }
-beforeEach(() => { vi.clearAllMocks(); brand.IS_GWSTORE = true; });
+beforeEach(() => { vi.clearAllMocks(); brand.IS_GWSTORE = true; vi.stubEnv("GWSTORE_CUSTOMER_DISCOUNTS_ENABLED", "true"); });
+afterEach(() => vi.unstubAllEnvs());
 
 describe("checkout público seguro", () => {
+  it("não aplica o ranking em compra web nova durante a pausa de promoções", async () => {
+    vi.stubEnv("GWSTORE_CUSTOMER_DISCOUNTS_ENABLED", "false");
+    const { repository, dependencies } = setup();
+    repository.getCustomerRankProgress.mockResolvedValue({ guildId: "guild-row", buyerDiscordId: actor.discordId, totalSpentCents: 150_000,
+      currentRank: { code: "diamond_i", name: "Diamond I", roleName: "Cliente Diamond I", minimumSpendCents: 150_000, discountBps: 1_000, color: 1, sortOrder: 12 }, nextRank: null, amountToNextRankCents: 0 });
+    await createShopCheckout(raw, actor, dependencies);
+    expect(repository.createAwaitingPaymentPurchase).toHaveBeenCalledWith(expect.objectContaining({ discountBps: 0, discountReason: null }));
+  });
+
+  it("mantém os valores de um pedido com desconto já criado quando as promoções estão pausadas", async () => {
+    vi.stubEnv("GWSTORE_CUSTOMER_DISCOUNTS_ENABLED", "false");
+    const { repository, dependencies } = setup();
+    repository.findPurchaseByInteraction.mockResolvedValue({ id: orderId, buyerDiscordId: actor.discordId, guildId: "guild-row",
+      items: [{ productId, productName: "Produto", quantity: 2, unitPriceCents: 200, subtotalPriceCents: 400, totalPriceCents: 360, discountAmountCents: 40 }],
+      subtotalPriceCents: 400, salePriceCents: 360, discountBps: 1_000, discountAmountCents: 40, discountReason: "customer_rank",
+      upsellProductId: null, upsellDiscountBps: 0, upsellDiscountAmountCents: 0, leadRecoveryDiscountBps: 0, leadRecoveryDiscountAmountCents: 0, status: "paid" });
+    dependencies.readOrder.mockResolvedValue({ ...status, status: "paid", paymentStatus: "paid", totalPriceCents: 360 });
+    expect(await createShopCheckout(raw, actor, dependencies)).toMatchObject({ totalPriceCents: 360, paymentStatus: "paid" });
+    expect(repository.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
+    expect(dependencies.createCheckout).not.toHaveBeenCalled();
+  });
+
   it.each([ { ...raw, priceCents: 1 }, { ...raw, buyerDiscordId: "123456789012345678" }, { ...raw, isServerBooster: true },
     { ...raw, items: [{ productId, quantity: NaN }] }, { ...raw, items: [{ productId, quantity: 1.5 }] },
     { ...raw, items: [{ productId, quantity: 0 }] }, { ...raw, items: [{ productId, quantity: 10001 }] },
