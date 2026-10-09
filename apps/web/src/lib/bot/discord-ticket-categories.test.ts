@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+const { loadOrderKinds } = vi.hoisted(() => ({ loadOrderKinds: vi.fn() }));
+vi.mock("./gw-up-ticket-routing", () => ({ loadGwStoreOrderTicketKinds: loadOrderKinds }));
 vi.mock("@/lib/brand", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/brand")>(), IS_GWSTORE: true,
 }));
@@ -14,6 +16,7 @@ import {
 const guildId = "1401264061101899820";
 const botId = "123456789012345678";
 const purchaseId = "223456789012345678";
+const upId = "133456789012345678";
 const saleId = "323456789012345678";
 const uuid = "7b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f";
 const uuid2 = "9b5c3643-6a3f-4a2b-8f27-4cf06dd2eb4f";
@@ -48,7 +51,7 @@ function fakeDiscord(initial: TicketCategoryChannel[] = []) {
       if (method === "GET") return Response.json(channels);
       if (method === "POST") {
         const row: TicketCategoryChannel = {
-          id: body.name === "🛒┊COMPRA" ? purchaseId : saleId,
+          id: body.name === "🛒┊COMPRA" ? purchaseId : body.name === "🆙┊UPPER" ? upId : saleId,
           guild_id: guildId,
           position: channels.filter(channel => channel.type === 4).length,
           ...body,
@@ -76,36 +79,38 @@ function fakeDiscord(initial: TicketCategoryChannel[] = []) {
 }
 
 beforeEach(() => {
+  loadOrderKinds.mockReset().mockResolvedValue(new Map());
   vi.stubEnv("DISCORD_APPLICATION_ID", botId);
   vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("categorias de tickets da GWStore", () => {
-  it("cria apenas duas categorias privadas, ordena no topo e preserva a ordem das outras", async () => {
+  it("cria três categorias privadas, ordena no topo e preserva a ordem das outras", async () => {
     const discord = fakeDiscord([
       category("623456789012345678", "🛒┊Comprar", 0),
       category("523456789012345678", "BLOX FRUITS", 1),
       category("423456789012345678", "COMUNIDADE", 2),
     ]);
     const result = await synchronizeGwStoreTicketCategories(discord);
-    expect(result).toMatchObject({ status: "synchronized", purchaseCategoryId: purchaseId, saleCategoryId: saleId,
-      createdCategoryIds: [purchaseId, saleId], movedChannelIds: [] });
+    expect(result).toMatchObject({ status: "synchronized", purchaseCategoryId: purchaseId, upCategoryId: upId, saleCategoryId: saleId,
+      createdCategoryIds: [purchaseId, upId, saleId], movedChannelIds: [] });
     const created = discord.calls.filter(call => call.method === "POST");
-    expect(created).toHaveLength(2);
+    expect(created).toHaveLength(3);
     for (const call of created) {
       expect(call.body).toMatchObject({ type: 4, permission_overwrites: permissions });
       expect(call.signal).toBeInstanceOf(AbortSignal);
     }
     const reorder = discord.calls.find(call => call.path === `/guilds/${guildId}/channels` && call.method === "PATCH")!;
     expect(reorder.body).toEqual([
-      { id: purchaseId, position: 0 }, { id: saleId, position: 1 },
-      { id: "623456789012345678", position: 2 }, { id: "523456789012345678", position: 3 },
-      { id: "423456789012345678", position: 4 },
+      { id: purchaseId, position: 0 }, { id: upId, position: 1 }, { id: saleId, position: 2 },
+      { id: "623456789012345678", position: 3 }, { id: "523456789012345678", position: 4 },
+      { id: "423456789012345678", position: 5 },
     ]);
     discord.calls.length = 0;
     await synchronizeGwStoreTicketCategories(discord);
     expect(discord.calls.every(call => call.method === "GET")).toBe(true);
+    expect(loadOrderKinds).not.toHaveBeenCalled();
   });
 
   it("move todas as fontes conhecidas sem alterar tickets concluídos", async () => {
@@ -121,10 +126,11 @@ describe("categorias de tickets da GWStore", () => {
     })}`);
     const originals = [...purchaseTickets, sellingTicket];
     const discord = fakeDiscord([
-      category(purchaseId, "🛒┊COMPRA", 0), category(saleId, "📦┊VENDA", 1), ...originals,
+      category(purchaseId, "🛒┊COMPRA", 0), category(upId, "🆙┊UPPER", 1), category(saleId, "📦┊VENDA", 2), ...originals,
     ]);
     const result = await synchronizeGwStoreTicketCategories(discord);
     expect(result).toMatchObject({ movedChannelIds: originals.map(channel => channel.id) });
+    expect(loadOrderKinds).toHaveBeenCalledWith(guildId, [uuid]);
     const patches = discord.calls.filter(call => call.method === "PATCH");
     expect(patches).toHaveLength(originals.length);
     for (const patch of patches) expect(patch.body).toEqual({ parent_id: patch.path.endsWith(sellingTicket.id) ? saleId : purchaseId });
@@ -148,11 +154,12 @@ describe("categorias de tickets da GWStore", () => {
       { ...ticket("423456789012345676", `gwstore-order:${uuid}`), guild_id: "923456789012345678" },
     ];
     unknown[0].name = "ticket-compra-venda";
-    const discord = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 0), category(saleId, "📦┊VENDA", 1), ...unknown]);
+    const discord = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 0), category(upId, "🆙┊UPPER", 1), category(saleId, "📦┊VENDA", 2), ...unknown]);
     const result = await synchronizeGwStoreTicketCategories(discord);
     expect(result).toMatchObject({ movedChannelIds: [] });
-    expect(discord.channels.slice(2)).toEqual(unknown);
+    expect(discord.channels.slice(3)).toEqual(unknown);
     expect(discord.calls.every(call => call.method === "GET")).toBe(true);
+    expect(loadOrderKinds).not.toHaveBeenCalled();
   });
 
   it("recusa categoria duplicada e não realiza mutações", async () => {
@@ -164,6 +171,52 @@ describe("categorias de tickets da GWStore", () => {
     expect(discord.calls.every(call => call.method === "GET")).toBe(true);
   });
 
+  it("separa pedidos UP novos e tardios e preserva a categoria manual UP DE CONTAS", async () => {
+    loadOrderKinds.mockResolvedValue(new Map([[uuid, "up"], [uuid2, "purchase"]]));
+    const upTickets = [
+      ticket("423456789012345670", `gwstore-order:${uuid.toUpperCase()};welcome=1`, purchaseId),
+      ticket("423456789012345671", `gwstore:late-payment:${uuid}`, purchaseId),
+    ];
+    const purchaseTicket = ticket("423456789012345672", `gwstore-order:${uuid2}`);
+    const manualCategory = category("523456789012345678", "UP DE CONTAS", 3);
+    const manualTicket = ticket("423456789012345673", "ticketking", manualCategory.id);
+    manualTicket.name = "up-cliente";
+    const discord = fakeDiscord([
+      category(purchaseId, "🛒┊COMPRA", 0), category(upId, "🆙┊UPPER", 1), category(saleId, "📦┊VENDA", 2),
+      manualCategory, ...upTickets, purchaseTicket, manualTicket,
+    ]);
+    await synchronizeGwStoreTicketCategories(discord);
+    expect(loadOrderKinds).toHaveBeenCalledExactlyOnceWith(guildId, [uuid, uuid2]);
+    for (const before of upTickets) {
+      expect(discord.channels.find(channel => channel.id === before.id)).toEqual({ ...before, parent_id: upId });
+    }
+    expect(discord.channels.find(channel => channel.id === purchaseTicket.id)).toEqual({ ...purchaseTicket, parent_id: purchaseId });
+    expect(discord.channels.find(channel => channel.id === manualCategory.id)).toEqual(manualCategory);
+    expect(discord.channels.find(channel => channel.id === manualTicket.id)).toEqual(manualTicket);
+    expect(discord.calls.filter(call => call.method === "PATCH")).toHaveLength(3);
+  });
+
+  it("não reordena nem move tickets se a classificação dos pedidos falhar", async () => {
+    loadOrderKinds.mockRejectedValue(new Error("Falha na consulta dos pedidos"));
+    const rows = [
+      category(purchaseId, "🛒┊COMPRA", 2), category(upId, "🆙┊UPPER", 3), category(saleId, "📦┊VENDA", 4),
+      ticket("423456789012345670", `gwstore-order:${uuid}`, purchaseId),
+    ];
+    const discord = fakeDiscord(rows);
+    await expect(synchronizeGwStoreTicketCategories(discord)).rejects.toThrow("Falha na consulta dos pedidos");
+    expect(discord.channels).toEqual(rows);
+    expect(discord.calls.every(call => call.method === "GET")).toBe(true);
+  });
+
+  it("recusa categorias UPPER duplicadas antes de criar ou mover canais", async () => {
+    const discord = fakeDiscord([
+      category(upId, "🆙┊UPPER", 0), category("423456789012345678", "Upper", 1),
+    ]);
+    await expect(synchronizeGwStoreTicketCategories(discord)).rejects.toThrow("mais de uma categoria de upper");
+    expect(discord.calls.every(call => call.method === "GET")).toBe(true);
+    expect(loadOrderKinds).not.toHaveBeenCalled();
+  });
+
   it("resolve categoria existente sem request e cria com identidade validada quando falta", async () => {
     const existing = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 0)]);
     expect(await resolveGwStoreTicketCategoryId(guildId, "purchase", existing.channels, existing.fetcher)).toBe(purchaseId);
@@ -171,13 +224,14 @@ describe("categorias de tickets da GWStore", () => {
     const missing = fakeDiscord();
     const ids = await Promise.all([
       resolveGwStoreTicketCategoryId(guildId, "purchase", [], missing.fetcher),
+      resolveGwStoreTicketCategoryId(guildId, "up", [], missing.fetcher),
       resolveGwStoreTicketCategoryId(guildId, "sale", [], missing.fetcher),
     ]);
-    expect(ids).toEqual([purchaseId, saleId]);
-    expect(missing.calls.filter(call => call.method === "POST")).toHaveLength(2);
+    expect(ids).toEqual([purchaseId, upId, saleId]);
+    expect(missing.calls.filter(call => call.method === "POST")).toHaveLength(3);
     // A stale list is refreshed before creation on a later retry.
     expect(await resolveGwStoreTicketCategoryId(guildId, "sale", [], missing.fetcher)).toBe(saleId);
-    expect(missing.calls.filter(call => call.method === "POST")).toHaveLength(2);
+    expect(missing.calls.filter(call => call.method === "POST")).toHaveLength(3);
   });
 
   it("não faz requests para outro servidor", async () => {
@@ -206,18 +260,18 @@ describe("categorias de tickets da GWStore", () => {
   });
 
   it("falha se a movimentação alterar permissões ou o Discord não confirmar a posição", async () => {
-    const discord = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 0), category(saleId, "📦┊VENDA", 1),
+    const discord = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 0), category(upId, "🆙┊UPPER", 1), category(saleId, "📦┊VENDA", 2),
       ticket("423456789012345670", `gwstore-order:${uuid}`)]);
     const original = discord.fetcher;
     const fetcher = (async (url: string | URL | Request, init?: RequestInit) => {
       const response = await original(url, init);
       if (init?.method === "PATCH" && String(url).endsWith("/channels/423456789012345670")) {
-        discord.channels[2].permission_overwrites = [];
+        discord.channels.find(channel => channel.id === "423456789012345670")!.permission_overwrites = [];
       }
       return response;
     }) as typeof fetch;
     await expect(synchronizeGwStoreTicketCategories({ fetcher })).rejects.toThrow("preservação do ticket");
-    const wrongOrder = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 3), category(saleId, "📦┊VENDA", 4)]);
+    const wrongOrder = fakeDiscord([category(purchaseId, "🛒┊COMPRA", 3), category(upId, "🆙┊UPPER", 4), category(saleId, "📦┊VENDA", 5)]);
     const failReorder = (async (url: string | URL | Request, init?: RequestInit) => init?.method === "PATCH"
       ? new Response(null, { status: 204 }) : wrongOrder.fetcher(url, init)) as typeof fetch;
     await expect(synchronizeGwStoreTicketCategories({ fetcher: failReorder })).rejects.toThrow("ordem das categorias");

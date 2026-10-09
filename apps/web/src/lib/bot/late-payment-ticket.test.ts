@@ -2,18 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const { rpc, createAdminSupabaseClient, loadBotRuntimeSettings } = vi.hoisted(
+const { rpc, createAdminSupabaseClient, loadBotRuntimeSettings, resolveGwStoreOrderTicketKind } = vi.hoisted(
   () => {
     const rpc = vi.fn();
     return {
       rpc,
       createAdminSupabaseClient: vi.fn(() => ({ rpc })),
       loadBotRuntimeSettings: vi.fn(),
+      resolveGwStoreOrderTicketKind: vi.fn(),
     };
   },
 );
 vi.mock("@/lib/supabase/admin", () => ({ createAdminSupabaseClient }));
 vi.mock("./message-customization-server", () => ({ loadBotRuntimeSettings }));
+vi.mock("./gw-up-ticket-routing", () => ({ resolveGwStoreOrderTicketKind }));
 
 import {
   ensureLatePaymentTicket,
@@ -79,6 +81,7 @@ const INPUT = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resolveGwStoreOrderTicketKind.mockReset().mockResolvedValue("purchase");
   vi.stubEnv("DISCORD_BOT_TOKEN", "bot-token");
   vi.stubEnv("DISCORD_APPLICATION_ID", BOT_ID);
   loadBotRuntimeSettings.mockResolvedValue({
@@ -89,6 +92,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
@@ -165,14 +169,20 @@ describe("canal de recuperação de pagamento atrasado", () => {
     ).rejects.toThrow();
   });
 
-  it.each([false, true])("encaminha pagamento atrasado GW para Compra (recuperado=%s), sem sincronizar permissões da categoria", async (existing) => {
+  it.each([
+    [false, "purchase"], [true, "purchase"], [false, "up"], [true, "up"],
+    [false, "failure"], [true, "failure"],
+  ] as const)("encaminha pagamento atrasado GW para sua categoria (recuperado=%s, classificação=%s), sem sincronizar permissões da categoria", async (existing, kind) => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    if (kind === "failure") resolveGwStoreOrderTicketKind.mockRejectedValue(new Error("banco indisponível"));
+    else resolveGwStoreOrderTicketKind.mockResolvedValue(kind);
     const guildId = "1401264061101899820";
     const categoryId = "900000000000000030";
     const { buildTicketPermissionOverwrites } = await import("./discord-ticket-controls");
     const permissions = buildTicketPermissionOverwrites({ guildId, buyerDiscordId: BUYER_ID,
       botDiscordId: BOT_ID, closerDiscordUserIds: [STAFF_ID], notificationDiscordUserIds: [STAFF_ID] });
     const { fetcher, calls } = stubDiscord([
-      { id: categoryId, type: 4, name: "🛒┊COMPRA" },
+      { id: categoryId, type: 4, name: kind === "up" ? "🆙┊UPPER" : "🛒┊COMPRA" },
       ...(existing ? [{ id: CHANNEL_ID, type: 0, topic: latePaymentTicketMarker(ORDER_ID),
         parent_id: null, permission_overwrites: permissions }] : []),
     ], guildId);
@@ -185,6 +195,8 @@ describe("canal de recuperação de pagamento atrasado", () => {
     const patches = calls.filter(call => call.method === "PATCH" && call.url.endsWith(`/channels/${CHANNEL_ID}`));
     expect(patches.map(call => call.body)).toEqual(existing ? [{ parent_id: categoryId }] : []);
     if (existing) expect(calls.some(call => call.url.includes("/messages"))).toBe(false);
+    expect(resolveGwStoreOrderTicketKind).toHaveBeenCalledWith(guildId, ORDER_ID);
+    expect(log).toHaveBeenCalledTimes(kind === "failure" ? 1 : 0);
   });
 });
 

@@ -13,6 +13,7 @@ import { MAXIMUM_ROBUX_QUANTITY } from "@/lib/robux/pricing";
 import { DiscordApiError } from "./discord-api";
 import { loadBotRuntimeSettings } from "./message-customization-server";
 import { resolveGwStoreTicketCategoryId } from "./discord-ticket-categories";
+import { resolveGwStoreOrderTicketKind } from "./gw-up-ticket-routing";
 import {
   buildPaidTicketControlComponents,
   buildTicketPermissionOverwrites,
@@ -88,9 +89,8 @@ const ticketTasks = new Map<string, Promise<PaidOrderTicketResult>>();
  * Creates or repairs the private Discord ticket for one paid order.
  *
  * The order UUID is persisted in the channel topic, which makes sequential
- * webhook retries idempotent without coupling this helper to the payment/DB
- * implementation. A process-local lock also collapses concurrent retries that
- * reach the same serverless instance.
+ * webhook retries idempotent. A process-local lock also collapses concurrent
+ * retries that reach the same serverless instance.
  */
 export function ensurePaidOrderTicket(
   input: PaidOrderTicketInput,
@@ -140,10 +140,16 @@ async function ensurePaidOrderTicketInternal(
   if (!SNOWFLAKE_PATTERN.test(botUser.id)) {
     throw new Error("Discord retornou um ID de bot inválido.");
   }
-  const purchaseCategoryId = await resolveGwStoreTicketCategoryId(
-    input.guildId, "purchase", channels, fetcher,
+  const kind = input.controls === "robux" ? "purchase" : await resolveGwStoreOrderTicketKind(
+    input.guildId, input.orderId,
+  ).catch(error => {
+    console.error(`[ticket-up] pedido ${input.orderId}: falha na classificação; usando Compra`, error);
+    return "purchase" as const;
+  });
+  const ticketCategoryId = await resolveGwStoreTicketCategoryId(
+    input.guildId, kind, channels, fetcher,
   );
-  const parentChannelId = purchaseCategoryId ?? input.parentChannelId;
+  const parentChannelId = ticketCategoryId ?? input.parentChannelId;
 
   const overwrites = buildTicketPermissionOverwrites({
     guildId: input.guildId,
@@ -211,10 +217,10 @@ async function ensurePaidOrderTicketInternal(
   if (!SNOWFLAKE_PATTERN.test(channel.id)) {
     throw new Error("Discord retornou um ID de canal inválido.");
   }
-  if (!created && purchaseCategoryId && channel.parent_id !== purchaseCategoryId) {
+  if (!created && ticketCategoryId && channel.parent_id !== ticketCategoryId) {
     channel = await discordJson<DiscordChannel>(config.apiUrl, `/channels/${channel.id}`, {
       method: "PATCH", headers, signal: AbortSignal.timeout(15_000),
-      body: JSON.stringify({ parent_id: purchaseCategoryId }),
+      body: JSON.stringify({ parent_id: ticketCategoryId }),
     }, fetcher);
   }
 

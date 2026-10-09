@@ -11,6 +11,7 @@ import {
   samePermissionOverwrites,
   type DiscordPermissionOverwrite,
 } from "./discord-ticket-controls";
+import { loadGwStoreOrderTicketKinds } from "./gw-up-ticket-routing";
 
 const GUILD_ID = "1401264061101899820";
 const SNOWFLAKE = /^[0-9]{15,22}$/;
@@ -20,11 +21,13 @@ const PURCHASE_TOPIC = new RegExp(
   "i",
 );
 const SALE_TOPIC_PREFIX = "gwstore-item-offer:";
+const ORDER_TOPIC = new RegExp(`^(?:gwstore-order:(${UUID})(?:;welcome=1)?|gwstore:late-payment:(${UUID}))$`, "i");
 const VIEW_CHANNEL = 1n << 10n;
 const MANAGE_CHANNELS = 1n << 4n;
-const CATEGORY_NAMES = { purchase: "🛒┊COMPRA", sale: "📦┊VENDA" } as const;
+const CATEGORY_NAMES = { purchase: "🛒┊COMPRA", up: "🆙┊UPPER", sale: "📦┊VENDA" } as const;
+const CATEGORY_ORDER = ["purchase", "up", "sale"] as const;
 
-export type TicketCategoryKind = "purchase" | "sale";
+export type TicketCategoryKind = keyof typeof CATEGORY_NAMES;
 export type TicketCategoryChannel = {
   id: string;
   type: number;
@@ -39,6 +42,7 @@ export type TicketCategoryChannel = {
 type EnsuredCategories = {
   channels: TicketCategoryChannel[];
   purchase: TicketCategoryChannel;
+  up: TicketCategoryChannel;
   sale: TicketCategoryChannel;
   botId: string;
   createdCategoryIds: string[];
@@ -66,11 +70,17 @@ export async function synchronizeGwStoreTicketCategories(options: {
   if (!IS_GWSTORE) return { status: "disabled" as const };
   const fetcher = options.fetcher ?? fetch;
   const categories = await ensureCategories(fetcher);
+  const orderIds = [...new Set(categories.channels
+    .filter(channel => isGuildChannel(channel) && channel.type === 0)
+    .map(channel => ticketOrderId(channel.topic))
+    .filter((id): id is string => id !== null))];
+  // Resolve every order before moving tickets; a failed lookup must not guess their destination.
+  const orderKinds = orderIds.length ? await loadGwStoreOrderTicketKinds(GUILD_ID, orderIds) : new Map();
   const others = categories.channels
     .filter(channel => isGuildChannel(channel) && channel.type === 4
-      && channel.id !== categories.purchase.id && channel.id !== categories.sale.id)
+      && !CATEGORY_ORDER.some(kind => channel.id === categories[kind].id))
     .sort(comparePosition);
-  const orderedCategories = [categories.purchase, categories.sale, ...others];
+  const orderedCategories = [...CATEGORY_ORDER.map(kind => categories[kind]), ...others];
   if (orderedCategories.some((channel, position) => channel.position !== position)) {
     const response = await discordBotRequest(`/guilds/${GUILD_ID}/channels`, {
       method: "PATCH",
@@ -86,7 +96,7 @@ export async function synchronizeGwStoreTicketCategories(options: {
   const movedChannelIds: string[] = [];
   for (const channel of categories.channels) {
     if (!isGuildChannel(channel) || channel.type !== 0) continue;
-    const kind = classifyTicket(channel.topic);
+    const kind = classifyTicket(channel.topic, orderKinds);
     if (!kind) continue;
     const parentId = categories[kind].id;
     ticketSnapshots.push({ channel: structuredClone(channel), parentId });
@@ -104,10 +114,10 @@ export async function synchronizeGwStoreTicketCategories(options: {
   const verifiedCategories = verified.filter(channel => isGuildChannel(channel) && channel.type === 4).sort(comparePosition);
   if (verifiedCategories.length !== orderedCategories.length
     || verifiedCategories.some((channel, index) => channel.id !== orderedCategories[index].id)
-    || verifiedCategories[0]?.position !== 0 || verifiedCategories[1]?.position !== 1) {
+    || CATEGORY_ORDER.some((_, index) => verifiedCategories[index]?.position !== index)) {
     throw new Error("Discord não confirmou a ordem das categorias de tickets.");
   }
-  for (const kind of ["purchase", "sale"] as const) {
+  for (const kind of CATEGORY_ORDER) {
     const category = findCategory(verified, kind);
     if (!category || category.id !== categories[kind].id) {
       throw new Error("Discord não confirmou as categorias de tickets.");
@@ -124,6 +134,7 @@ export async function synchronizeGwStoreTicketCategories(options: {
   return {
     status: "synchronized" as const,
     purchaseCategoryId: categories.purchase.id,
+    upCategoryId: categories.up.id,
     saleCategoryId: categories.sale.id,
     createdCategoryIds: categories.createdCategoryIds,
     movedChannelIds,
@@ -143,12 +154,16 @@ function ensureCategories(fetcher: typeof fetch): Promise<EnsuredCategories> {
 async function ensureCategoriesInternal(fetcher: typeof fetch): Promise<EnsuredCategories> {
   const botId = await assertConfiguredDiscordBotIdentity(fetcher);
   const channels = await listChannels(fetcher);
-  // Detect duplicates before changing either category.
-  const existing = { purchase: findCategory(channels, "purchase"), sale: findCategory(channels, "sale") };
+  // Detect duplicates before changing any category.
+  const existing = {
+    purchase: findCategory(channels, "purchase"),
+    up: findCategory(channels, "up"),
+    sale: findCategory(channels, "sale"),
+  };
   const createdCategoryIds: string[] = [];
   const permissions = categoryPermissions(botId);
   const resolved = {} as Record<TicketCategoryKind, TicketCategoryChannel>;
-  for (const kind of ["purchase", "sale"] as const) {
+  for (const kind of CATEGORY_ORDER) {
     let category = existing[kind];
     if (!category) {
       category = await discordBotJson<TicketCategoryChannel>(`/guilds/${GUILD_ID}/channels`, {
@@ -175,16 +190,25 @@ async function ensureCategoriesInternal(fetcher: typeof fetch): Promise<EnsuredC
 }
 
 function findCategory(channels: readonly TicketCategoryChannel[], kind: TicketCategoryKind) {
-  const canonical = kind === "purchase" ? "compra" : "venda";
+  const canonical = { purchase: "compra", up: "upper", sale: "venda" }[kind];
   const matches = channels.filter(channel => isGuildChannel(channel) && channel.type === 4
     && canonicalName(channel.name ?? "") === canonical);
   if (matches.length > 1) throw new Error(`Há mais de uma categoria de ${canonical} na GWStore.`);
   return matches[0] ?? null;
 }
 
-function classifyTicket(topic: string | null | undefined): TicketCategoryKind | null {
+function ticketOrderId(topic: string | null | undefined): string | null {
   if (!topic) return null;
-  if (PURCHASE_TOPIC.test(topic)) return "purchase";
+  const match = ORDER_TOPIC.exec(topic);
+  return match ? (match[1] ?? match[2]).toLowerCase() : null;
+}
+
+function classifyTicket(topic: string | null | undefined, orderKinds: ReadonlyMap<string, "purchase" | "up">): TicketCategoryKind | null {
+  if (!topic) return null;
+  if (PURCHASE_TOPIC.test(topic)) {
+    const orderId = ticketOrderId(topic);
+    return orderId ? orderKinds.get(orderId) ?? "purchase" : "purchase";
+  }
   if (!topic.startsWith(SALE_TOPIC_PREFIX)) return null;
   try {
     const offer: unknown = JSON.parse(topic.slice(SALE_TOPIC_PREFIX.length));

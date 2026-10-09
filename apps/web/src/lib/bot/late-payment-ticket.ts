@@ -12,6 +12,7 @@ import {
 } from "./discord-ticket-controls";
 import { loadBotRuntimeSettings } from "./message-customization-server";
 import { resolveGwStoreTicketCategoryId } from "./discord-ticket-categories";
+import { resolveGwStoreOrderTicketKind } from "./gw-up-ticket-routing";
 import { botMessageBannerUrl } from "./message-customization";
 import { STORE_NAME } from "@/lib/brand";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
@@ -90,8 +91,12 @@ export async function ensureLatePaymentTicket(
     {},
     fetcher,
   );
-  const purchaseCategoryId = await resolveGwStoreTicketCategoryId(
-    input.guildDiscordId, "purchase", channels, fetcher,
+  const kind = await resolveGwStoreOrderTicketKind(input.guildDiscordId, input.orderId).catch(error => {
+    console.error(`[ticket-up] pedido ${input.orderId}: falha na classificação; usando Compra`, error);
+    return "purchase" as const;
+  });
+  const ticketCategoryId = await resolveGwStoreTicketCategoryId(
+    input.guildDiscordId, kind, channels, fetcher,
   );
   let channel = channels.find(
     (candidate) => candidate.type === 0 && candidate.topic?.startsWith(marker),
@@ -113,7 +118,7 @@ export async function ensureLatePaymentTicket(
           type: 0,
           topic: marker,
           permission_overwrites: overwrites,
-          ...(purchaseCategoryId ? { parent_id: purchaseCategoryId } : {}),
+          ...(ticketCategoryId ? { parent_id: ticketCategoryId } : {}),
         }),
       },
       fetcher,
@@ -135,9 +140,9 @@ export async function ensureLatePaymentTicket(
   if (!SNOWFLAKE_PATTERN.test(channel.id)) {
     throw new Error("Discord retornou um canal inválido.");
   }
-  if (!created && purchaseCategoryId && channel.parent_id !== purchaseCategoryId) {
+  if (!created && ticketCategoryId && channel.parent_id !== ticketCategoryId) {
     channel = await discordBotJson<DiscordChannel>(`/channels/${channel.id}`, {
-      method: "PATCH", signal: AbortSignal.timeout(15_000), body: JSON.stringify({ parent_id: purchaseCategoryId }),
+      method: "PATCH", signal: AbortSignal.timeout(15_000), body: JSON.stringify({ parent_id: ticketCategoryId }),
     }, fetcher);
   }
 

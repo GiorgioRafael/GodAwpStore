@@ -1,8 +1,10 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } from "./message-customization";
 import { DiscordApiError } from "./discord-api";
 
 vi.mock("server-only", () => ({}));
+const { resolveGwStoreOrderTicketKind } = vi.hoisted(() => ({ resolveGwStoreOrderTicketKind: vi.fn() }));
+vi.mock("./gw-up-ticket-routing", () => ({ resolveGwStoreOrderTicketKind }));
 vi.mock("./message-customization-server", async () => {
   const { DEFAULT_BOT_MESSAGE_CUSTOMIZATION } = await import("./message-customization");
   const { DEFAULT_TICKET_NOTIFICATION_DISCORD_USER_IDS } = await import(
@@ -43,6 +45,10 @@ const defaultCloseAdminUserIds = [
 
 beforeAll(async () => {
   ticket = await import("./discord-ticket");
+});
+
+beforeEach(() => {
+  resolveGwStoreOrderTicketKind.mockReset().mockResolvedValue("purchase");
 });
 
 afterEach(() => {
@@ -234,9 +240,15 @@ describe("Discord paid-order ticket", () => {
   });
 
   it.each([
-    [false, undefined], [true, undefined], [false, "robux"], [true, "robux"],
-  ] as const)("encaminha compra GW para Compra (recuperado=%s, controles=%s), preservando acesso", async (existing, controls) => {
+    [false, undefined, "purchase"], [true, undefined, "purchase"],
+    [false, "robux", "purchase"], [true, "robux", "purchase"],
+    [false, undefined, "up"], [true, undefined, "up"],
+    [false, undefined, "failure"], [true, undefined, "failure"],
+  ] as const)("encaminha ticket GW para sua categoria (recuperado=%s, controles=%s, classificação=%s), preservando acesso", async (existing, controls, kind) => {
     vi.stubEnv("DISCORD_BOT_TOKEN", "test-token");
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    if (kind === "failure") resolveGwStoreOrderTicketKind.mockRejectedValue(new Error("banco indisponível"));
+    else resolveGwStoreOrderTicketKind.mockResolvedValue(kind);
     const guildId = "1401264061101899820";
     const categoryId = "823456789012345678";
     const permissions = ticket.buildTicketPermissionOverwrites({
@@ -256,7 +268,7 @@ describe("Discord paid-order ticket", () => {
       if (url.endsWith("/users/@me")) return Response.json({ id: botId });
       if (url.endsWith(`/users/${order.buyerDiscordId}`)) return Response.json({ id: order.buyerDiscordId, username: "comprador" });
       if (url.endsWith(`/guilds/${guildId}/channels`) && method === "GET") {
-        return Response.json([{ id: categoryId, type: 4, name: "🛒┊COMPRA" }, ...(channel ? [channel] : [])]);
+        return Response.json([{ id: categoryId, type: 4, name: kind === "up" ? "🆙┊UPPER" : "🛒┊COMPRA" }, ...(channel ? [channel] : [])]);
       }
       if (url.endsWith(`/guilds/${guildId}/channels`) && method === "POST") {
         channel = { ...channelResponse(body.topic, body.permission_overwrites), ...body };
@@ -279,6 +291,9 @@ describe("Discord paid-order ticket", () => {
     expect(moves.map(call => call.body)).toEqual(existing ? [{ parent_id: categoryId }] : []);
     expect(channel?.permission_overwrites).toEqual(permissions);
     expect(channel?.parent_id).toBe(categoryId);
+    if (controls === "robux") expect(resolveGwStoreOrderTicketKind).not.toHaveBeenCalled();
+    else expect(resolveGwStoreOrderTicketKind).toHaveBeenCalledWith(guildId, order.orderId);
+    expect(log).toHaveBeenCalledTimes(kind === "failure" ? 1 : 0);
   });
 
   it("allowlists multiple configured users and deduplicates the buyer", () => {
