@@ -88,7 +88,15 @@ describe("catálogo e carrinho da GWStore", () => {
     const cart = screen.getByRole("dialog", { name: "Seu carrinho" });
     expect(within(cart).getByRole("spinbutton", { name: "Quantidade de Dragon West" })).toHaveValue(3);
     expect(within(cart).getAllByText(/R\$\s*165,00/).length).toBeGreaterThan(0);
-    expect(within(cart).getByRole("heading", { name: "Entre para continuar" })).toBeInTheDocument();
+    expect(within(cart).getByRole("heading", { name: "Finalize com sua conta Discord" })).toBeInTheDocument();
+    const login = within(cart).getByRole("link", { name: "Entrar com Discord e finalizar" });
+    const loginUrl = new URL(login.getAttribute("href")!, "https://gwstoreofc.com");
+    expect(loginUrl.pathname).toBe("/auth/login");
+    const returnUrl = new URL(loginUrl.searchParams.get("next")!, "https://gwstoreofc.com");
+    expect(returnUrl.pathname).toBe("/");
+    expect(returnUrl.searchParams.get("checkout")).toBe("1");
+    expect(JSON.parse(returnUrl.searchParams.get("cart")!)).toEqual([{ productId: DRAGON, quantity: 3 }]);
+    expect(within(cart).queryByRole("button", { name: "Continuar para o pagamento" })).not.toBeInTheDocument();
     expect(within(cart).queryByRole("textbox", { name: "Seu usuário no Roblox" })).not.toBeInTheDocument();
     await waitFor(() => expect(JSON.parse(localStorage.getItem("gwstore.shop.cart.v1")!)).toEqual([{ productId: DRAGON, quantity: 3 }]));
     await user.click(within(cart).getByRole("button", { name: "Remover Dragon West" }));

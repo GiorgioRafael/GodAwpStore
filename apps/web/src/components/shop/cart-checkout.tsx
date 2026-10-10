@@ -3,7 +3,7 @@
 import { useRef, useState, type FormEvent } from "react";
 import { ArrowRight, LoaderCircle, Minus, Plus, Trash2 } from "lucide-react";
 import { formatShopPrice, type ShopProductView } from "@/lib/shop/catalog-view";
-import { encodeShopCartHandoff, shopCartSubtotalCents, type ShopCartLine } from "@/lib/shop/cart";
+import { shopCheckoutLoginHref, shopCartSubtotalCents, type ShopCartLine } from "@/lib/shop/cart";
 import type { ShopCheckoutResponse } from "@/lib/shop/types";
 import { ProductImage } from "./product-image";
 import { ShopDialog } from "./shop-dialog";
@@ -24,7 +24,7 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
     return product ? [{ ...line, product }] : [];
   });
   const services = lines.filter(line => line.product.isUpService);
-  const loginHref = `/entrar?next=${encodeURIComponent(`/?checkout=1&cart=${encodeURIComponent(encodeShopCartHandoff(cart))}`)}`;
+  const loginHref = shopCheckoutLoginHref(cart);
 
   async function checkout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,9 +79,12 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
             {services.map(line => <div key={line.productId}><strong>{line.product.name}</strong>{line.product.serviceRequirements.map((item, i) => <p key={i}>{item}</p>)}</div>)}
             <label className={styles.checkLabel}><input type="checkbox" required checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />Li os requisitos e minha conta atende ao necessário.</label>
           </div> : null}
-        </> : <div className={styles.loginNote}><h3>Entre para continuar</h3><p>Sua conta guarda os pedidos e o chat privado com a equipe.</p></div>}
+        </> : <div className={styles.loginNote}><h3>Finalize com sua conta Discord</h3><p>Entre com o Discord para pagar e acompanhar a entrega no chat do site. Seu carrinho será mantido.</p></div>}
         {error ? <p className={styles.error} role="alert">{error}</p> : null}
-        <button type="submit" className={styles.primaryButton} disabled={busy || total <= 0}>{busy ? <><LoaderCircle className={styles.spinner} size={18} /> Preparando pedido…</> : <>{signedIn ? "Continuar para o pagamento" : "Entrar e continuar"}<ArrowRight size={18} /></>}</button>
+        {signedIn
+          ? <button type="submit" className={styles.primaryButton} disabled={busy || total <= 0}>{busy ? <><LoaderCircle className={styles.spinner} size={18} /> Preparando pedido…</> : <>Continuar para o pagamento<ArrowRight size={18} /></>}</button>
+          : total > 0 ? <a href={loginHref} className={styles.primaryButton}>Entrar com Discord e finalizar<ArrowRight size={18} /></a>
+            : <button type="button" className={styles.primaryButton} disabled>Entrar com Discord e finalizar<ArrowRight size={18} /></button>}
         <p className={styles.checkoutNote}>Depois do pagamento, o chat desta compra fica disponível aqui no site para combinar a entrega.</p>
       </form>}
   </ShopDialog>;

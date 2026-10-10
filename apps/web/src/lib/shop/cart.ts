@@ -91,6 +91,12 @@ export function encodeShopCartHandoff(cart: readonly ShopCartItem[]): string {
   return JSON.stringify(items);
 }
 
+/** Start Discord OAuth only at checkout and reopen the same cart afterwards. */
+export function shopCheckoutLoginHref(cart: readonly ShopCartItem[]): string {
+  const next = `/?${new URLSearchParams({ checkout: "1", cart: encodeShopCartHandoff(cart) })}`;
+  return `/auth/login?${new URLSearchParams({ next })}`;
+}
+
 function productMap(products: readonly ShopCartProduct[]) {
   const result = new Map<string, ShopCartProduct>();
   for (const product of products) {
