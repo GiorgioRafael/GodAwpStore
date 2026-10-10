@@ -435,7 +435,7 @@ type OrderRow = {
   seller_whitelist_entry_id: string | null;
   product_id: string;
   inventory_unit_id: string | null;
-  buyer_discord_id: string;
+  buyer_discord_id: string | null;
   quantity: number;
   status: Database["public"]["Enums"]["order_status"];
   currency_code: string;
@@ -1723,7 +1723,7 @@ export type Database = {
           guild_id: string;
           order_kind: "items" | "robux";
           product_id: string | null;
-          buyer_discord_id: string;
+          buyer_discord_id: string | null;
           quantity: number;
           sale_price_cents: number;
           status: Database["public"]["Enums"]["order_status"];
@@ -2706,7 +2706,7 @@ export type Database = {
         Returns: {
           processed_order_id: string;
           discord_guild_id: string;
-          buyer_discord_id: string;
+          buyer_discord_id: string | null;
           product_name: string;
           paid_amount_cents: number;
           resulting_order_status: Database["public"]["Enums"]["order_status"];

@@ -11,13 +11,13 @@ import { GW_UP_GUILD_ID, GW_UP_STORE_ID } from "@/lib/bot/gw-up-catalog";
 import { createShopCheckout } from "./checkout";
 import { shopCheckoutSchema } from "./validation";
 import { loadShopCatalog } from "./catalog";
-import { orderDto, readShopOrder, type ShopClient, type ShopOrderRow } from "./repository";
+import { orderDto, readShopOrder, ShopCommerceRepository, type ShopClient, type ShopOrderRow } from "./repository";
 import { fulfillWebOrderIfApplicable } from "./fulfillment";
 
 const requestId = "550e8400-e29b-41d4-a716-446655440000";
 const productId = "650e8400-e29b-41d4-a716-446655440000";
 const orderId = "750e8400-e29b-41d4-a716-446655440000";
-const actor: ShopActor = { authUserId: "850e8400-e29b-41d4-a716-446655440000", discordId: "423456789012345678", displayName: "Cliente", isAdmin: false };
+const actor = { authUserId: "850e8400-e29b-41d4-a716-446655440000", discordId: "423456789012345678", displayName: "Cliente", isAdmin: false } satisfies ShopActor;
 const guild = { discordGuildId: GW_UP_GUILD_ID, ownerDiscordId: "223456789012345678", name: "GWStore" };
 const raw = { requestId, items: [{ productId, quantity: 2 }], gameNickname: "Player_123" };
 const status: ShopOrderStatus = { orderId, status: "awaiting_payment", paymentStatus: "pending", totalPriceCents: 321,
@@ -30,7 +30,7 @@ function setup() {
     ensureGuild: vi.fn(async () => ({ id: "guild-row", whitelistEntryId: "seller-row", boosterDiscount: { enabled: true, discount_bps: 500, minimum_subtotal_cents: 0 } })),
     findPurchasableProducts: vi.fn(async (): Promise<PurchasableProduct[]> => [{ id: productId, name: "Produto", minimumPriceCents: 200, catalogStoreId: "normal" }]),
     countAvailableStocks: vi.fn(async () => new Map([[productId, 10]])),
-    getCustomerRankProgress: vi.fn(async (): Promise<CustomerRankProgress> => ({ guildId: "guild-row", buyerDiscordId: actor.discordId, totalSpentCents: 0, currentRank: null, nextRank: null, amountToNextRankCents: 0 })),
+    getCustomerRankProgress: vi.fn(async (): Promise<CustomerRankProgress> => ({ guildId: "guild-row", buyerDiscordId: actor.discordId!, totalSpentCents: 0, currentRank: null, nextRank: null, amountToNextRankCents: 0 })),
     getCommissionBps: vi.fn(async () => 1000),
     createAwaitingPaymentPurchase: vi.fn(async () => ({ id: orderId, status: "awaiting_payment" as const, created: true, outOfStock: false })),
   };
@@ -43,6 +43,23 @@ beforeEach(() => { vi.clearAllMocks(); brand.IS_GWSTORE = true; vi.stubEnv("GWST
 afterEach(() => vi.unstubAllEnvs());
 
 describe("checkout público seguro", () => {
+  it("cria checkout web para cliente sem Discord sem ranking nem snowflake inventado", async () => {
+    const { repository, dependencies } = setup();
+    const createWebPurchase = vi.fn(async () => ({ id: orderId, status: "awaiting_payment" as const, created: true, outOfStock: false }));
+    expect(await createShopCheckout(raw, { ...actor, discordId: null }, { ...dependencies, createWebPurchase })).toMatchObject({ orderId });
+    expect(createWebPurchase).toHaveBeenCalledWith(expect.objectContaining({ buyerDiscordId: null, discountBps: 0, discountReason: null }));
+    expect(repository.getCustomerRankProgress).not.toHaveBeenCalled();
+    expect(repository.createAwaitingPaymentPurchase).not.toHaveBeenCalled();
+    expect(dependencies.createCheckout).toHaveBeenCalledOnce();
+  });
+
+  it("envia UUID real e Discord nulo ao RPC exclusivo do site", async () => {
+    const single = vi.fn(async () => ({ data: { checkout_order_id: orderId, was_created: true, out_of_stock: false }, error: null }));
+    const rpc = vi.fn(() => ({ single }));
+    const repository = new ShopCommerceRepository({ rpc } as unknown as ShopClient, "Player_123", false, { ...actor, discordId: null });
+    await repository.createWebPurchase({ interactionId: requestId, guildId: "guild-row", whitelistEntryId: "seller-row", buyerDiscordId: null, items: raw.items, discountBps: 0, discountReason: null, commissionBps: 1000 });
+    expect(rpc).toHaveBeenCalledWith("create_gwstore_web_purchase", expect.objectContaining({ p_buyer_discord_id: null, p_buyer_auth_user_id: actor.authUserId }));
+  });
   it("não aplica o ranking em compra web nova durante a pausa de promoções", async () => {
     vi.stubEnv("GWSTORE_CUSTOMER_DISCOUNTS_ENABLED", "false");
     const { repository, dependencies } = setup();
@@ -144,13 +161,24 @@ describe("catálogo e atendimento persistido", () => {
       delivered_at: null, buyer_discord_id: actor.discordId, web_buyer_auth_user_id: actor.authUserId, web_buyer_name: "Cliente", web_items_snapshot: [], guilds: { discord_guild_id: GW_UP_GUILD_ID } } satisfies ShopOrderRow;
     expect(orderDto(row)).toMatchObject({ checkoutUrl: null, pixCode: null, ticketUrl: null, chatUrl: `/minhas-compras/${orderId}` });
   });
-  it("verifica autor auth e Discord antes de mostrar dados/Pix", async () => {
+  it("verifica UUID auth antes de mostrar dados/Pix independentemente do provedor", async () => {
     const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), like: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => ({ data: null, error: null })) };
     const client = { from: vi.fn(() => query) } as unknown as ShopClient;
     await expect(readShopOrder(orderId, actor, client)).rejects.toMatchObject({ code: "not_found" });
     expect(query.eq).toHaveBeenCalledWith("web_buyer_auth_user_id", actor.authUserId);
-    expect(query.eq).toHaveBeenCalledWith("buyer_discord_id", actor.discordId);
+    expect(query.eq).not.toHaveBeenCalledWith("buyer_discord_id", actor.discordId);
     expect(query.eq).toHaveBeenCalledWith("guilds.discord_guild_id", GW_UP_GUILD_ID);
+  });
+  it("autoriza cliente sem Discord somente pelo UUID proprietário do pedido", async () => {
+    const row: ShopOrderRow = { id: orderId, status: "paid", payment_status: "paid", sale_price_cents: 200,
+      payment_checkout_url: null, payment_provider_reference: null, payment_expires_at: null, game_nickname: "Player_123",
+      created_at: status.createdAt, paid_at: status.createdAt, delivered_at: null, buyer_discord_id: null,
+      web_buyer_auth_user_id: actor.authUserId, web_buyer_name: "Email buyer", web_items_snapshot: [], guilds: { discord_guild_id: GW_UP_GUILD_ID } };
+    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), like: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => ({ data: row, error: null })) };
+    const client = { from: vi.fn(() => query) } as unknown as ShopClient;
+    await expect(readShopOrder(orderId, { ...actor, discordId: null }, client)).resolves.toMatchObject({ buyerName: "Email buyer" });
+    query.maybeSingle.mockResolvedValue({ data: { ...row, web_buyer_auth_user_id: "another-user" }, error: null });
+    await expect(readShopOrder(orderId, { ...actor, discordId: null }, client)).rejects.toMatchObject({ code: "not_found" });
   });
   it("envia web pago ao chat, bot segue ao Discord; origem desconhecida falha fechada", async () => {
     const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => ({ data: { payment_reference: `web:${requestId}`, guilds: { discord_guild_id: GW_UP_GUILD_ID } }, error: null as unknown })) };

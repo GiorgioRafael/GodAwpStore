@@ -45,8 +45,7 @@ export class ShopCommerceRepository extends SupabaseBotCommerceRepository {
       .select("id,game_nickname,web_buyer_auth_user_id,buyer_discord_id").eq("payment_reference", `web:${requestId}`).maybeSingle();
     if (error) throw new ShopError("unavailable");
     if (!data) return null;
-    if (data.game_nickname !== this.gameNickname || data.web_buyer_auth_user_id !== this.buyer.authUserId
-      || data.buyer_discord_id !== this.buyer.discordId) throw new ShopError("request_conflict");
+    if (data.game_nickname !== this.gameNickname || data.web_buyer_auth_user_id !== this.buyer.authUserId) throw new ShopError("request_conflict");
     return super.findPurchaseById(data.id);
   }
 
@@ -60,12 +59,17 @@ export class ShopCommerceRepository extends SupabaseBotCommerceRepository {
   }
 
   override async createAwaitingPaymentPurchase(input: Parameters<BotCommerceRepository["createAwaitingPaymentPurchase"]>[0]) {
+    return this.createWebPurchase(input);
+  }
+
+  /** Web-only entry: the Auth UUID owns the purchase; Discord is optional. */
+  async createWebPurchase(input: Omit<Parameters<BotCommerceRepository["createAwaitingPaymentPurchase"]>[0], "buyerDiscordId"> & { buyerDiscordId: string | null }) {
     const { data, error } = await (this.shopClient as unknown as RpcClient)
       .rpc("create_gwstore_web_purchase", {
         p_request_id: input.interactionId,
         p_guild_id: input.guildId,
         p_whitelist_entry_id: input.whitelistEntryId,
-        p_buyer_discord_id: input.buyerDiscordId,
+        p_buyer_discord_id: this.buyer.discordId,
         p_items: input.items.map(item => ({ product_id: item.productId, quantity: item.quantity })),
         p_discount_bps: input.discountBps,
         p_discount_reason: input.discountReason,
@@ -98,12 +102,12 @@ export function requireShopClient(): ShopClient {
 export async function readShopOrder(orderId: string, actor: ShopActor, client = requireShopClient()): Promise<ShopOrderStatus> {
   let query = client.from("orders").select(SHOP_ORDER_SELECT)
     .eq("id", orderId).like("payment_reference", "web:%").eq("guilds.discord_guild_id", GW_UP_GUILD_ID);
-  if (!actor.isAdmin) query = query.eq("buyer_discord_id", actor.discordId).eq("web_buyer_auth_user_id", actor.authUserId);
+  if (!actor.isAdmin) query = query.eq("web_buyer_auth_user_id", actor.authUserId);
   const { data: result, error } = await query.maybeSingle();
   if (error) throw new ShopError("unavailable");
   const data = result as unknown as ShopOrderRow | null;
   if (!data || data.guilds?.discord_guild_id !== GW_UP_GUILD_ID) throw new ShopError("not_found");
-  if (!actor.isAdmin && (data.buyer_discord_id !== actor.discordId || data.web_buyer_auth_user_id !== actor.authUserId)) throw new ShopError("not_found");
+  if (!actor.isAdmin && data.web_buyer_auth_user_id !== actor.authUserId) throw new ShopError("not_found");
   const order = orderDto(data);
   if (order.checkoutUrl && data.payment_provider_reference?.startsWith("ep:")) {
     const { data: checkout, error: pixError } = await client.from("eclipsepay_checkouts")
@@ -120,7 +124,7 @@ export const SHOP_ORDER_SELECT = "id,status,payment_status,sale_price_cents,paym
 export type ShopOrderRow = {
   id: string; status: string; payment_status: string; sale_price_cents: number; payment_checkout_url: string | null;
   payment_provider_reference: string | null; payment_expires_at: string | null; game_nickname: string | null;
-  created_at: string; paid_at: string | null; delivered_at: string | null; buyer_discord_id: string;
+  created_at: string; paid_at: string | null; delivered_at: string | null; buyer_discord_id: string | null;
   web_buyer_auth_user_id: string | null; web_buyer_name: string | null; web_items_snapshot: unknown;
   guilds: { discord_guild_id: string } | null;
 };

@@ -86,6 +86,10 @@ Redirect URL: http://localhost:3000/auth/callback
 
 No deploy futuro, acrescente a URL HTTPS da Vercel sem remover o callback local.
 
+O cadastro de clientes da GWStore também aceita Google e e-mail/senha em `/entrar`.
+A configuração de confirmação, recuperação e SMTP dedicado está em
+[Autenticação de clientes da GWStore](docs/gwstore-customer-auth.md).
+
 ## 3. Configurar variáveis locais
 
 Copie `apps/web/.env.example` para `apps/web/.env.local` e preencha os valores.

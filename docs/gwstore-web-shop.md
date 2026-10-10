@@ -1,10 +1,11 @@
 # Loja e atendimento da GWStore no site
 
-A página inicial da GWStore publica o catálogo real do painel, com busca, categorias, ordenação, produtos, estoque e carrinho. O cliente se identifica pela conta Discord, informa o usuário Roblox e paga pelo Pix. O atendimento e a entrega acontecem no chat privado do pedido, em `/minhas-compras`; a equipe acompanha os pedidos em `/admin/atendimento-loja`.
+A página inicial da GWStore apresenta as categorias com capas e abre os produtos dentro de cada categoria, com busca, ordenação, estoque e carrinho. O cliente entra com Google, Discord ou e-mail/senha, informa o usuário Roblox e paga pelo Pix. O atendimento e a entrega acontecem no chat privado do pedido, em `/minhas-compras`; a equipe acompanha os pedidos em `/admin/atendimento-loja`.
 
 ## Pedido e pagamento
 
 - O carrinho armazena apenas IDs e quantidades. Preços, disponibilidade e descontos são calculados no servidor e novamente na transação do banco.
+- A conta autenticada é a proprietária do pedido. Clientes Google/e-mail não precisam de um ID Discord; descontos vinculados ao Discord exigem uma identidade Discord válida.
 - Cada checkout tem uma chave de repetição vinculada ao comprador e aos itens. A mesma chave permanece após uma resposta incerta do provedor, evitando outra cobrança na tentativa seguinte.
 - Produtos sem limite de estoque mantêm o comportamento configurado no painel. Os requisitos dos serviços de UP precisam ser confirmados antes do checkout.
 - A origem persistida `web:<UUID>` diferencia estes pedidos dos pedidos antigos do bot. Os webhooks abrem o chat do site e preservam a atualização do estoque compartilhado. Eles não criam tickets nem concedem cargos do Discord ao comprador web.
@@ -29,6 +30,8 @@ Na GWStore, `/roleta` e `/roleta/overlay` retornam 404, não há configurações
 ## Hospedagem e login
 
 A produção continua na Railway com a ponte de domínio já documentada em `gwstore-railway.md`. O build web não executa o postbuild que publica mensagens no Discord.
+
+O fluxo e a ativação de e-mail com SMTP próprio estão documentados em `gwstore-customer-auth.md`.
 
 Enquanto um Owner do Supabase não autorizar os callbacks do domínio novo, `GWSTORE_LOGIN_ORIGIN=https://gwstore.vercel.app` mantém o login na ponte legada. O carrinho atravessa esse retorno com IDs e quantidades revalidados; nenhuma informação de preço é confiada à URL. Remova a configuração temporária somente depois de liberar e verificar os callbacks de `gwstoreofc.com`.
 

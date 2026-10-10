@@ -58,6 +58,10 @@ export async function fulfillVerifiedPayment(input: { providerPaymentId: string;
       }
       return Response.json({ received: true, chat: "web" });
     }
+    const buyerDiscordId = confirmation.buyerDiscordId;
+    if (!buyerDiscordId) {
+      throw new Error("Pedido fora do atendimento web sem comprador Discord.");
+    }
     if (!["paid", "processing", "delivered"].includes(confirmation.orderStatus)) {
       // The money landed on an order the deadline had already cancelled. This
       // used to return 200 and drop it: the buyer was charged, got no item and
@@ -82,7 +86,7 @@ export async function fulfillVerifiedPayment(input: { providerPaymentId: string;
 
     deferRankRoleSync("customer_rank_role", () => synchronizeDiscordCustomerRankRole({
       discordGuildId: confirmation.discordGuildId,
-      buyerDiscordId: confirmation.buyerDiscordId,
+      buyerDiscordId,
     }));
 
     const claim = await payments.claimTicket(confirmation.orderId);

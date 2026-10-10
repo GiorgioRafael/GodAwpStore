@@ -86,7 +86,7 @@ afterEach(() => {
 describe("LivePix webhook route", () => {
   it.each(["paid", "cancelled"])("pagamento web %s usa chat persistido sem claim/ticket/rank Discord", async orderStatus => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
-    mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus, firstConfirmation: true });
+    mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus, firstConfirmation: true, buyerDiscordId: null });
     mocks.fulfillWebOrderIfApplicable.mockResolvedValue(true);
     const response = await POST(webhookRequest(JSON.stringify(webhookPayload())));
     expect(response.status).toBe(200);
@@ -97,6 +97,23 @@ describe("LivePix webhook route", () => {
     expect(mocks.synchronizeDiscordCustomerRankRole).not.toHaveBeenCalled();
     if (orderStatus === "paid") expect(mocks.requestDiscordStorefrontSync).toHaveBeenCalledWith(orderId);
     else expect(mocks.requestDiscordStorefrontSync).not.toHaveBeenCalled();
+  });
+  it.each(["paid", "cancelled"])("comprador nulo fora do atendimento web %s retorna retry sem chamar Discord", async orderStatus => {
+    vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
+    mocks.reconcilePayment.mockResolvedValue({ orderId, orderStatus, buyerDiscordId: null });
+    mocks.fulfillWebOrderIfApplicable.mockResolvedValue(false);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      expect((await POST(webhookRequest(JSON.stringify(webhookPayload())))).status).toBe(503);
+      expect(mocks.claimTicket).not.toHaveBeenCalled();
+      expect(mocks.ensurePaidOrderTicket).not.toHaveBeenCalled();
+      expect(mocks.reconcileLatePaidOrderTickets).not.toHaveBeenCalled();
+      expect(mocks.synchronizeDiscordCustomerRankRole).not.toHaveBeenCalled();
+      expect(mocks.requestDiscordStorefrontSync).not.toHaveBeenCalled();
+      expect(mocks.afterTasks).toHaveLength(0);
+    } finally {
+      log.mockRestore();
+    }
   });
   it("origem web desconhecida retorna retry sem tentar abrir Discord", async () => {
     vi.stubEnv("LIVEPIX_CLIENT_ID", clientId);
@@ -177,6 +194,7 @@ describe("LivePix webhook route", () => {
       orderId,
       orderStatus: "cancelled",
       firstConfirmation: true,
+      buyerDiscordId: "223456789012345678",
     });
     mocks.reconcileLatePaidOrderTickets.mockResolvedValue({
       pending: 1,

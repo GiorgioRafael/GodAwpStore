@@ -1,27 +1,48 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
-import { getMasterAdminSiteUrl } from "@/lib/env";
+import { getGwStoreLoginOrigin, getMasterAdminSiteUrl, getStoreAuthSiteUrl } from "@/lib/env";
+import { gwStoreCustomerLoginHref, safeGwStoreCustomerNext } from "@/lib/gwstore-customer-auth";
 import { masterAdminLoginHref } from "@/lib/master-admin-auth";
+import { publicRequestOrigin } from "@/lib/public-request-origin";
 import { safeInternalPath } from "@/lib/safe-redirect";
+import { requireShopRequest } from "@/lib/shop/request";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
-  const siteOrigin = getMasterAdminSiteUrl(request.nextUrl.origin);
+  const customer = request.nextUrl.searchParams.get("customer") === "1";
+  const requestOrigin = publicRequestOrigin(request);
+  if (customer) {
+    try {
+      requireShopRequest(request);
+    } catch {
+      return new NextResponse(null, { status: 404 });
+    }
+  }
+  const siteOrigin = customer
+    ? getStoreAuthSiteUrl(requestOrigin)
+    : getMasterAdminSiteUrl(request.nextUrl.origin);
+  const next = customer
+    ? safeGwStoreCustomerNext(request.nextUrl.searchParams.get("next"), siteOrigin)
+    : safeInternalPath(request.nextUrl.searchParams.get("next"), siteOrigin, "/admin/discordbots");
+  const loginOrigin = customer ? getGwStoreLoginOrigin() : null;
+  if (loginOrigin && requestOrigin !== loginOrigin) {
+    const target = new URL("/auth/google/login", loginOrigin);
+    target.searchParams.set("customer", "1");
+    target.searchParams.set("next", next);
+    return NextResponse.redirect(target);
+  }
   // Create the PKCE cookie only after the browser reaches the callback's host.
-  if (request.nextUrl.origin !== siteOrigin) {
+  if (!customer && request.nextUrl.origin !== siteOrigin) {
     const target = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, siteOrigin);
     return NextResponse.redirect(target);
   }
-  const next = safeInternalPath(
-    request.nextUrl.searchParams.get("next"),
-    siteOrigin,
-    "/admin/discordbots",
-  );
   const supabase = await createServerSupabaseClient();
   if (!supabase) {
     return NextResponse.redirect(
-      new URL(masterAdminLoginHref(next, { setup: true }), siteOrigin),
+      new URL(customer
+        ? gwStoreCustomerLoginHref(next, { setup: true })
+        : masterAdminLoginHref(next, { setup: true }), siteOrigin),
     );
   }
 
@@ -43,7 +64,9 @@ export async function GET(request: NextRequest) {
 
   if (error || !data.url) {
     return NextResponse.redirect(
-      new URL(masterAdminLoginHref(next, { error: "oauth" }), siteOrigin),
+      new URL(customer
+        ? gwStoreCustomerLoginHref(next, { error: "oauth" })
+        : masterAdminLoginHref(next, { error: "oauth" }), siteOrigin),
     );
   }
 

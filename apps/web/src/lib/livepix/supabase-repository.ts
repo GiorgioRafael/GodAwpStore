@@ -145,6 +145,9 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
       .rpc("claim_discord_ticket", { p_order_id: orderId })
       .single();
     assertQuery(error, "reserva do ticket Discord");
+    if (typeof data.buyer_discord_id !== "string" || !/^[0-9]{15,22}$/.test(data.buyer_discord_id)) {
+      throw new Error("Reserva de ticket Discord sem comprador válido.");
+    }
     return {
       orderId: data.claimed_order_id,
       claimed: data.claimed,

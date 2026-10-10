@@ -26,6 +26,31 @@ function queryReturningSequence(results: unknown[]) {
   return query;
 }
 
+describe("SupabaseBotCommerceRepository compradores opcionais", () => {
+  it("preserva a compra web sem Discord na leitura compartilhada por ID", async () => {
+    const orderQuery = queryReturning({ data: {
+      id: "web-order", buyer_discord_id: null, guild_id: "guild-row", status: "paid",
+      subtotal_price_cents: 200, sale_price_cents: 200, discount_bps: 0, discount_amount_cents: 0,
+      discount_reason: null, upsell_product_id: null, upsell_discount_bps: 0, upsell_discount_amount_cents: 0,
+      lead_recovery_discount_bps: 0, lead_recovery_discount_amount_cents: 0,
+    }, error: null });
+    const itemQuery = {
+      select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      order: vi.fn(async () => ({ data: [], error: null })),
+    };
+    const from = vi.fn((table: string) => table === "orders" ? orderQuery : itemQuery);
+    await expect(new SupabaseBotCommerceRepository({ from } as never).findPurchaseById("web-order"))
+      .resolves.toMatchObject({ id: "web-order", buyerDiscordId: null, salePriceCents: 200 });
+  });
+
+  it("mantém a leitura exclusiva do pedido Discord estrita", async () => {
+    const orderQuery = queryReturning({ data: { id: "web-order", buyer_discord_id: null }, error: null });
+    const from = vi.fn(() => orderQuery);
+    await expect(new SupabaseBotCommerceRepository({ from } as never).findOrderByInteraction("123456789012345678"))
+      .rejects.toThrow("Pedido Discord sem comprador válido");
+  });
+});
+
 describe("SupabaseBotCommerceRepository.ensureGuild", () => {
   it("reutiliza o cadastro ativo quando a identidade do servidor não mudou", async () => {
     const whitelistQuery = queryReturning({

@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getMasterAdminSiteUrl, getStoreAuthSiteUrl } from "@/lib/env";
 import { publicRequestOrigin } from "@/lib/public-request-origin";
 import { AUTH_NEXT_COOKIE } from "@/lib/auth-next";
-import { gwStoreCustomerLoginHref, isGwStoreCustomerDestination } from "@/lib/gwstore-customer-auth";
+import { CUSTOMER_RECOVERY_COOKIE, CUSTOMER_RECOVERY_MAX_AGE } from "@/lib/customer-auth-state";
+import { gwStoreCustomerLoginHref, isGwStoreCustomerDestination, safeGwStoreCustomerNext } from "@/lib/gwstore-customer-auth";
 import { isMasterAdminPath, masterAdminLoginHref } from "@/lib/master-admin-auth";
 import { safeInternalPath } from "@/lib/safe-redirect";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -27,12 +28,31 @@ export async function GET(request: NextRequest) {
     return failed(siteOrigin, next, requestOrigin);
   }
 
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     return failed(siteOrigin, next, requestOrigin);
   }
 
-  const response = NextResponse.redirect(new URL(next, siteOrigin));
+  // Supabase keeps the recovery intent alongside the host-scoped PKCE
+  // verifier. It is used only after the code has established a session.
+  const isRecovery = data && "redirectType" in data && data.redirectType === "recovery"
+    && data.session && data.user?.id && isGwStoreCustomerDestination("/", requestOrigin);
+  const isCustomerDefault = !requested && isGwStoreCustomerDestination("/", requestOrigin);
+  const target = isRecovery
+    ? new URL(`/entrar?${new URLSearchParams({ mode: "reset", next: safeGwStoreCustomerNext(next, siteOrigin) })}`, siteOrigin)
+    : new URL(isCustomerDefault ? "/" : next, siteOrigin);
+  const response = NextResponse.redirect(target);
+  if (isRecovery) {
+    response.cookies.set(CUSTOMER_RECOVERY_COOKIE, data.user.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: siteOrigin.startsWith("https:"),
+      path: "/",
+      maxAge: CUSTOMER_RECOVERY_MAX_AGE,
+    });
+  } else {
+    response.cookies.delete(CUSTOMER_RECOVERY_COOKIE);
+  }
   response.cookies.delete(AUTH_NEXT_COOKIE);
   return response;
 }
@@ -51,6 +71,7 @@ function failed(siteOrigin: string, next: string, requestOrigin: string) {
       ? new URL("/roleta?erro=login", siteOrigin)
       : new URL("/login?erro=callback", siteOrigin);
   const response = NextResponse.redirect(target);
+  response.cookies.delete(CUSTOMER_RECOVERY_COOKIE);
   response.cookies.delete(AUTH_NEXT_COOKIE);
   return response;
 }

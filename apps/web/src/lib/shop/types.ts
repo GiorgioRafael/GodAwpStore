@@ -35,7 +35,7 @@ export type ShopOrderStatus = {
 export type ShopOrderItem = { productName: string; quantity: number; unitPriceCents: number; totalPriceCents: number };
 export type ShopOrderSummary = ShopOrderStatus;
 export type ShopMessage = { id: string; body: string; authorRole: "buyer" | "staff" | "system"; authorName: string; createdAt: string };
-export type ShopActor = { authUserId: string; discordId: string; displayName: string; isAdmin: boolean };
+export type ShopActor = { authUserId: string; discordId: string | null; displayName: string; isAdmin: boolean };
 
 export type ShopErrorCode = "unavailable" | "invalid_request" | "unauthenticated" | "forbidden"
   | "product_unavailable" | "out_of_stock"

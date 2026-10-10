@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ShopCatalogGame } from "@/lib/shop/types";
 
@@ -19,6 +20,7 @@ vi.mock("@/components/layout/brand-mark", () => ({ BrandMark: () => <span>Logo G
 
 import HomePage from "./page";
 
+const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 const CATALOG: ShopCatalogGame[] = [{ id: "game", name: "Blox Fruits", catalogStoreName: "Frutas físicas", substores: [{
   id: "substore", name: "Frutas físicas", title: "Frutas", description: "", colorHex: "#ff00ff", imageUrl: null,
   products: [{ id: "10000000-0000-4000-8000-000000000001", name: "Dragon do catálogo", description: null,
@@ -26,6 +28,7 @@ const CATALOG: ShopCatalogGame[] = [{ id: "game", name: "Blox Fruits", catalogSt
 }] }];
 
 beforeEach(() => {
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   vi.clearAllMocks();
   mocks.brand.isGwStore = true;
   mocks.requireAdmin.mockResolvedValue({ displayName: "Admin", discordId: "123" });
@@ -35,12 +38,19 @@ beforeEach(() => {
   localStorage.clear();
   window.history.replaceState(null, "", "/");
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  if (scrollIntoViewDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  vi.unstubAllEnvs();
+});
 
 describe("home pública da loja", () => {
   it("mostra catálogo do servidor em produção sem exigir administrador ou inventar preços", async () => {
+    const user = userEvent.setup();
     vi.stubEnv("NODE_ENV", "production");
     render(await HomePage());
+    expect(screen.queryByRole("heading", { name: "Dragon do catálogo" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Explorar Frutas físicas" }));
     expect(screen.getByRole("heading", { name: "Dragon do catálogo" })).toBeInTheDocument();
     expect(screen.getByText(/R\$\s*123,45/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Entrar na sua conta" })).toHaveAttribute("href", "/entrar");
@@ -54,7 +64,7 @@ describe("home pública da loja", () => {
   it("reconhece cliente autenticado sem exigir permissão administrativa", async () => {
     mocks.requireShopBuyer.mockResolvedValue({ displayName: "Cliente" });
     render(await HomePage());
-    expect(screen.getByRole("link", { name: "Minhas compras", exact: true })).toHaveAttribute("href", "/minhas-compras");
+    expect(screen.getByRole("link", { name: "Minhas compras" })).toHaveAttribute("href", "/minhas-compras");
     expect(mocks.requireAdmin).not.toHaveBeenCalled();
     expect(mocks.dashboard).not.toHaveBeenCalled();
   });

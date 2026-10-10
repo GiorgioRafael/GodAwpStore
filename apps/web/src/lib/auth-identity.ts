@@ -22,6 +22,27 @@ export type MasterAdminIdentity = {
   avatarUrl: string | null;
 };
 
+export type ShopperIdentity = Omit<AdminIdentity, "discordId"> & {
+  discordId: string | null;
+  email: string | null;
+};
+
+/** Provider identities and confirmed Auth fields establish identity; metadata is cosmetic. */
+export function extractShopBuyerIdentity(user: User): ShopperIdentity | null {
+  if (user.is_anonymous) return null;
+  const discord = extractDiscordIdentity(user);
+  if (discord) return { ...discord, email: user.email ?? null };
+  const google = extractGoogleIdentity(user);
+  if (google) return { ...google, discordId: null };
+  if (!user.email_confirmed_at || !user.email || !EMAIL.test(user.email)
+    || !user.identities?.some(identity => identity.provider === "email")) return null;
+  return {
+    authUserId: user.id, discordId: null, email: user.email,
+    displayName: identityValue(user.user_metadata, ["full_name", "name"]) ?? user.email,
+    avatarUrl: null,
+  };
+}
+
 export function parseAdminDiscordIds(raw = process.env.ADMIN_DISCORD_IDS): Set<string> {
   const configuredIds = new Set(
     (raw ?? "")

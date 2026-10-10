@@ -50,6 +50,21 @@ beforeEach(() => {
 });
 
 describe("sincronização retroativa dos controles de ticket", () => {
+  it("não envia comprador web nulo aos controles Discord e continua o ticket legado", async () => {
+    const guildId = "8a845b40-7c4e-4d25-9f3f-3cbd27f050c9";
+    const client = clientMock({
+      orders: [{ ...openTicket(1, guildId), buyer_discord_id: null }, openTicket(2, guildId)],
+      guilds: [{ id: guildId, discord_guild_id: "123456789012345678" }],
+    });
+    await expect(synchronizeAllOpenDiscordTicketControls({ client: client as never }))
+      .resolves.toMatchObject({ processed: 2, synchronized: 1, failed: 1 });
+    expect(mocks.synchronizeOpenDiscordTicketControls).toHaveBeenCalledOnce();
+    expect(mocks.synchronizeOpenDiscordTicketControls).toHaveBeenCalledWith(
+      expect.objectContaining({ buyerDiscordId: openTicket(2, guildId).buyer_discord_id }),
+      { fetcher: undefined },
+    );
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
   it("repara tickets abertos com a configuração atual", async () => {
     const client = clientMock({
       orders: [

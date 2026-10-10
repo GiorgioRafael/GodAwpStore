@@ -11,7 +11,8 @@ afterEach(() => vi.unstubAllEnvs());
 describe("origem e sessão da loja", () => {
   it("exige origem same-origin em mutações", () => {
     expect(requireShopRequest(new Request(`${origin}/api/loja/checkout`, { headers: { origin, "sec-fetch-site": "same-origin" } }), true)).toBe(origin);
-    for (const headers of [{}, { origin: "https://evil.example" }, { origin, "sec-fetch-site": "cross-site" }])
+    const rejectedHeaders: Record<string, string>[] = [{}, { origin: "https://evil.example" }, { origin, "sec-fetch-site": "cross-site" }];
+    for (const headers of rejectedHeaders)
       expect(() => requireShopRequest(new Request(`${origin}/api/loja/checkout`, { headers }), true)).toThrow();
   });
   it.each(["https://101master.vercel.app", "https://thstore.vercel.app", "https://gwstoreofc.com.evil.example", "http://gwstoreofc.com"])("rejeita host %s", value => {
@@ -27,6 +28,19 @@ describe("origem e sessão da loja", () => {
     expect(await requireShopActor()).toMatchObject({ authUserId: "user", discordId: "423456789012345678", isAdmin: false });
     expect(mocks.adminSession).not.toHaveBeenCalled();
     await expect(requireShopActor(true)).rejects.toMatchObject({ code: "forbidden" });
+  });
+  it.each([
+    { email: "buyer@example.com", email_confirmed_at: "2026-10-10T00:00:00Z", identities: [{ provider: "email", identity_data: {} }] },
+    { identities: [{ provider: "google", identity_data: { email: "buyer@example.com", email_verified: true, sub: "234486394414825472" } }] },
+  ])("aceita comprador confirmado sem Discord e sem privilégios administrativos (%j)", async profile => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "buyer-auth", user_metadata: { discord_id: "234486394414825472", role: "admin" }, ...profile } }, error: null });
+    expect(await requireShopActor()).toMatchObject({ authUserId: "buyer-auth", discordId: null, isAdmin: false });
+    await expect(requireShopActor(true)).rejects.toMatchObject({ code: "forbidden" });
+    expect(mocks.adminSession).not.toHaveBeenCalled();
+  });
+  it("rejeita email não confirmado mesmo que metadata alegue confirmação", async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "buyer-auth", email: "buyer@example.com", user_metadata: { email_verified: true }, identities: [{ provider: "email", identity_data: {} }] } }, error: null });
+    await expect(requireShopActor()).rejects.toMatchObject({ code: "unauthenticated" });
   });
   it("admin depende da sessão validada do servidor com authID igual", async () => {
     mocks.getUser.mockResolvedValue({ data: { user: { id: "staff", identities: [{ provider: "discord", identity_data: { sub: "234486394414825472" } }] } }, error: null });

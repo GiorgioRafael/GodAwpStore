@@ -70,13 +70,13 @@ describe("atendimento privado das compras", () => {
     expect(screen.getByText("Reembolsado")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Sua mensagem" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Enviar" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Concluir entrega", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Concluir entrega" })).not.toBeInTheDocument();
   });
 
   it("não oferece ao comprador o controle administrativo de entrega", async () => {
     render(<ShopOrderWorkspace orderId={ORDER_ID} />);
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Sua mensagem" })).toBeEnabled());
-    expect(screen.queryByRole("button", { name: "Concluir entrega", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Concluir entrega" })).not.toBeInTheDocument();
     expect(screen.queryByText("Comprador: Ana")).not.toBeInTheDocument();
     expect(postCalls(`${BASE}/entrega`)).toHaveLength(0);
   });
@@ -90,7 +90,7 @@ describe("atendimento privado das compras", () => {
     });
     render(<ShopOrderWorkspace orderId={ORDER_ID} admin />);
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Sua mensagem" })).toBeEnabled());
-    await user.click(screen.getByRole("button", { name: "Concluir entrega", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Concluir entrega" }));
     const confirm = screen.getByRole("dialog", { name: "Concluir entrega" });
     expect(within(confirm).getByText(/depois de entregar todos os itens/)).toBeInTheDocument();
     expect(postCalls(`${BASE}/entrega`)).toHaveLength(0);
@@ -110,7 +110,7 @@ describe("atendimento privado das compras", () => {
     expect(await screen.findByText("O Pix foi pago após expirar. Preciso de atendimento.")).toBeInTheDocument();
     expect(screen.getByText("Análise necessária")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Sua mensagem" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: "Concluir entrega", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Concluir entrega" })).not.toBeInTheDocument();
     expect(postCalls(`${BASE}/entrega`)).toHaveLength(0);
   });
 
@@ -119,7 +119,7 @@ describe("atendimento privado das compras", () => {
     postDelivery.mockResolvedValue(json({ ok: false, error: { message: "Não foi possível concluir a entrega." } }, 503));
     render(<ShopOrderWorkspace orderId={ORDER_ID} admin />);
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Sua mensagem" })).toBeEnabled());
-    await user.click(screen.getByRole("button", { name: "Concluir entrega", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Concluir entrega" }));
     await user.click(screen.getByRole("button", { name: "Confirmar entrega" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível concluir a entrega.");
     expect(screen.getByText("Em atendimento")).toBeInTheDocument();

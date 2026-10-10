@@ -16,7 +16,7 @@ type AdminClient = NonNullable<ReturnType<typeof createAdminSupabaseClient>>;
 type OpenTicketRow = {
   id: string;
   guild_id: string;
-  buyer_discord_id: string;
+  buyer_discord_id: string | null;
   discord_ticket_channel_id: string | null;
 };
 
@@ -126,7 +126,7 @@ async function synchronizeOpenTicketPage(
       const order = orders[cursor++];
       const guildId = discordGuildIds.get(order.guild_id);
       const channelId = order.discord_ticket_channel_id;
-      if (!guildId || !channelId) {
+      if (!guildId || !channelId || !order.buyer_discord_id) {
         result.failed += 1;
         continue;
       }

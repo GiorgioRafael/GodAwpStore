@@ -3,7 +3,7 @@ import type { ShopErrorCode } from "./types";
 const ERRORS: Record<ShopErrorCode, { status: number; message: string }> = {
   unavailable: { status: 503, message: "A loja está temporariamente indisponível. Tente novamente." },
   invalid_request: { status: 422, message: "Confira os produtos, as quantidades e seu nick do Roblox." },
-  unauthenticated: { status: 401, message: "Entre com o Discord para continuar sua compra." },
+  unauthenticated: { status: 401, message: "Entre na sua conta para continuar sua compra." },
   forbidden: { status: 403, message: "Abra a loja novamente para continuar." },
   product_unavailable: { status: 409, message: "Um produto foi pausado ou ficou indisponível. Atualize seu carrinho." },
   out_of_stock: { status: 409, message: "Não há estoque suficiente. Atualize seu carrinho." },

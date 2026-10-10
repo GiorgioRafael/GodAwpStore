@@ -96,7 +96,7 @@ export type PurchaseItem = {
 
 export type ExistingPurchase = {
   id: string;
-  buyerDiscordId: string;
+  buyerDiscordId: string | null;
   guildId: string;
   items: PurchaseItem[];
   subtotalPriceCents: number;

@@ -29,7 +29,7 @@ export type CheckoutClaim = {
 export type PaymentConfirmation = {
   orderId: string;
   discordGuildId: string;
-  buyerDiscordId: string;
+  buyerDiscordId: string | null;
   productName: string;
   paidAmountCents: number;
   orderStatus: string;

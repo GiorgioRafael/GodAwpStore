@@ -35,9 +35,11 @@ additional_redirect_urls = ["http://127.0.0.1:3000/auth/callback", "http://local
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false
+minimum_password_length = 8
 
 [auth.email]
-enable_signup = false
+enable_signup = true
+enable_confirmations = true
 
 [auth.sms]
 enable_signup = false

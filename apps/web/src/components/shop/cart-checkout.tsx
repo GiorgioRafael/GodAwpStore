@@ -79,12 +79,12 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
             {services.map(line => <div key={line.productId}><strong>{line.product.name}</strong>{line.product.serviceRequirements.map((item, i) => <p key={i}>{item}</p>)}</div>)}
             <label className={styles.checkLabel}><input type="checkbox" required checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />Li os requisitos e minha conta atende ao necessário.</label>
           </div> : null}
-        </> : <div className={styles.loginNote}><h3>Finalize com sua conta Discord</h3><p>Entre com o Discord para pagar e acompanhar a entrega no chat do site. Seu carrinho será mantido.</p></div>}
+        </> : <div className={styles.loginNote}><h3>Finalize com sua conta</h3><p>Entre com Google, Discord ou e-mail para pagar e acompanhar a entrega no chat do site. Seu carrinho será mantido.</p></div>}
         {error ? <p className={styles.error} role="alert">{error}</p> : null}
         {signedIn
           ? <button type="submit" className={styles.primaryButton} disabled={busy || total <= 0}>{busy ? <><LoaderCircle className={styles.spinner} size={18} /> Preparando pedido…</> : <>Continuar para o pagamento<ArrowRight size={18} /></>}</button>
-          : total > 0 ? <a href={loginHref} className={styles.primaryButton}>Entrar com Discord e finalizar<ArrowRight size={18} /></a>
-            : <button type="button" className={styles.primaryButton} disabled>Entrar com Discord e finalizar<ArrowRight size={18} /></button>}
+          : total > 0 ? <a href={loginHref} className={styles.primaryButton}>Entrar e finalizar<ArrowRight size={18} /></a>
+            : <button type="button" className={styles.primaryButton} disabled>Entrar e finalizar<ArrowRight size={18} /></button>}
         <p className={styles.checkoutNote}>Depois do pagamento, o chat desta compra fica disponível aqui no site para combinar a entrega.</p>
       </form>}
   </ShopDialog>;

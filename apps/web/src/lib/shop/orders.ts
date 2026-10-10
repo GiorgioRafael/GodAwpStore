@@ -9,7 +9,7 @@ export async function listShopOrders(actor: ShopActor, all = false, client: Shop
   let query = client.from("orders").select(SHOP_ORDER_SELECT)
     .like("payment_reference", "web:%").eq("guilds.discord_guild_id", GW_UP_GUILD_ID)
     .order("created_at", { ascending: false }).order("id").limit(100);
-  if (!all) query = query.eq("buyer_discord_id", actor.discordId).eq("web_buyer_auth_user_id", actor.authUserId);
+  if (!all) query = query.eq("web_buyer_auth_user_id", actor.authUserId);
   // Active paid support has priority over recent unpaid checkouts. A burst of
   // pending invoices must not hide customers still waiting for their delivery.
   const priorityQuery = all ? client.from("orders").select(SHOP_ORDER_SELECT)
@@ -22,5 +22,5 @@ export async function listShopOrders(actor: ShopActor, all = false, client: Shop
   const unique = new Map<string, ShopOrderRow>();
   for (const row of [...(priority?.data ?? []), ...(data ?? [])] as unknown as ShopOrderRow[]) if (!unique.has(row.id)) unique.set(row.id, row);
   return [...unique.values()].slice(0, 100).filter(order => order.guilds?.discord_guild_id === GW_UP_GUILD_ID
-    && (all || (order.buyer_discord_id === actor.discordId && order.web_buyer_auth_user_id === actor.authUserId))).map(orderDto);
+    && (all || order.web_buyer_auth_user_id === actor.authUserId)).map(orderDto);
 }

@@ -2,7 +2,7 @@ import "server-only";
 import { IS_GWSTORE } from "@/lib/brand";
 import { isGwStoreAdminOrigin } from "@/lib/store-admin-routes";
 import { publicRequestOrigin } from "@/lib/public-request-origin";
-import { extractDiscordIdentity, parseAdminDiscordIds } from "@/lib/auth-identity";
+import { extractShopBuyerIdentity, parseAdminDiscordIds } from "@/lib/auth-identity";
 import { getAdminSession } from "@/lib/auth";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { ShopError } from "./errors";
@@ -30,7 +30,7 @@ export async function requireShopBuyer() {
   if (!client) throw new ShopError("unavailable");
   const { data, error } = await client.auth.getUser();
   if (error) throw new ShopError("unauthenticated");
-  const identity = data.user ? extractDiscordIdentity(data.user) : null;
+  const identity = data.user ? extractShopBuyerIdentity(data.user) : null;
   if (!identity) throw new ShopError("unauthenticated");
   return identity;
 }
@@ -38,7 +38,7 @@ export async function requireShopBuyer() {
 export async function requireShopActor(adminOnly = false): Promise<ShopActor> {
   const identity = await requireShopBuyer();
   let isAdmin = false;
-  if (parseAdminDiscordIds().has(identity.discordId)) {
+  if (identity.discordId && parseAdminDiscordIds().has(identity.discordId)) {
     const session = await getAdminSession();
     if (session.status === "error" || session.status === "unconfigured") throw new ShopError("unavailable");
     isAdmin = session.status === "authorized" && session.identity.authUserId === identity.authUserId;

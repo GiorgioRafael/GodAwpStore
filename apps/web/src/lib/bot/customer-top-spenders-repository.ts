@@ -41,19 +41,23 @@ export class SupabaseTopSpendersRepository implements TopSpendersRepository {
         // The same confirmed-payment criteria used by customer rank progress.
         let pageQuery = query.eq("guild_id", guildId)
           .in("payment_provider", ["livepix", "eclipsepay"])
+          .not("buyer_discord_id", "is", null)
           .eq("payment_status", "paid").not("paid_at", "is", null)
           .lte("paid_at", through).order("id", { ascending: true }).limit(1_000);
         if (afterId) pageQuery = pageQuery.gt("id", afterId);
         const { data, error }: { data: Array<{
-          id: string; guild_id: string; buyer_discord_id: string; paid_at: string | null;
+          id: string; guild_id: string; buyer_discord_id: string | null; paid_at: string | null;
           sale_price_cents?: number; amount_cents?: number;
         }> | null; error: { message: string } | null } = await pageQuery;
         if (error) throw new Error("Não foi possível consultar os pagamentos do Top 5.");
-        for (const row of data ?? []) purchases.push({
-          source, id: row.id, guildId: row.guild_id, buyerDiscordId: row.buyer_discord_id,
-          amountCents: source === "product" ? row.sale_price_cents! : row.amount_cents!,
-          paidAt: row.paid_at!,
-        });
+        for (const row of data ?? []) {
+          if (!row.buyer_discord_id) continue;
+          purchases.push({
+            source, id: row.id, guildId: row.guild_id, buyerDiscordId: row.buyer_discord_id,
+            amountCents: source === "product" ? row.sale_price_cents! : row.amount_cents!,
+            paidAt: row.paid_at!,
+          });
+        }
         if (!data || data.length < 1_000) return purchases;
         afterId = data.at(-1)!.id;
       }

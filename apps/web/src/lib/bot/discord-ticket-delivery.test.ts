@@ -43,6 +43,18 @@ afterEach(() => {
 });
 
 describe("Discord paid-ticket delivery message", () => {
+  it("não transforma comprador web nulo em entrega Discord mesmo se houver canal", async () => {
+    const query = {
+      select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn(async () => ({ data: {
+        id: orderId, guild_id: "guild-row", buyer_discord_id: null,
+        discord_ticket_channel_id: channelId, status: "paid", payment_status: "paid",
+      }, error: null })),
+    };
+    const from = vi.fn(() => query);
+    await expect(new SupabaseDiscordTicketDeliveryRepository({ from } as never).find(orderId)).resolves.toBeNull();
+    expect(from).toHaveBeenCalledExactlyOnceWith("orders");
+  });
   it("gera e reconhece somente o ID de interacao valido", () => {
     expect(ticketDeliveryInteractionId(orderId)).toBe(
       `gwstore_ticket_delivery:${orderId}`,

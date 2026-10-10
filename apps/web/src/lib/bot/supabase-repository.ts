@@ -130,8 +130,11 @@ export class SupabaseBotCommerceRepository implements BotCommerceRepository {
       .eq("payment_reference", interactionReference(interactionId))
       .maybeSingle();
     assertQuery(error, "pedido existente");
+    if (data && !data.buyer_discord_id) {
+      throw new Error("Pedido Discord sem comprador válido.");
+    }
 
-    return data
+    return data && data.buyer_discord_id
       ? {
           id: data.id,
           buyerDiscordId: data.buyer_discord_id,

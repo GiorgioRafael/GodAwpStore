@@ -16,6 +16,20 @@ function ledger(pages: Array<{ data: unknown[] | null; error: { message: string 
 }
 
 describe("fontes do Top 5", () => {
+  it("exclui compras web sem Discord e preserva os compradores de produtos e Robux", async () => {
+    const buyer = "123456789012345678";
+    const products = ledger([{ data: [
+      { id: "web", guild_id: "gw", buyer_discord_id: null, sale_price_cents: 500, paid_at: "2026-10-01T00:00:00Z" },
+      { id: "product", guild_id: "gw", buyer_discord_id: buyer, sale_price_cents: 100, paid_at: "2026-10-01T00:00:00Z" },
+    ], error: null }]);
+    const robux = ledger([{ data: [{ id: "robux", guild_id: "gw", buyer_discord_id: buyer,
+      amount_cents: 200, paid_at: "2026-10-01T00:00:00Z" }], error: null }]);
+    const client = { from: vi.fn((table: string) => table === "orders" ? products : robux) };
+    const purchases = await new SupabaseTopSpendersRepository(client as unknown as Client).listPaidPurchases("gw");
+    expect(purchases.map(row => ({ id: row.id, buyerDiscordId: row.buyerDiscordId })))
+      .toEqual([{ id: "product", buyerDiscordId: buyer }, { id: "robux", buyerDiscordId: buyer }]);
+    expect(products.not).toHaveBeenCalledWith("buyer_discord_id", "is", null);
+  });
   it("lê produtos e Robux pagos, com escopo do servidor, sem truncar em 1.000 compras", async () => {
     const row = (id: string) => ({ id, guild_id: "gw", buyer_discord_id: "123456789012345678",
       sale_price_cents: 100, paid_at: "2026-10-01T00:00:00Z" });

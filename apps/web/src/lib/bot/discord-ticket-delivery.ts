@@ -104,7 +104,8 @@ export class SupabaseDiscordTicketDeliveryRepository
       .eq("id", orderId)
       .maybeSingle();
     if (orderError) throw new Error(orderError.message);
-    if (order?.discord_ticket_channel_id) {
+    if (order && !order.buyer_discord_id) return null;
+    if (order?.discord_ticket_channel_id && order.buyer_discord_id) {
       const { data: guild, error: guildError } = await this.client
         .from("guilds")
         .select("discord_guild_id")
