@@ -17,6 +17,7 @@ vi.mock("@/lib/shop/request", () => ({ requireShopBuyer: mocks.requireShopBuyer 
 vi.mock("@/app/(admin)/dashboard/page", () => ({ default: mocks.dashboard }));
 vi.mock("@/components/layout/app-shell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <section aria-label="Painel autenticado">{children}</section> }));
 vi.mock("@/components/layout/brand-mark", () => ({ BrandMark: () => <span>Logo GWStore</span> }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 import HomePage from "./page";
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowRight, LoaderCircle, Minus, Plus, Trash2 } from "lucide-react";
 import { formatShopPrice, type ShopProductView } from "@/lib/shop/catalog-view";
 import { shopCheckoutLoginHref, shopCartSubtotalCents, type ShopCartLine } from "@/lib/shop/cart";
@@ -13,6 +14,7 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
   open: boolean; onClose: () => void; cart: ShopCartLine[]; products: ShopProductView[]; signedIn: boolean;
   onQuantity: (productId: string, quantity: number) => void;
 }) {
+  const router = useRouter();
   const [nickname, setNickname] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
         setError(result.error.message); return;
       }
       try { localStorage.removeItem("gwstore.shop.cart.v1"); localStorage.removeItem("gwstore.shop.checkout.v1"); } catch { /* order is already saved on the server */ }
-      window.location.assign(`/minhas-compras/${encodeURIComponent(result.orderId)}`);
+      router.push(`/minhas-compras/${encodeURIComponent(result.orderId)}`);
     } catch { setError("Não foi possível confirmar a resposta. Tente novamente para retomar o mesmo pedido."); }
     finally { setBusy(false); }
   }

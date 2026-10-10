@@ -201,8 +201,8 @@ reset role;
 
 do $$
 begin
-  if not exists (
-    select 1
+  if (
+    select count(*)
     from public.catalog_stores
     where id in (
       'a2000000-0000-4000-8000-000000000001',
@@ -253,17 +253,18 @@ $$;
 do $$
 declare
   v_game_id uuid;
+  v_default_store_id uuid;
   v_status text;
 begin
   insert into public.games (name, slug, status)
   values ('Jogo Preso', 'jogo-preso-verificacao', 'inactive')
   returning id into v_game_id;
 
-  select store.status into v_status
+  select store.id, store.status into v_default_store_id, v_status
   from public.catalog_stores as store
   where store.game_id = v_game_id and store.is_default;
 
-  if v_status <> 'inactive' then
+  if v_status is distinct from 'inactive' then
     raise exception 'A loja principal nasceu como %, esperado inactive', v_status;
   end if;
 
@@ -271,9 +272,9 @@ begin
 
   select store.status into v_status
   from public.catalog_stores as store
-  where store.game_id = v_game_id and store.is_default;
+  where store.id = v_default_store_id;
 
-  if v_status <> 'active' then
+  if v_status is distinct from 'active' then
     raise exception 'Reativar o jogo deixou a loja principal em %', v_status;
   end if;
 
@@ -281,7 +282,7 @@ begin
   update public.games set status = 'archived', archived_at = now() where id = v_game_id;
 
   if (select store.archived_at from public.catalog_stores as store
-      where store.game_id = v_game_id and store.is_default) is null then
+      where store.id = v_default_store_id) is null then
     raise exception 'Arquivar o jogo deixou a loja principal ativa';
   end if;
 end

@@ -8,6 +8,8 @@ import { CartCheckout } from "./cart-checkout";
 import { Storefront } from "./storefront";
 
 vi.mock("@/components/layout/brand-mark", () => ({ BrandMark: () => <span aria-hidden="true">Marca GW</span> }));
+const routing = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => routing }));
 
 const DRAGON = "10000000-0000-4000-8000-000000000001";
 const product = (id: string, name: string, priceCents: number, extras: Partial<ShopCatalogProduct> = {}): ShopCatalogProduct => ({
@@ -37,6 +39,7 @@ beforeEach(() => {
   window.history.replaceState(null, "", "/");
   vi.stubGlobal("fetch", request);
   request.mockReset();
+  routing.push.mockReset();
 });
 afterEach(() => {
   if (scrollIntoViewDescriptor) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", scrollIntoViewDescriptor);
@@ -250,5 +253,19 @@ describe("catálogo e carrinho da GWStore", () => {
     const changed = JSON.parse(request.mock.calls[2][1].body);
     expect(changed.requestId).not.toBe(first.requestId);
     expect(changed.items).toEqual([{ productId: DRAGON, quantity: 2 }]);
+  });
+
+  it("abre o pedido confirmado e limpa os dados de tentativa do carrinho", async () => {
+    const user = userEvent.setup();
+    const orderId = "60000000-0000-4000-8000-000000000006";
+    localStorage.setItem("gwstore.shop.cart.v1", JSON.stringify([{ productId: DRAGON, quantity: 1 }]));
+    request.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, orderId }), { status: 200 }));
+    render(<CartCheckout open onClose={vi.fn()} cart={[{ productId: DRAGON, quantity: 1 }]}
+      products={flattenShopCatalog(CATALOG)} signedIn onQuantity={vi.fn()} />);
+    await user.type(screen.getByRole("textbox", { name: "Seu usuário no Roblox" }), "Buyer_123");
+    await user.click(screen.getByRole("button", { name: "Continuar para o pagamento" }));
+    await waitFor(() => expect(routing.push).toHaveBeenCalledWith(`/minhas-compras/${orderId}`));
+    expect(localStorage.getItem("gwstore.shop.cart.v1")).toBeNull();
+    expect(localStorage.getItem("gwstore.shop.checkout.v1")).toBeNull();
   });
 });

@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { withMicrofrontends } from "@vercel/microfrontends/next/config";
 import { gwStoreRailwayRewrites, gwStoreRailwayServerActionOrigins } from "./src/lib/railway-bridge";
 
 const railwayServerActionOrigins = gwStoreRailwayServerActionOrigins();
@@ -66,6 +65,11 @@ const isGwStoreDeployment =
 const isTypeGeneration = process.argv[2] === "typegen";
 
 // Keep the group's asset routing for actual GWStore builds and servers.
-export default process.env.VERCEL === "1" && isGwStoreDeployment && !isTypeGeneration
-  ? withMicrofrontends(nextConfig)
-  : nextConfig;
+export default async function configureNext(): Promise<NextConfig> {
+  if (process.env.VERCEL === "1" && isGwStoreDeployment && !isTypeGeneration) {
+    // Railway startup can prune this Vercel build helper and its glob dependencies.
+    const { withMicrofrontends } = await import("@vercel/microfrontends/next/config");
+    return withMicrofrontends(nextConfig);
+  }
+  return nextConfig;
+}

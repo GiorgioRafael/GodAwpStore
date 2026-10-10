@@ -22,6 +22,22 @@ Neste projeto, o gerador Railpack dos deploys conectados ao GitHub ainda lê o `
 
 O build web invoca o Next diretamente, sem executar o `postbuild` da Vercel que publica alterações no Discord.
 
+## Publicação da main
+
+Em 10/10/2026, o serviço `gwstore-web` está sem instalação GitHub habilitada para deploy automático (`NO_INSTALLATION`). O push da `main` publica a ponte Vercel; a aplicação Railway precisa de upload explícito do mesmo commit validado.
+
+Confira o checkout limpo e as verificações antes de publicar. Use os três IDs explícitos porque o vínculo local do CLI pode apontar para outro serviço:
+
+```sh
+railway up --detach \
+  --project ab1310c7-e1df-4638-9755-8e2375a7a972 \
+  --environment 22157de8-1717-4a8d-ba2c-45affc88bb72 \
+  --service a32ed32b-e9d9-465a-a8c6-0e19dbffbddc \
+  --message "main @ <sha-validado>"
+```
+
+Acompanhe o ID retornado até `SUCCESS` e confira `/api/health`, categorias e entrada nos domínios públicos. O upload mantém as variáveis e os comandos existentes do serviço web.
+
 Use as mesmas credenciais de produção do Supabase, Discord e provedores de pagamento. `NODE_ENV=production`, `NEXT_PUBLIC_STORE_NAME=GWStore` e `NEXT_PUBLIC_SITE_URL=https://gwstoreofc.com` precisam estar configurados antes do build; as variáveis `NEXT_PUBLIC_*` são incorporadas à aplicação compilada. Não copie `VERCEL`/`VERCEL_ENV` para simular a plataforma. O serviço lê a porta entregue em `PORT` e escuta em `0.0.0.0`.
 
 ## Tarefas automáticas e troca da hospedagem
