@@ -48,6 +48,14 @@ No serviço web GWStore, `PAYMENT_PROVIDER=livepix` direciona novas compras do s
 
 As ofertas automáticas são controladas por `platform_settings.upsell_enabled` e `lead_recovery_enabled` no banco isolado da GWStore. A operação em `supabase/operations/pause-gwstore-promotions.sql` desativa ambas e invalida somente ofertas abertas, com guardas de projeto/guild. Para retomá-las, reative os dois controles; o histórico invalidado permanece auditável. Confira novamente as ofertas abertas após a pausa para cobrir uma chamada iniciada antes dela.
 
+## Estoque ilimitado temporário
+
+A operação isolada em `supabase/operations/enable-gwstore-unlimited-stock.sql` habilita `unlimited_stock` nos produtos não arquivados da GWStore. Preços e Estados são preservados. O site e o bot passam a ignorar o contador finito nas novas compras; pausar um produto pelo painel continua interrompendo suas vendas.
+
+Os contadores existentes são mantidos como estoque auxiliar para as reservas antigas e os sorteios. A operação ajusta apenas a constraint de estoque dos produtos ilimitados no banco GW, preservando a regra de valores não negativos. O estado anterior e a definição original são salvos em `audit_events` pela execução `d2323838-9dd6-43df-8267-e161f0f777bc`. Para voltar ao controle finito, revise as quantidades atuais; o snapshot serve como referência histórica, pois reservas antigas e sorteios podem alterar os contadores durante o período.
+
+Após a alteração, sincronize somente as vitrines existentes com `discord:storefronts:repair`, usando as variáveis do serviço GW. A operação não é uma migration compartilhada e não deve ser aplicada à THStore.
+
 ## Ponte da Vercel e login temporário
 
 A URL antiga `gwstore.vercel.app` permanece como ponte de compatibilidade para a Railway, inclusive links já enviados pelo bot. Configure `GWSTORE_RAILWAY_ORIGIN=https://gwstore-web-production.up.railway.app` **somente no deployment GWStore da Vercel**. O gate exige GWStore, execução Vercel e esse destino HTTPS exato. A ponte encaminha páginas, assets, cookies, query e POSTs sem alterar os bytes de webhooks assinados; a Railway aplica os gates de autenticação. Os hosts do painel mestre 101Devs e da THStore continuam fora da ponte.

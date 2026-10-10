@@ -238,7 +238,7 @@ export function InventoryStoresManager({
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-strong">{product.substores?.name ?? "Categoria"}</td>
-                      <td className="px-4 py-3 text-sm font-semibold text-foreground">{product.stock_quantity.toLocaleString("pt-BR")}</td>
+                      <td className="px-4 py-3 text-sm font-semibold text-foreground">{product.unlimited_stock ? "Sem limite" : product.stock_quantity.toLocaleString("pt-BR")}</td>
                       <td className="px-4 py-3"><Badge tone={product.status === "active" ? "success" : "neutral"}>{product.status === "active" ? "Ativo" : "Inativo"}</Badge></td>
                     </tr>
                   ))}
