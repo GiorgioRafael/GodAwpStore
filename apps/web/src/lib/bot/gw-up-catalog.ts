@@ -1,8 +1,15 @@
-/** GWStore UP prices supplied by the store owner. Each quantity is a package, never a raw level/beli amount. */
+/** GWStore UP prices supplied by the store owner. Quantities count packages or races, never raw level/beli amounts. */
 export const GW_UP_GUILD_ID = "1401264061101899820";
 export const GW_UP_CHANNEL_ID = "1492332216410439882";
 export const GW_UP_STORE_ID = "0b0e91fe-d7ba-5257-845d-7e78a9187d4a";
 export const GW_UP_ENTRY_TITLE = "🔥 GW STORE — SERVIÇOS DE UP";
+/** Historical products stay in the database, paused, so existing orders retain their identities. */
+export const GW_UP_RETIRED_SERVICE_IDS = [
+  "810d1ac3-e115-5797-b742-d0d7aa2163a9", // Maestria · 100 pontos
+  "e443ec71-d7e6-5d21-b327-8bc5e31b94b3", // 1 Engrenagem V4
+  "89af8fde-4530-5366-a3b9-0ab8c704d506", // 2 Raças V4 Full
+  "437f3ce5-1abc-54cf-9be5-3d22346e6e9b", // 3 Raças V4 Full
+] as const;
 export type UpServiceDefinition = { id: string; name: string; priceCents: number; requirements: string; unit: string };
 export type UpCategoryDefinition = { key: string; id: string; name: string; emoji: string; services: UpServiceDefinition[] };
 export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
@@ -13,25 +20,46 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
     "emoji": "📈",
     "services": [
       {
+        "id": "46f59e12-1f3e-51c5-bc6d-27bb549637dc",
+        "name": "Level 0–700",
+        "priceCents": 2000,
+        "requirements": "Pacote do nível 0 ao 700. Informe o nível atual no atendimento.",
+        "unit": "serviço"
+      },
+      {
+        "id": "a0b8b359-100f-56e5-8b82-babcebb90629",
+        "name": "Level 700–1500",
+        "priceCents": 2500,
+        "requirements": "Pacote do nível 700 ao 1500. Informe o nível atual no atendimento.",
+        "unit": "serviço"
+      },
+      {
+        "id": "cf588c1d-51cb-557a-8d0a-69090ec4180c",
+        "name": "Level 1500–2800",
+        "priceCents": 4500,
+        "requirements": "Pacote do nível 1500 ao 2800. Informe o nível atual no atendimento.",
+        "unit": "serviço"
+      },
+      {
         "id": "847545e9-cb9b-50db-bffd-237334e865f4",
-        "name": "Level · 100 níveis",
-        "priceCents": 200,
+        "name": "Level avulso · 100 níveis",
+        "priceCents": 350,
         "requirements": "Informe o nível atual e o nível desejado no atendimento.",
         "unit": "100 níveis"
       },
       {
-        "id": "925e7523-2505-58af-9ed1-765f02f64a96",
-        "name": "Beli · 1M",
-        "priceCents": 200,
+        "id": "018d56be-5532-5139-8cd6-708561fa2151",
+        "name": "Missões Secretas",
+        "priceCents": 1000,
         "requirements": "",
-        "unit": "1M de Beli"
+        "unit": "serviço"
       },
       {
-        "id": "810d1ac3-e115-5797-b742-d0d7aa2163a9",
-        "name": "Maestria · 100 pontos",
-        "priceCents": 200,
-        "requirements": "Informe a arma, fruta ou estilo desejado no atendimento.",
-        "unit": "100 de maestria"
+        "id": "925e7523-2505-58af-9ed1-765f02f64a96",
+        "name": "Beli · 1M",
+        "priceCents": 250,
+        "requirements": "",
+        "unit": "1M de Beli"
       },
       {
         "id": "8c94592d-e2cb-5dea-ade4-e8c4444b3dde",
@@ -46,6 +74,42 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
         "priceCents": 1000,
         "requirements": "",
         "unit": "1M de bounty"
+      }
+    ]
+  },
+  {
+    "key": "maestria",
+    "id": "33902a3c-9897-57ea-9f5b-ea9511b3937f",
+    "name": "Maestria",
+    "emoji": "⚡",
+    "services": [
+      {
+        "id": "1bd0c28c-54b0-5bca-866b-b7ccc4bc00ca",
+        "name": "Maestria 0–250",
+        "priceCents": 500,
+        "requirements": "Informe a arma, fruta ou estilo desejado no atendimento. Se possuir 2x Maestria, combine o desconto com a equipe antes do pedido.",
+        "unit": "serviço"
+      },
+      {
+        "id": "86c50433-d7af-59c0-87d5-4f0efb1a0064",
+        "name": "Maestria 250–400",
+        "priceCents": 1000,
+        "requirements": "Informe a arma, fruta ou estilo desejado no atendimento. Se possuir 2x Maestria, combine o desconto com a equipe antes do pedido.",
+        "unit": "serviço"
+      },
+      {
+        "id": "4a11a9ca-d873-5d14-84f0-57dee9a8b9d1",
+        "name": "Maestria 400–600",
+        "priceCents": 1500,
+        "requirements": "Informe a arma, fruta ou estilo desejado no atendimento. Se possuir 2x Maestria, combine o desconto com a equipe antes do pedido.",
+        "unit": "serviço"
+      },
+      {
+        "id": "fdfcc21b-004d-5f14-989c-7203c546c5b0",
+        "name": "Maestria Full (0–600)",
+        "priceCents": 2500,
+        "requirements": "Inclui maestria do 0 ao 600. Informe a arma, fruta ou estilo desejado no atendimento. Se possuir 2x Maestria, combine o desconto com a equipe antes do pedido.",
+        "unit": "serviço"
       }
     ]
   },
@@ -106,7 +170,7 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
       },
       {
         "id": "16c05fc4-ca55-5c25-b7de-1c304fc57075",
-        "name": "Somente materiais do Sanguine",
+        "name": "Somente materiais Sanguine",
         "priceCents": 2500,
         "requirements": "",
         "unit": "serviço"
@@ -156,10 +220,17 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
       },
       {
         "id": "039feeda-ce61-5501-a524-750d9e32df85",
-        "name": "Cada espada da TTK",
-        "priceCents": 800,
+        "name": "Cada espada TTK",
+        "priceCents": 1000,
         "requirements": "Informe qual espada deseja no atendimento.",
         "unit": "espada"
+      },
+      {
+        "id": "3791123a-32c1-54f2-97de-b33a7af05dee",
+        "name": "TTK Full (3 espadas)",
+        "priceCents": 3000,
+        "requirements": "Inclui as 3 espadas da TTK.",
+        "unit": "serviço"
       },
       {
         "id": "008f4353-7731-5f80-8431-8f0a699dfdfa",
@@ -227,7 +298,7 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
       {
         "id": "60081563-7917-56f3-9c7f-796866d79875",
         "name": "Yoru V3",
-        "priceCents": 4000,
+        "priceCents": 5000,
         "requirements": "",
         "unit": "serviço"
       }
@@ -255,7 +326,7 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
       },
       {
         "id": "29920d96-2260-5026-873e-993ecc410a7f",
-        "name": "Missão da Soul Guitar",
+        "name": "Missão Soul Guitar",
         "priceCents": 1000,
         "requirements": "",
         "unit": "serviço"
@@ -279,14 +350,14 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
         "id": "33b44da1-0d22-5388-ab1c-c2c7ef0609bf",
         "name": "Desbloquear Ghoul",
         "priceCents": 2500,
-        "requirements": "Para evoluir Ghoul ou Cyborg até V3, é necessário já possuir a raça desbloqueada. Informe as raças no atendimento.",
+        "requirements": "",
         "unit": "serviço"
       },
       {
         "id": "43f36173-b3fc-5b12-bbe4-5f5aeef1aad3",
         "name": "Desbloquear Cyborg",
         "priceCents": 4000,
-        "requirements": "Para evoluir Ghoul ou Cyborg até V3, é necessário já possuir a raça desbloqueada. Informe as raças no atendimento.",
+        "requirements": "",
         "unit": "serviço"
       },
       {
@@ -319,31 +390,24 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
     "emoji": "⚙️",
     "services": [
       {
-        "id": "e443ec71-d7e6-5d21-b327-8bc5e31b94b3",
-        "name": "1 Engrenagem V4",
-        "priceCents": 1500,
-        "requirements": "Não inclui Draco. É necessário possuir a raça no V3 e os fragmentos necessários.",
-        "unit": "engrenagem"
+        "id": "6b4a2f87-703a-53d6-9d80-9df1d6d5a952",
+        "name": "3 engrenagens V4",
+        "priceCents": 3000,
+        "requirements": "Preço por raça, incluindo 3 engrenagens V4. Não inclui Draco. É necessário possuir as raças escolhidas no V3. Se faltarem fragmentos, combine um valor justo com a equipe antes do pedido.",
+        "unit": "raça"
       },
       {
         "id": "646ef3f9-ef00-5884-a90f-3e5dc64d02fb",
-        "name": "1 Raça V4 Full",
-        "priceCents": 3000,
-        "requirements": "Não inclui Draco. É necessário possuir as raças escolhidas no V3 e os fragmentos necessários.",
-        "unit": "serviço"
-      },
-      {
-        "id": "89af8fde-4530-5366-a3b9-0ab8c704d506",
-        "name": "2 Raças V4 Full",
+        "name": "Raça V4 Full",
         "priceCents": 5000,
-        "requirements": "Não inclui Draco. É necessário possuir as raças escolhidas no V3 e os fragmentos necessários.",
-        "unit": "serviço"
+        "requirements": "Preço por raça. Inclui 3 engrenagens + treino Full. Não inclui Draco. É necessário possuir as raças escolhidas no V3. Se faltarem fragmentos, combine um valor justo com a equipe antes do pedido.",
+        "unit": "raça"
       },
       {
-        "id": "437f3ce5-1abc-54cf-9be5-3d22346e6e9b",
-        "name": "3 Raças V4 Full",
-        "priceCents": 8000,
-        "requirements": "Não inclui Draco. É necessário possuir as raças escolhidas no V3 e os fragmentos necessários.",
+        "id": "f1474558-b5af-5660-be8b-17eaa8830930",
+        "name": "6 raças V4 Full",
+        "priceCents": 28500,
+        "requirements": "Inclui 6 raças com 3 engrenagens + treino Full. Valor normal: R$ 300,00. Desconto de 5%: R$ 15,00. Total: R$ 285,00. Não inclui Draco. É necessário possuir as 6 raças no V3. Se faltarem fragmentos, combine um valor justo com a equipe antes do pedido.",
         "unit": "serviço"
       }
     ]
@@ -363,14 +427,14 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
       },
       {
         "id": "f117f481-1e2c-5d18-9a48-f952936713ea",
-        "name": "Todas as Faixas + Raça Draco",
+        "name": "Todas as Faixas + Draco",
         "priceCents": 5000,
         "requirements": "",
         "unit": "serviço"
       },
       {
         "id": "2840192e-cd80-5ca8-8d7a-8457f44c282c",
-        "name": "Somente desbloquear Draco",
+        "name": "Desbloquear Draco",
         "priceCents": 2000,
         "requirements": "",
         "unit": "serviço"
@@ -399,14 +463,14 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
     "services": [
       {
         "id": "d0d00913-2737-5cf4-9d13-735081f96492",
-        "name": "Das Faixas até V3",
+        "name": "Faixas até V3",
         "priceCents": 7000,
         "requirements": "Rainbow Haki obrigatório para V3.",
         "unit": "serviço"
       },
       {
         "id": "d3147f3a-f9e8-54a3-8343-ed97bcb4b98b",
-        "name": "Da Raça até V3",
+        "name": "Raça até V3",
         "priceCents": 3500,
         "requirements": "Rainbow Haki obrigatório para V3.",
         "unit": "serviço"
@@ -434,14 +498,14 @@ export const GW_UP_CATEGORIES: UpCategoryDefinition[] = [
       },
       {
         "id": "14802bde-e215-5a0a-b892-da7501c18a52",
-        "name": "V4 Full + Hydra + Armas",
+        "name": "V4 Full + Hydra + armas",
         "priceCents": 15000,
         "requirements": "",
         "unit": "serviço"
       },
       {
         "id": "09ef5565-9e91-513f-abb8-fdba6dc6073c",
-        "name": "Das Faixas até V4 Full",
+        "name": "Faixas até V4 Full",
         "priceCents": 17000,
         "requirements": "Inclui arma + espada Draco. Rainbow Haki obrigatório para V3.",
         "unit": "serviço"
@@ -679,5 +743,8 @@ export function findUpService(id: string) {
   return null;
 }
 export function upServiceDescription(service: UpServiceDefinition) {
-  return `Quantidade = pacotes de ${service.unit}. ${service.requirements || "Confira com a equipe os detalhes de execução no atendimento."}`;
+  const quantity = service.unit === "serviço" ? "Serviço completo."
+    : service.unit === "raça" ? "Quantidade = número de raças."
+    : `Quantidade = pacotes de ${service.unit}.`;
+  return `${quantity} ${service.requirements || "Confira com a equipe os detalhes de execução no atendimento."}`;
 }

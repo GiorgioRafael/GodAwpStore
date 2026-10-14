@@ -53,7 +53,7 @@ export function upEntryMessage() {
   return {
     allowed_mentions: { parse: [] },
     embeds: [{ title: GW_UP_ENTRY_TITLE, color: 0xb83cbf,
-      description: "**Blox Fruits • contratação pelo bot**\n\n**1.** Escolha uma categoria abaixo.\n**2.** Selecione o serviço e confira o preço e os requisitos.\n**3.** Confirme e pague pelo Pix.\n\n✅ Após a confirmação do pagamento, o bot abre seu **ticket privado de compra** para combinar a execução com a equipe.\n\n📈 Level, Beli, maestria, fragmentos e bounty são cobrados por pacotes. As demais opções mostram o preço do serviço completo.\n⚠️ Leia os requisitos antes de pagar. **O UP é executado pela equipe da GWStore.**",
+      description: "**Blox Fruits • contratação pelo bot**\n\n**1.** Escolha uma categoria abaixo.\n**2.** Selecione o serviço e confira o preço e os requisitos.\n**3.** Confirme e pague pelo Pix.\n\n✅ Após a confirmação do pagamento, o bot abre seu **ticket privado de compra** para combinar a execução com a equipe.\n\n📈 Level avulso, Beli, fragmentos e bounty são cobrados por pacotes. Os intervalos de Level e Maestria têm preço fechado. V4 indica preço por raça ou pelo pacote completo.\n⚡ Se possuir 2x Maestria, combine o desconto com a equipe antes do pedido.\n⚠️ Leia os requisitos antes de pagar. **O UP é executado pela equipe da GWStore.**",
       footer: { text: "Sua seleção e o pagamento ficam visíveis apenas para você." } }],
     components: [{ type: 1, components: [{ type: 3, custom_id: "gwu:category", placeholder: "Qual serviço você procura?", min_values: 1, max_values: 1,
       options: GW_UP_CATEGORIES.map(category => ({ label: category.name, value: category.key, emoji: { name: category.emoji } })) }] }],
@@ -72,9 +72,11 @@ export function upCategoryMessage(category: UpCategoryDefinition, products: BotC
 export function upServiceMessage(product: BotCatalogProduct) {
   const service = findUpService(product.id)!;
   const repeatable = service.unit !== "serviço";
+  const priceUnit = service.unit === "raça" ? " por raça" : repeatable ? " por pacote" : " do serviço";
+  const quantityUnit = service.unit === "raça" ? "uma raça" : service.unit;
   return { allowed_mentions: { parse: [] },
     embeds: [{ title: product.name, color: 0xb83cbf,
-      description: `**Preço${repeatable ? " por pacote" : " do serviço"}: ${brl(product.priceCents)}**\n${repeatable ? `Cada quantidade corresponde a **${service.unit}**.\n` : ""}\n**📌 Requisitos e detalhes**\n${(product.description || service.requirements || "Combine os detalhes de execução com a equipe no ticket.").slice(0, 3000)}\n\nAo continuar, confirme que leu os requisitos. O valor final será mostrado antes de pagar, incluindo os descontos da loja quando aplicáveis.\n\n🔒 Não envie senha, código de verificação ou acesso à conta neste formulário.` }],
+      description: `**Preço${priceUnit}: ${brl(product.priceCents)}**\n${repeatable ? `Cada quantidade corresponde a **${quantityUnit}**.\n` : ""}\n**📌 Requisitos e detalhes**\n${(product.description || service.requirements || "Combine os detalhes de execução com a equipe no ticket.").slice(0, 3000)}\n\nAo continuar, confirme que leu os requisitos. O valor final será mostrado antes de pagar, incluindo os descontos da loja quando aplicáveis.\n\n🔒 Não envie senha, código de verificação ou acesso à conta neste formulário.` }],
     components: [{ type: 1, components: [{ type: 2, style: 3, custom_id: `gwu:quantity:${product.id}`, label: repeatable ? "Definir quantidade e continuar" : "Conferir e continuar" }] }, navigation()],
   };
 }
@@ -82,7 +84,7 @@ export function upQuantityModal(productId: string) {
   const service = findUpService(productId)!;
   const input = (custom_id: string, label: string, placeholder: string, value?: string) => ({ type: 1, components: [{ type: 4, custom_id, label, style: 1, required: true, max_length: custom_id === "packages" ? 5 : 3, placeholder, ...(value ? { value } : {}) }] });
   return { type: 9, data: { custom_id: `gwu:submit:${productId}`, title: "Confirmar serviço de UP", components: [
-    ...(service.unit !== "serviço" ? [input("packages", `Pacotes de ${service.unit}`.slice(0, 45), "Número de pacotes, ex.: 5", "1")] : []),
+    ...(service.unit !== "serviço" ? [input("packages", service.unit === "raça" ? "Quantidade de raças" : `Pacotes de ${service.unit}`.slice(0, 45), service.unit === "raça" ? "Número de raças, ex.: 2" : "Número de pacotes, ex.: 5", "1")] : []),
     input("requirements", "Leu e atende aos requisitos? Digite SIM", "SIM"),
   ] } };
 }
