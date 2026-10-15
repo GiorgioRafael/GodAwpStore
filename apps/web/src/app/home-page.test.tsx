@@ -9,17 +9,21 @@ const mocks = vi.hoisted(() => ({
   dashboard: vi.fn(),
   loadShopCatalog: vi.fn(),
   requireShopBuyer: vi.fn(),
+  shopInformation: vi.fn(),
+  requestHeaders: new Headers({ host: "gwstoreofc.com" }),
 }));
 vi.mock("@/lib/brand", () => ({ get IS_GWSTORE() { return mocks.brand.isGwStore; }, STORE_NAME: "GWStore" }));
 vi.mock("@/lib/auth", () => ({ requireAdmin: mocks.requireAdmin }));
 vi.mock("@/lib/shop/catalog", () => ({ loadShopCatalog: mocks.loadShopCatalog }));
 vi.mock("@/lib/shop/request", () => ({ requireShopBuyer: mocks.requireShopBuyer }));
+vi.mock("@/lib/shop/information", () => ({ getShopInformation: mocks.shopInformation }));
+vi.mock("next/headers", () => ({ headers: async () => mocks.requestHeaders }));
 vi.mock("@/app/(admin)/dashboard/page", () => ({ default: mocks.dashboard }));
 vi.mock("@/components/layout/app-shell", () => ({ AppShell: ({ children }: { children: React.ReactNode }) => <section aria-label="Painel autenticado">{children}</section> }));
 vi.mock("@/components/layout/brand-mark", () => ({ BrandMark: () => <span>Logo GWStore</span> }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
-import HomePage from "./page";
+import HomePage, { generateMetadata } from "./page";
 
 const scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
 const CATALOG: ShopCatalogGame[] = [{ id: "game", name: "Blox Fruits", catalogStoreName: "Frutas físicas", substores: [{
@@ -36,6 +40,8 @@ beforeEach(() => {
   mocks.dashboard.mockResolvedValue(<p>Dados privados da loja</p>);
   mocks.loadShopCatalog.mockResolvedValue(CATALOG);
   mocks.requireShopBuyer.mockRejectedValue(new Error("sem sessão"));
+  mocks.shopInformation.mockReturnValue(undefined);
+  mocks.requestHeaders = new Headers({ host: "gwstoreofc.com" });
   localStorage.clear();
   window.history.replaceState(null, "", "/");
 });
@@ -46,6 +52,27 @@ afterEach(() => {
 });
 
 describe("home pública da loja", () => {
+  it("gera metadados sociais pelo host real, sem aceitar encaminhamento forjado no master", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(await generateMetadata()).toMatchObject({ robots: { index: true, follow: true },
+      openGraph: { url: "https://gwstoreofc.com" }, twitter: { card: "summary_large_image" } });
+    mocks.requestHeaders = new Headers({ host: "101devs.com", "x-gwstore-public-host": "gwstoreofc.com", "x-forwarded-host": "gwstoreofc.com" });
+    const master = await generateMetadata();
+    expect(master).toMatchObject({ robots: { index: false, follow: false } });
+    expect(master.openGraph).toBeUndefined();
+    expect(master.alternates).toBeUndefined();
+  });
+
+  it("mantém metadados das outras marcas e falha fechado quando falta o host", async () => {
+    mocks.brand.isGwStore = false;
+    expect(await generateMetadata()).toEqual({ title: "Visão geral" });
+    mocks.brand.isGwStore = true;
+    mocks.requestHeaders = new Headers();
+    expect(await generateMetadata()).toEqual({ robots: { index: false, follow: false } });
+    mocks.requestHeaders = new Headers({ host: "user@gwstoreofc.com" });
+    expect(await generateMetadata()).toEqual({ robots: { index: false, follow: false } });
+  });
+
   it("mostra catálogo do servidor em produção sem exigir administrador ou inventar preços", async () => {
     const user = userEvent.setup();
     vi.stubEnv("NODE_ENV", "production");

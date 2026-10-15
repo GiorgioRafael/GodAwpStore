@@ -29,6 +29,45 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 describe("isolated payment provider routing", () => {
+  it.each([
+    { amountCents: 500, enabled: true },
+    { amountCents: 4000, enabled: false },
+    { amountCents: 100001, enabled: true },
+  ])("persiste proteção antes de emitir LivePix ($amountCents centavos, Eclipse=$enabled)", async ({ amountCents, enabled }) => {
+    mocks.enabled = enabled;
+    let protectedClaim = false;
+    const beforeNonIdempotentCreate = vi.fn(async () => { protectedClaim = true; });
+    mocks.legacy.createPayment.mockImplementationOnce(async () => {
+      expect(protectedClaim).toBe(true);
+      return { reference: "legacy-ref", checkoutUrl: "https://checkout.livepix.gg/legacy-ref" };
+    });
+    await getPaymentClient().createPayment({ ...input, amountCents }, { beforeNonIdempotentCreate });
+    expect(beforeNonIdempotentCreate).toHaveBeenCalledTimes(1);
+    expect(mocks.legacy.createPayment).toHaveBeenCalledTimes(1);
+  });
+  it("não emite LivePix se a proteção persistida falhar", async () => {
+    const beforeNonIdempotentCreate = vi.fn(async () => { throw new Error("claim unavailable"); });
+    await expect(getPaymentClient().createPayment({ ...input, amountCents: 500 }, { beforeNonIdempotentCreate }))
+      .rejects.toThrow("claim unavailable");
+    expect(mocks.legacy.createPayment).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).not.toHaveBeenCalled();
+  });
+  it("não retém lease LivePix para Eclipse idempotente nem para intenção Eclipse antiga", async () => {
+    const beforeNonIdempotentCreate = vi.fn();
+    await getPaymentClient().createPayment(input, { beforeNonIdempotentCreate });
+    mocks.db.from.mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: { order_id: id, amount_cents: 500 }, error: null }) });
+    await getPaymentClient().createPayment({ ...input, amountCents: 500 }, { beforeNonIdempotentCreate });
+    expect(beforeNonIdempotentCreate).not.toHaveBeenCalled();
+    expect(mocks.eclipse.createCharge).toHaveBeenCalledTimes(2);
+  });
+  it("preserva THStore sem acessar a proteção exclusiva do checkout web GW", async () => {
+    mocks.brand.IS_GWSTORE = false;
+    const beforeNonIdempotentCreate = vi.fn();
+    await getPaymentClient().createPayment(input, { beforeNonIdempotentCreate });
+    expect(beforeNonIdempotentCreate).not.toHaveBeenCalled();
+    expect(mocks.legacy.createPayment).toHaveBeenCalledWith(input);
+  });
   it.each([1, 79, 80, 500, 999, 1000])("usa LivePix para uma cobrança nova de %i centavos", async (amountCents) => {
     const small = { ...input, amountCents };
     await getPaymentClient().createPayment(small);

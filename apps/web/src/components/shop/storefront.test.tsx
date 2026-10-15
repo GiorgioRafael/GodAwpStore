@@ -188,7 +188,8 @@ describe("catálogo e carrinho da GWStore", () => {
     expect(within(cart).getByRole("spinbutton", { name: "Quantidade de Dragon West" })).toHaveValue(3);
     expect(within(cart).getAllByText(/R\$\s*165,00/).length).toBeGreaterThan(0);
     expect(within(cart).getByRole("heading", { name: "Finalize com sua conta" })).toBeInTheDocument();
-    expect(within(cart).getByText(/Google, Discord ou e-mail/)).toBeInTheDocument();
+    expect(within(cart).getByText(/Entre na sua conta para pagar/)).toBeInTheDocument();
+    expect(within(cart).queryByText(/Google, Discord ou e-mail/)).not.toBeInTheDocument();
     const login = within(cart).getByRole("link", { name: "Entrar e finalizar" });
     const loginUrl = new URL(login.getAttribute("href")!, "https://gwstoreofc.com");
     expect(loginUrl.pathname).toBe("/entrar");

@@ -55,6 +55,7 @@ export interface LivePixPaymentRepository {
   findCheckoutByReference(providerReference: string): Promise<StoredCheckout | null>;
   findPayableOrder(orderId: string): Promise<PayableOrder | null>;
   claimCheckout(orderId: string, claimToken: string): Promise<CheckoutClaim>;
+  preserveCheckoutClaim(orderId: string, claimToken: string, paymentExpiresAt: string): Promise<void>;
   registerCheckout(input: StoredCheckout & { claimToken: string }): Promise<StoredCheckout>;
   releaseCheckoutClaim(orderId: string, claimToken: string): Promise<void>;
   confirmPayment(input: {
@@ -71,8 +72,13 @@ export interface LivePixPaymentRepository {
   failTicket(orderId: string): Promise<void>;
 }
 
+export type PaymentCreationOptions = {
+  /** Called only before a provider that cannot safely repeat an uncertain POST. */
+  beforeNonIdempotentCreate: () => Promise<void>;
+};
+
 type PaymentClient = {
-  createPayment(input: { amountCents: number; redirectUrl: string }): Promise<LivePixCheckout>;
+  createPayment(input: { amountCents: number; redirectUrl: string }, options?: PaymentCreationOptions): Promise<LivePixCheckout>;
   getPaymentByReference(reference: string): Promise<LivePixPayment>;
 };
 
@@ -90,6 +96,7 @@ export class LivePixPaymentService {
       !order ||
       order.status !== "awaiting_payment" ||
       order.currency !== "BRL" ||
+      !order.paymentExpiresAt ||
       !isFutureInstant(order.paymentExpiresAt, this.now())
     ) {
       throw new Error("O pedido não está disponível para pagamento.");
@@ -103,6 +110,9 @@ export class LivePixPaymentService {
       throw new Error("O valor do pedido não é aceito pela LivePix.");
     }
 
+    const origin = readOrigin(siteUrl);
+    const paymentExpiresAt = order.paymentExpiresAt;
+    const webOrder = IS_GWSTORE && order.paymentReference?.startsWith("web:");
     const claimToken = crypto.randomUUID();
     const claim = await this.repository.claimCheckout(order.id, claimToken);
     if (claim.checkout) return claim.checkout;
@@ -110,17 +120,27 @@ export class LivePixPaymentService {
       throw new Error("O Pix deste pedido já está sendo preparado. Tente novamente em instantes.");
     }
 
-    const origin = readOrigin(siteUrl);
     let checkout: LivePixCheckout;
+    let nonIdempotentAttempt = false;
+    const options = webOrder ? { beforeNonIdempotentCreate: async () => {
+      // Persist this BEFORE the network request. A worker crash or lost response
+      // must not let the normal five-minute lease issue a second LivePix invoice.
+      nonIdempotentAttempt = true;
+      await this.repository.preserveCheckoutClaim(order.id, claimToken, paymentExpiresAt);
+    } } : undefined;
     try {
-      checkout = await this.client.createPayment({
+      const input = {
         amountCents: order.amountCents,
         // The persisted source owns the delivery destination. Browser input
         // cannot turn a Discord purchase into a private website order.
-        redirectUrl: `${origin}/${IS_GWSTORE && order.paymentReference?.startsWith("web:") ? "minhas-compras" : "pagamento"}/${order.id}`,
-      });
+        redirectUrl: `${origin}/${webOrder ? "minhas-compras" : "pagamento"}/${order.id}`,
+      };
+      checkout = options ? await this.client.createPayment(input, options) : await this.client.createPayment(input);
     } catch (error) {
-      await this.repository.releaseCheckoutClaim(order.id, claimToken).catch(() => undefined);
+      // Eclipse retries retain their provider idempotency key. LivePix has no
+      // documented client key, so an uncertain web invoice stays reserved until
+      // this order expires instead of issuing another invoice automatically.
+      if (!nonIdempotentAttempt) await this.repository.releaseCheckoutClaim(order.id, claimToken).catch(() => undefined);
       throw error;
     }
 

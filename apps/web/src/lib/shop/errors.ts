@@ -12,7 +12,7 @@ const ERRORS: Record<ShopErrorCode, { status: number; message: string }> = {
   request_conflict: { status: 409, message: "Este checkout pertence a outra seleção. Atualize seu carrinho para criar um novo pedido." },
   rate_limited: { status: 429, message: "Você tentou várias vezes seguidas. Aguarde um minuto e tente novamente." },
   not_found: { status: 404, message: "Pedido não encontrado." },
-  checkout_pending: { status: 503, message: "Seu pedido foi salvo, mas o Pix ainda está sendo preparado. Tente novamente com o mesmo carrinho; não pague duas vezes." },
+  checkout_pending: { status: 503, message: "Seu pedido foi salvo, mas o Pix ainda não foi confirmado. Consulte Minhas compras ou fale com o suporte antes de iniciar outro pedido. Se já pagou, não pague novamente." },
   delivery_not_allowed: { status: 409, message: "Este pedido ainda não está pronto para ser marcado como entregue." },
 };
 

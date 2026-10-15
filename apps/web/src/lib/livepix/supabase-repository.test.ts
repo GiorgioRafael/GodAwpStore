@@ -13,6 +13,41 @@ function repository(data: Record<string, unknown>) {
 }
 
 describe("SupabaseLivePixPaymentRepository compradores opcionais", () => {
+  it("retém só a reserva web ainda pertencente à tentativa e ao mesmo prazo", async () => {
+    const deadline = "2099-07-16T15:00:00Z";
+    const claimToken = "550e8400-e29b-41d4-a716-446655440001";
+    const query = { update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), like: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), gt: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => ({ data: { id: orderId }, error: null })) };
+    const from = vi.fn(() => query);
+    const payments = new SupabaseLivePixPaymentRepository({ from } as never);
+    await payments.preserveCheckoutClaim(orderId, claimToken, deadline);
+    expect(from).toHaveBeenCalledWith("orders");
+    expect(query.update).toHaveBeenCalledWith({ livepix_checkout_claimed_at: deadline });
+    expect(query.eq).toHaveBeenCalledWith("id", orderId);
+    expect(query.eq).toHaveBeenCalledWith("livepix_checkout_claim_token", claimToken);
+    expect(query.like).toHaveBeenCalledWith("payment_reference", "web:%");
+    expect(query.eq).toHaveBeenCalledWith("payment_provider", "livepix");
+    expect(query.eq).toHaveBeenCalledWith("status", "awaiting_payment");
+    expect(query.in).toHaveBeenCalledWith("payment_status", ["uninitialized", "pending"]);
+    expect(query.is).toHaveBeenCalledWith("payment_provider_reference", null);
+    expect(query.is).toHaveBeenCalledWith("paid_at", null);
+    expect(query.is).toHaveBeenCalledWith("stock_released_at", null);
+    expect(query.eq).toHaveBeenCalledWith("payment_expires_at", deadline);
+    expect(query.gt).toHaveBeenCalledWith("payment_expires_at", expect.any(String));
+  });
+
+  it.each([
+    { data: null, error: null },
+    { data: null, error: { message: "database unavailable" } },
+  ])("falha fechada se a reserva mudou ou não foi confirmada pelo banco", async result => {
+    const query = { update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), like: vi.fn().mockReturnThis(),
+      in: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(), gt: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(), maybeSingle: vi.fn(async () => result) };
+    const payments = new SupabaseLivePixPaymentRepository({ from: vi.fn(() => query) } as never);
+    await expect(payments.preserveCheckoutClaim(orderId, "claim-token", "2099-07-16T15:00:00Z")).rejects.toThrow();
+  });
+
   it("mantém Discord nulo na confirmação financeira da compra web", async () => {
     const { repository: payments } = repository({
       processed_order_id: orderId, discord_guild_id: "123456789012345678", buyer_discord_id: null,

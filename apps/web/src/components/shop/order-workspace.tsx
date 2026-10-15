@@ -155,7 +155,7 @@ export function ShopOrderWorkspace({ orderId, admin = false }: { orderId: string
                   <ol className={styles.pixSteps}><li>Abra o app do seu banco e escolha Pix.</li><li>Escaneie o QR Code ou use o Pix copia e cola.</li><li>Confirme o pagamento no app do banco.</li></ol>
                 </div></div>
               : paymentUrl ? <a className={ui.primaryButton} href={paymentUrl} target="_blank" rel="noopener noreferrer">Pagar com Pix <ExternalLink size={16} aria-hidden="true" /></a>
-              : <p className={ui.smallNote}>O Pix está sendo preparado. Retome pelo carrinho se necessário.</p>}
+              : <p className={ui.smallNote}>A preparação do Pix ainda não foi confirmada. <Link href="/atendimento">Fale com o suporte</Link> antes de iniciar outro pedido. Se já pagou, não pague novamente.</p>}
             <p className={styles.pixWaiting}><span className={styles.liveDot} aria-hidden="true" />A confirmação aparece automaticamente aqui após o pagamento.</p>
           </section> : null}
           <section className={styles.chatPanel} aria-label="Chat privado da compra"><header className={styles.chatHeader}>

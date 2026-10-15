@@ -5,11 +5,13 @@ const mocks = vi.hoisted(() => ({
   brand: { isGwStore: true },
   emailAction: vi.fn(),
   bridge: vi.fn(),
+  providers: vi.fn(),
   notFound: vi.fn(() => { throw new Error("NEXT_NOT_FOUND"); }),
 }));
 vi.mock("@/lib/brand", () => ({ get IS_GWSTORE() { return mocks.brand.isGwStore; }, STORE_NAME: "GWStore" }));
 vi.mock("@/lib/env", () => ({ getSiteUrl: () => "https://gwstoreofc.com" }));
 vi.mock("@/lib/customer-auth-origin", () => ({ redirectCustomerAuthToLoginHost: mocks.bridge }));
+vi.mock("@/lib/customer-auth-providers", () => ({ getCustomerAuthProviders: mocks.providers }));
 vi.mock("./actions", () => ({ customerEmailAuth: mocks.emailAction }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/components/layout/brand-mark", () => ({ BrandMark: () => <span aria-hidden="true">GW</span> }));
@@ -20,9 +22,28 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.brand.isGwStore = true;
   mocks.bridge.mockResolvedValue(undefined);
+  mocks.providers.mockResolvedValue({ google: true, discord: true, email: true });
 });
 
 describe("página de acesso do cliente", () => {
+  it("exibe indisponibilidade informativa quando settings falha sem oferecer novos OAuth", async () => {
+    mocks.providers.mockResolvedValue({ google: false, discord: false, email: false });
+    render(await CustomerLoginPage({ searchParams: Promise.resolve({ setup: "1", next: "/minhas-compras" }) }));
+    expect(screen.getByRole("alert")).toHaveTextContent("login está temporariamente indisponível");
+    expect(screen.getByText(/O acesso está temporariamente indisponível/)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Continuar com/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Voltar à loja" })).toHaveAttribute("href", "/minhas-compras");
+  });
+
+  it("reflete provedores do servidor e não oferece email desabilitado", async () => {
+    mocks.providers.mockResolvedValue({ google: true, discord: true, email: false });
+    render(await CustomerLoginPage({ searchParams: Promise.resolve({ mode: "signup" }) }));
+    expect(screen.getByRole("link", { name: "Continuar com Google" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Continuar com Discord" })).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Email" })).not.toBeInTheDocument();
+  });
+
   it("oferece Google, Discord e email mantendo o carrinho em todos os destinos", async () => {
     const next = "/?checkout=1&cart=%5B%7B%22productId%22%3A%22dragon%22%2C%22quantity%22%3A2%7D%5D";
     render(await CustomerLoginPage({ searchParams: Promise.resolve({ next, erro: "oauth" }) }));

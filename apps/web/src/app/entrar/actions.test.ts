@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   resetPasswordForEmail: vi.fn(),
   getUser: vi.fn(),
   updateUser: vi.fn(),
+  providers: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -27,6 +28,7 @@ vi.mock("next/navigation", () => ({
   redirect: (target: string) => { throw new Error(`NEXT_REDIRECT:${target}`); },
 }));
 vi.mock("@/lib/supabase/server", () => ({ createServerSupabaseClient: mocks.createClient }));
+vi.mock("@/lib/customer-auth-providers", () => ({ getCustomerAuthProviders: mocks.providers }));
 
 import { customerEmailAuth } from "./actions";
 import { CUSTOMER_RECOVERY_COOKIE, INITIAL_CUSTOMER_AUTH_STATE } from "@/lib/customer-auth-state";
@@ -68,6 +70,7 @@ beforeEach(() => {
   mocks.requestHeaders = new Headers({ host: "gwstoreofc.com", origin: "https://gwstoreofc.com", "sec-fetch-site": "same-origin" });
   mocks.cookieValues.clear();
   mocks.createClient.mockResolvedValue(client);
+  mocks.providers.mockResolvedValue({ google: true, discord: true, email: true });
   mocks.signInWithPassword.mockResolvedValue({ data: { session: { user: { id: ACCOUNT_ID } } }, error: null });
   mocks.signUp.mockResolvedValue({ data: { session: null, user: { id: ACCOUNT_ID } }, error: null });
   mocks.resetPasswordForEmail.mockResolvedValue({ data: {}, error: null });
@@ -77,6 +80,16 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("conta do comprador por e-mail", () => {
+  it.each(["login", "signup", "forgot", "reset"])("recusa POST direto de %s quando email não está disponível", async mode => {
+    mocks.providers.mockResolvedValue({ google: true, discord: true, email: false });
+    const result = await submit({ mode, email: "player@example.com", password: "new-password", confirmPassword: "new-password", displayName: "Jogador" });
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("escolha uma das opções de acesso");
+    expect(mocks.createClient).not.toHaveBeenCalled();
+    expect(mocks.signUp).not.toHaveBeenCalled();
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+
   it("entra com senha, normaliza e-mail e retorna ao carrinho validado", async () => {
     await expect(submit({ mode: "login", email: " PLAYER@Example.com ", password: "existing", next: CART_NEXT }))
       .rejects.toThrow(`NEXT_REDIRECT:${CART_NEXT}`);

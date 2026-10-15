@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   signInWithOAuth: vi.fn(),
   createServerSupabaseClient: vi.fn(),
+  providers: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/customer-auth-providers", () => ({ getCustomerAuthProviders: mocks.providers }));
 vi.mock("@/lib/env", () => ({
   getMasterAdminSiteUrl: () => "https://101devs.com",
   getStoreAuthSiteUrl: (origin: string) => origin,
@@ -26,6 +28,8 @@ describe("GET /auth/google/login", () => {
     vi.stubEnv("RAILWAY_SERVICE_ID", "");
     mocks.signInWithOAuth.mockReset();
     mocks.createServerSupabaseClient.mockReset();
+    mocks.providers.mockReset();
+    mocks.providers.mockResolvedValue({ google: true, discord: true, email: true });
     mocks.createServerSupabaseClient.mockResolvedValue({ auth: { signInWithOAuth: mocks.signInWithOAuth } });
     mocks.signInWithOAuth.mockResolvedValue({
       data: { url: "https://accounts.google.com/o/oauth2/auth" },
@@ -70,6 +74,16 @@ describe("GET /auth/google/login", () => {
     } });
     expect(response.cookies.get("gw_auth_next")?.value).toBe(next);
     expect(response.headers.get("location")).toBe("https://accounts.google.com/o/oauth2/auth");
+  });
+
+  it("recusa provedor cliente desabilitado sem alterar acesso mestre", async () => {
+    mocks.providers.mockResolvedValue({ google: false, discord: true, email: false });
+    const response = await GET(new NextRequest("https://gwstoreofc.com/auth/google/login?customer=1&next=%2Fminhas-compras"));
+    expect(response.headers.get("location")).toBe("https://gwstoreofc.com/entrar?next=%2Fminhas-compras&setup=1");
+    expect(mocks.createServerSupabaseClient).not.toHaveBeenCalled();
+    expect(response.headers.get("set-cookie")).toBeNull();
+    await GET(new NextRequest("https://101devs.com/auth/google/login?next=%2Fadmin"));
+    expect(mocks.signInWithOAuth).toHaveBeenCalledOnce();
   });
 
   it("cliente Google também chega à ponte legada antes de criar PKCE", async () => {

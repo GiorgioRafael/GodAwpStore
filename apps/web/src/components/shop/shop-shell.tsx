@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ArrowLeft, LogOut, ReceiptText, Store } from "lucide-react";
 import { ShopBrandLink } from "./shop-ui";
+import { ShopInformationLinks } from "./shop-information";
 import ui from "./shop.module.css";
 import styles from "./account.module.css";
 
@@ -16,6 +17,6 @@ export function ShopShell({ children, buyerName }: { children: ReactNode; buyerN
     </nav></div></header>
     <main className={`${ui.container} ${styles.accountContainer}`}>{children}</main>
     <footer className={ui.footer}><div className={`${ui.footerInner} ${ui.footerSlim}`}>
-      <Link href="/" className={ui.accountLink}><ArrowLeft size={15} aria-hidden="true" /> Voltar à loja</Link><span className={ui.smallNote}>GWStore · Atendimento pelo site</span></div></footer>
+      <Link href="/" className={ui.accountLink}><ArrowLeft size={15} aria-hidden="true" /> Voltar à loja</Link><nav className={ui.footerNav} aria-label="Informações da loja"><ShopInformationLinks /></nav></div></footer>
   </div>;
 }

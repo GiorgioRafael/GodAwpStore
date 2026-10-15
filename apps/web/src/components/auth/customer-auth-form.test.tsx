@@ -12,6 +12,7 @@ const props = {
   googleHref: `/auth/google/login?${new URLSearchParams({ next: NEXT, customer: "1" })}`,
   discordHref: `/auth/login?${new URLSearchParams({ next: NEXT })}`,
   emailAction: action,
+  providers: { google: true, discord: true, email: true },
 };
 
 beforeEach(() => {
@@ -20,6 +21,26 @@ beforeEach(() => {
 });
 
 describe("acesso do cliente por Google, Discord e email", () => {
+  it.each(["signup", "forgot", "reset"] as const)("oculta cadastro e recuperação por email indisponível mesmo com mode=%s", mode => {
+    render(<CustomerAuthForm {...props} initialMode={mode} providers={{ google: true, discord: true, email: false }} />);
+    expect(screen.getByRole("link", { name: "Continuar com Google" })).toHaveAttribute("href", props.googleHref);
+    expect(screen.getByRole("link", { name: "Continuar com Discord" })).toHaveAttribute("href", props.discordHref);
+    expect(screen.getByText(/Sua conta é criada no primeiro acesso/)).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(action).not.toHaveBeenCalled();
+  });
+
+  it("oferece só o provedor ativo e informa indisponibilidade sem links quebrados", () => {
+    const { rerender } = render(<CustomerAuthForm {...props} providers={{ google: false, discord: true, email: false }} />);
+    expect(screen.queryByRole("link", { name: "Continuar com Google" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Continuar com Discord" })).toBeInTheDocument();
+    rerender(<CustomerAuthForm {...props} providers={{ google: false, discord: false, email: false }} />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByText(/O acesso está temporariamente indisponível/)).toBeInTheDocument();
+  });
+
   it("oferece os provedores e preserva o destino da compra sem iniciar autenticação", () => {
     render(<CustomerAuthForm {...props} isCheckout />);
     expect(screen.getByRole("heading", { name: "Entre para concluir a compra" })).toBeInTheDocument();

@@ -12,6 +12,7 @@ function isCustomerDestinationPath(pathname: string): boolean {
 /** Only these shop pages bypass the admin gate; their APIs still authorize data. */
 export function isGwStoreCustomerPagePath(pathname: string): boolean {
   return IS_GWSTORE && (pathname === "/entrar" || pathname === "/entrar/"
+    || /^\/(atendimento|termos|privacidade|reembolsos)\/?$/.test(pathname)
     || isCustomerDestinationPath(pathname));
 }
 

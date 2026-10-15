@@ -6,8 +6,10 @@ const mocks = vi.hoisted(() => ({
   client: { auth: { signInWithOAuth: vi.fn(), exchangeCodeForSession: vi.fn(), signOut: vi.fn() } },
   createServerSupabaseClient: vi.fn(),
   notFound: vi.fn(() => { throw new Error("NEXT_NOT_FOUND"); }),
+  providers: vi.fn(),
 }));
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/customer-auth-providers", () => ({ getCustomerAuthProviders: mocks.providers }));
 vi.mock("@/lib/supabase/server", () => ({ createServerSupabaseClient: mocks.createServerSupabaseClient }));
 vi.mock("next/navigation", () => ({ notFound: mocks.notFound }));
 vi.mock("@/components/layout/brand-mark", () => ({ BrandMark: () => <span aria-hidden="true">GW</span> }));
@@ -33,6 +35,7 @@ beforeEach(() => {
   vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "");
   vi.stubEnv("RAILWAY_SERVICE_ID", "");
   mocks.createServerSupabaseClient.mockResolvedValue(mocks.client);
+  mocks.providers.mockResolvedValue({ google: true, discord: true, email: true });
   mocks.client.auth.signInWithOAuth.mockResolvedValue({ data: { url: "https://discord.com/oauth2/authorize" }, error: null });
   mocks.client.auth.exchangeCodeForSession.mockResolvedValue({ error: null });
   mocks.client.auth.signOut.mockResolvedValue({ error: null });
@@ -40,6 +43,36 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("login do comprador GWStore", () => {
+  it("encerra falha de settings no formulário da ponte sem repetir OAuth", async () => {
+    const { login } = await routes();
+    vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "https://gwstore.vercel.app");
+    mocks.providers.mockResolvedValue({ google: false, discord: false, email: false });
+    const start = await login(new NextRequest(`https://gwstoreofc.com/auth/login?${new URLSearchParams({ next: CART_NEXT })}`));
+    const bridge = new URL(start.headers.get("location")!);
+    expect(bridge.origin).toBe("https://gwstore.vercel.app");
+    expect(bridge.pathname).toBe("/auth/login");
+    const failure = await login(new NextRequest(bridge));
+    const form = new URL(failure.headers.get("location")!);
+    expect(form.origin).toBe(bridge.origin);
+    expect(form.pathname).toBe("/entrar");
+    expect(form.searchParams.get("setup")).toBe("1");
+    expect(form.searchParams.get("next")).toBe(CART_NEXT);
+    expect(failure.headers.get("set-cookie")).toBeNull();
+    expect(mocks.createServerSupabaseClient).not.toHaveBeenCalled();
+    expect(mocks.client.auth.signInWithOAuth).not.toHaveBeenCalled();
+  });
+
+  it("recusa Discord cliente desabilitado antes de emitir cookies e mantém login admin", async () => {
+    const { login } = await routes();
+    mocks.providers.mockResolvedValue({ google: true, discord: false, email: false });
+    const response = await login(new NextRequest("https://gwstoreofc.com/auth/login?next=%2Fminhas-compras"));
+    expect(response.headers.get("location")).toBe("https://gwstoreofc.com/entrar?next=%2Fminhas-compras&setup=1");
+    expect(response.headers.get("set-cookie")).toBeNull();
+    expect(mocks.createServerSupabaseClient).not.toHaveBeenCalled();
+    await login(new NextRequest("https://gwstoreofc.com/auth/login?next=%2Fadmin"));
+    expect(mocks.client.auth.signInWithOAuth).toHaveBeenCalledOnce();
+  });
+
   it("preserva carrinho custom → legacy → Discord → loja sem exigir administrador", async () => {
     const { login, callback } = await routes();
     vi.stubEnv("GWSTORE_LOGIN_ORIGIN", "https://gwstore.vercel.app");

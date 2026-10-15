@@ -5,6 +5,7 @@ import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Eye, EyeOff, LoaderCircle, MessageCircleMore } from "lucide-react";
 
 import { INITIAL_CUSTOMER_AUTH_STATE, type CustomerEmailAuthMode, type CustomerEmailAuthState } from "@/lib/customer-auth-state";
+import type { CustomerAuthProviders } from "@/lib/customer-auth-providers";
 
 type AuthMode = CustomerEmailAuthMode;
 type FocusTarget = "tab" | "heading" | null;
@@ -15,6 +16,7 @@ type CustomerAuthFormProps = {
   discordHref: string;
   googleHref: string;
   emailAction: EmailAuthAction;
+  providers: CustomerAuthProviders;
   isCheckout?: boolean;
   feedback?: string | null;
   initialMode?: AuthMode;
@@ -38,12 +40,25 @@ export function CustomerAuthForm({ initialMode = "login", ...props }: CustomerAu
     setFocusTarget(focus);
   }
 
+  if (!props.providers.email) {
+    const hasProvider = props.providers.google || props.providers.discord;
+    return <>
+      <h1 className={`mt-3 text-center ${display} text-[26px] font-bold uppercase leading-[1.1] tracking-[0.01em] text-balance`}>
+        {props.isCheckout ? "Entre para concluir a compra" : "Entre na sua conta"}</h1>
+      <p className="mt-3 text-center text-sm leading-6 text-pretty text-white/65">
+        {hasProvider ? "Escolha uma opção abaixo. Sua conta é criada no primeiro acesso para acompanhar pedidos e conversar com a loja."
+          : "O acesso está temporariamente indisponível. Tente novamente em alguns instantes."}</p>
+      {props.feedback ? <p role="alert" className="mt-5 rounded-xl border border-[#ec009c]/35! bg-[#ec009c]/10 p-4 text-sm leading-6 text-white/85">{props.feedback}</p> : null}
+      <SocialAuthLinks providers={props.providers} googleHref={props.googleHref} discordHref={props.discordHref} />
+    </>;
+  }
+
   return <CustomerAuthPanel key={mode} {...props} mode={mode} email={email} onEmailChange={setEmail}
     onModeChange={changeMode} focusTarget={focusTarget} />;
 }
 
 function CustomerAuthPanel({ mode, email, onEmailChange, onModeChange, focusTarget, next, discordHref, googleHref,
-  emailAction, isCheckout = false, feedback = null }: Omit<CustomerAuthFormProps, "initialMode"> & {
+  emailAction, providers, isCheckout = false, feedback = null }: Omit<CustomerAuthFormProps, "initialMode"> & {
   mode: AuthMode;
   email: string;
   onEmailChange: (value: string) => void;
@@ -66,7 +81,7 @@ function CustomerAuthPanel({ mode, email, onEmailChange, onModeChange, focusTarg
   const description = reset ? "Escolha uma nova senha para acessar sua conta."
     : forgot ? "Informe seu email para receber o link de recuperação."
     : signup ? "Escolha como criar sua conta e acompanhe suas compras por aqui."
-      : isCheckout ? "Entre com Google, Discord ou email para concluir a compra."
+      : isCheckout ? "Acesse sua conta para concluir a compra."
         : "Acompanhe seus pedidos e converse com a loja em um só lugar.";
 
   useEffect(() => {
@@ -96,16 +111,8 @@ function CustomerAuthPanel({ mode, email, onEmailChange, onModeChange, focusTarg
           {value === "login" ? "Entrar" : "Criar conta"}
         </button>)}
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3">
-        <Link href={googleHref} prefetch={false} aria-label="Continuar com Google" className={`${providerClass} border-white! bg-white text-[#1f1f1f] hover:bg-[#f1eef3]`}>
-          <svg viewBox="0 0 24 24" className="size-5 shrink-0" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.2 3-7.4Z" /><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4L15.4 17c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6A10 10 0 0 0 12 22Z" /><path fill="#FBBC05" d="M6.4 13.8a6 6 0 0 1 0-3.6V7.6H3.1a10 10 0 0 0 0 8.8l3.3-2.6Z" /><path fill="#EA4335" d="M12 6c1.5 0 2.9.5 3.9 1.5l2.9-2.9A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.9 5.6l3.3 2.6A6 6 0 0 1 12 6Z" /></svg>
-          Google
-        </Link>
-        <Link href={discordHref} prefetch={false} aria-label="Continuar com Discord" className={`${providerClass} border-[#5865f2]! bg-[#5865f2] text-white hover:border-[#4752c4]! hover:bg-[#4752c4]`}>
-          <MessageCircleMore aria-hidden="true" className="size-5 shrink-0" />Discord
-        </Link>
-      </div>
-      <div className="my-5 flex items-center gap-3 text-xs text-white/50"><span className="h-px flex-1 bg-white/10" />ou use seu email<span className="h-px flex-1 bg-white/10" /></div>
+      <SocialAuthLinks providers={providers} googleHref={googleHref} discordHref={discordHref} />
+      {providers.google || providers.discord ? <div className="my-5 flex items-center gap-3 text-xs text-white/50"><span className="h-px flex-1 bg-white/10" />ou use seu email<span className="h-px flex-1 bg-white/10" /></div> : <div className="h-5" />}
     </> : null}
     <form action={formAction} aria-busy={pending} role={forgot || reset ? undefined : "tabpanel"}
       id={`${id}-panel`} aria-labelledby={forgot || reset ? `${id}-heading` : `${id}-${mode}-tab`} className={forgot || reset ? "mt-6" : ""}>
@@ -159,4 +166,16 @@ function CustomerAuthPanel({ mode, email, onEmailChange, onModeChange, focusTarg
       </fieldset>
     </form>
   </>;
+}
+
+function SocialAuthLinks({ providers, googleHref, discordHref }: Pick<CustomerAuthFormProps, "providers" | "googleHref" | "discordHref">) {
+  if (!providers.google && !providers.discord) return null;
+  return <div className={`mt-5 grid gap-3 ${providers.google && providers.discord ? "grid-cols-2" : "grid-cols-1"}`}>
+    {providers.google ? <Link href={googleHref} prefetch={false} aria-label="Continuar com Google" className={`${providerClass} border-white! bg-white text-[#1f1f1f] hover:bg-[#f1eef3]`}>
+      <svg viewBox="0 0 24 24" className="size-5 shrink-0" aria-hidden="true"><path fill="#4285F4" d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.6 4.6 0 0 1-2 3v2.5h3.2c1.9-1.7 3-4.2 3-7.4Z" /><path fill="#34A853" d="M12 22c2.7 0 5-.9 6.6-2.4L15.4 17c-.9.6-2 1-3.4 1-2.6 0-4.8-1.8-5.6-4.2H3.1v2.6A10 10 0 0 0 12 22Z" /><path fill="#FBBC05" d="M6.4 13.8a6 6 0 0 1 0-3.6V7.6H3.1a10 10 0 0 0 0 8.8l3.3-2.6Z" /><path fill="#EA4335" d="M12 6c1.5 0 2.9.5 3.9 1.5l2.9-2.9A9.6 9.6 0 0 0 12 2a10 10 0 0 0-8.9 5.6l3.3 2.6A6 6 0 0 1 12 6Z" /></svg>Google
+    </Link> : null}
+    {providers.discord ? <Link href={discordHref} prefetch={false} aria-label="Continuar com Discord" className={`${providerClass} border-[#5865f2]! bg-[#5865f2] text-white hover:border-[#4752c4]! hover:bg-[#4752c4]`}>
+      <MessageCircleMore aria-hidden="true" className="size-5 shrink-0" />Discord
+    </Link> : null}
+  </div>;
 }

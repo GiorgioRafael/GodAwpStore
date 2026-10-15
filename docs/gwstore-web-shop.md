@@ -35,7 +35,52 @@ O fluxo e a ativação de e-mail com SMTP próprio estão documentados em `gwsto
 
 Enquanto um Owner do Supabase não autorizar os callbacks do domínio novo, `GWSTORE_LOGIN_ORIGIN=https://gwstore.vercel.app` mantém o login na ponte legada. O carrinho atravessa esse retorno com IDs e quantidades revalidados; nenhuma informação de preço é confiada à URL. Remova a configuração temporária somente depois de liberar e verificar os callbacks de `gwstoreofc.com`.
 
-## Verificação
+## Preparação para divulgação em 15/10/2026
+
+A home, o detalhe e o carrinho agora mostram acesso aos prazos de entrega e ao
+suporte. O rodapé liga as páginas públicas `/atendimento`, `/termos`,
+`/privacidade` e `/reembolsos`. O sitemap contém apenas a home e essas páginas;
+robots e metadados mantêm o painel, pedidos e autenticação fora da indexação.
+O domínio público possui Open Graph/Twitter e uma capa PNG em
+`/loja-compartilhar.png`, baseada na arte existente da loja.
+
+Configure **somente no serviço web GWStore** as informações comerciais reais:
+
+| Variável | Informação pública |
+| --- | --- |
+| `GWSTORE_SUPPORT_URL` | Link HTTPS oficial de suporte ou `mailto:` sem parâmetros |
+| `GWSTORE_SUPPORT_LABEL` | Nome do canal/botão de suporte |
+| `GWSTORE_SUPPORT_HOURS` | Dias e horários de atendimento, em Brasília |
+| `GWSTORE_DELIVERY_DIGITAL` | Prazo e condições de entrega de itens digitais |
+| `GWSTORE_DELIVERY_SERVICES` | Prazo e condições dos serviços de UP |
+| `GWSTORE_DELIVERY_ROBUX` | Prazo e modalidade de entrega de Robux |
+| `GWSTORE_OPERATOR_NAME` | Nome ou razão social do responsável |
+| `GWSTORE_OPERATOR_DOCUMENT` | Identificação comercial que a loja autoriza divulgar |
+| `GWSTORE_OPERATOR_ADDRESS` | Endereço comercial de contato |
+
+Os campos não são preenchidos com contatos, horários ou garantias inventadas.
+Enquanto não forem informados, a página orienta confirmar os prazos com a equipe;
+esse estado ainda exige os dados do responsável antes de uma divulgação ampla.
+
+Em compras **web GWStore** roteadas ao LivePix, a reserva persistida é estendida
+até o vencimento antes da chamada de emissão. Uma resposta perdida mantém a
+reserva mesmo após reinício do processo, impedindo uma segunda emissão naquele
+pedido. O provedor não documenta uma chave de idempotência do cliente: nessa
+situação o cliente consulta a compra e o suporte, em vez de insistir em uma nova
+cobrança. A proteção usa os campos e RPCs já existentes, sem migração. EclipsePay
+preserva seu fluxo idempotente; o bot e a THStore mantêm seus fluxos anteriores.
+
+A configuração pública de autenticação foi conferida pelo endpoint de settings
+do projeto GWStore em 15/10: Google e Discord habilitados, e-mail desabilitado.
+O acesso cliente oferece somente provedores ativos, com a política de ativação
+de e-mail descrita em `gwstore-customer-auth.md`.
+
+A verificação automatizada e a revisão visual não substituem uma compra real:
+o responsável ainda deve confirmar login, pagamento Pix, abertura do chat e
+conclusão da entrega com uma conta e um valor autorizados. Não se deve criar
+pagamentos ou marcar pedidos reais como pagos para simular essa verificação.
+
+## Verificações anteriores
 
 Os testes cobrem checkout, repetição segura, preços autoritativos, limites de estoque, retorno dos provedores, autorização, privacidade do chat, conclusão da entrega, recuperação de pagamentos, indisponibilidade da roleta GW e preservação da THStore. O fixture `supabase/tests/gwstore_web_shop_verification.sql` valida o ciclo completo com dados locais, incluindo leitura privada e bloqueio de tickets Discord para pedidos web.
 

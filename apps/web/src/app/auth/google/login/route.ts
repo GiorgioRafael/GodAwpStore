@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
+import { getCustomerAuthProviders } from "@/lib/customer-auth-providers";
 import { getGwStoreLoginOrigin, getMasterAdminSiteUrl, getStoreAuthSiteUrl } from "@/lib/env";
 import { gwStoreCustomerLoginHref, safeGwStoreCustomerNext } from "@/lib/gwstore-customer-auth";
 import { masterAdminLoginHref } from "@/lib/master-admin-auth";
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
   if (!customer && request.nextUrl.origin !== siteOrigin) {
     const target = new URL(`${request.nextUrl.pathname}${request.nextUrl.search}`, siteOrigin);
     return NextResponse.redirect(target);
+  }
+  if (customer && !(await getCustomerAuthProviders()).google) {
+    return NextResponse.redirect(new URL(gwStoreCustomerLoginHref(next, { setup: true }), siteOrigin));
   }
   const supabase = await createServerSupabaseClient();
   if (!supabase) {

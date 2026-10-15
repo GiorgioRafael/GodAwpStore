@@ -8,13 +8,14 @@ import { CustomerAuthForm } from "@/components/auth/customer-auth-form";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { IS_GWSTORE, STORE_NAME } from "@/lib/brand";
 import { redirectCustomerAuthToLoginHost } from "@/lib/customer-auth-origin";
+import { getCustomerAuthProviders } from "@/lib/customer-auth-providers";
 import { getSiteUrl } from "@/lib/env";
 import { safeGwStoreCustomerNext } from "@/lib/gwstore-customer-auth";
 import { customerEmailAuth } from "./actions";
 
 export const metadata: Metadata = {
   title: "Entrar na loja",
-  description: "Entre com Google, Discord ou email para comprar e acompanhar seu pedido pelo site.",
+  description: "Acesse sua conta para comprar e acompanhar seu pedido pelo site.",
 };
 
 const display = "font-[family-name:var(--font-shop-display)]";
@@ -40,6 +41,7 @@ export default async function CustomerLoginPage({
     erro: typeof query.erro === "string" ? query.erro : undefined,
     setup: typeof query.setup === "string" ? query.setup : undefined,
   });
+  const providers = await getCustomerAuthProviders();
   const isCheckout = new URL(next, siteOrigin).searchParams.get("checkout") === "1";
   const authHref = `/auth/login?${new URLSearchParams({ next }).toString()}`;
   const googleHref = `/auth/google/login?${new URLSearchParams({ next, customer: "1" }).toString()}`;
@@ -79,7 +81,7 @@ export default async function CustomerLoginPage({
           {isCheckout ? <p className="mx-auto mt-3 flex w-fit items-center gap-1.5 rounded-full bg-[#6fe0a8]/10 px-3 py-1 text-xs font-semibold text-[#6fe0a8]">
             <ShoppingBag aria-hidden="true" className="size-3.5" />Seu carrinho está salvo</p> : null}
           <CustomerAuthForm next={next} discordHref={authHref} googleHref={googleHref} emailAction={customerEmailAuth}
-            isCheckout={isCheckout} feedback={feedback} initialMode={initialMode} />
+            providers={providers} isCheckout={isCheckout} feedback={feedback} initialMode={initialMode} />
           <p className="mt-5 flex items-start gap-2.5 border-t border-white/[.08]! pt-5 text-xs leading-5 text-white/60">
             <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-[#ff9be3]" />Sua conta identifica o comprador. O pedido e a conversa com a loja ficam neste site.</p>
           <Link href={next} className={`mt-3 -ml-2 inline-flex min-h-11 items-center gap-2 rounded-lg px-2 text-sm text-white/70 transition-colors hover:text-white ${focusRing}`}>

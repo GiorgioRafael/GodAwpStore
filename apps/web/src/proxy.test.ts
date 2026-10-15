@@ -204,13 +204,14 @@ describe("link de pagamento compartilhado com compradores", () => {
     mocks.getUser.mockResolvedValue({ data: { user: { id: "buyer" } } });
     mocks.refreshCookies = true;
     const orderId = "10000000-0000-4000-8000-000000000001";
-    for (const path of ["/entrar", "/entrar/", "/minhas-compras", `/minhas-compras/${orderId}`]) {
+    for (const path of ["/entrar", "/entrar/", "/minhas-compras", `/minhas-compras/${orderId}`,
+      "/atendimento", "/atendimento/", "/termos", "/privacidade", "/reembolsos"]) {
       const response = await proxy(new NextRequest(`https://gwstoreofc.com${path}`));
       expect(response.headers.get("location")).toBeNull();
       expect(response.headers.get("x-middleware-rewrite")).toBeNull();
       expect(response.cookies.get("sb-refreshed")?.value).toBe("session");
     }
-    for (const path of ["/entrar/admin", "/minhas-compras/admin", "/admin/pedidos", "/admin/atendimento-loja", `/admin/atendimento-loja/${orderId}`]) {
+    for (const path of ["/entrar/admin", "/minhas-compras/admin", "/atendimento/admin", "/termos/admin", "/privacidade/admin", "/reembolsos/admin", "/admin/pedidos", "/admin/atendimento-loja", `/admin/atendimento-loja/${orderId}`]) {
       const response = await proxy(new NextRequest(`https://gwstoreofc.com${path}`));
       expect(new URL(response.headers.get("location")!).pathname).toBe("/acesso-negado");
     }
@@ -221,6 +222,12 @@ describe("link de pagamento compartilhado com compradores", () => {
     mocks.gwStore = true;
     const master = await proxy(new NextRequest("https://101devs.com/entrar"));
     expect(new URL(master.headers.get("location")!).pathname).toBe("/login");
+    for (const origin of ["https://101devs.com", "https://thstore.vercel.app"]) {
+      for (const path of ["/atendimento", "/termos", "/privacidade", "/reembolsos"]) {
+        const response = await proxy(new NextRequest(`${origin}${path}`));
+        expect(response.headers.get("location")).toBeTruthy();
+      }
+    }
   });
 
   it("preserva o login Google do painel mestre em 101Devs e nas abas mestre", async () => {

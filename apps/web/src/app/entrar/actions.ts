@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { AUTH_NEXT_COOKIE } from "@/lib/auth-next";
 import { CUSTOMER_EMAIL_NEXT_MAX_AGE, CUSTOMER_RECOVERY_COOKIE, type CustomerEmailAuthMode, type CustomerEmailAuthState } from "@/lib/customer-auth-state";
+import { getCustomerAuthProviders } from "@/lib/customer-auth-providers";
 import { getGwStoreLoginOrigin, getStoreAuthSiteUrl } from "@/lib/env";
 import { safeGwStoreCustomerNext } from "@/lib/gwstore-customer-auth";
 import { requireShopRequest } from "@/lib/shop/request";
@@ -77,6 +78,10 @@ export async function customerEmailAuth(
   }
   if (Object.keys(fieldErrors).length) {
     return { status: "error", message: "Confira os campos indicados.", fieldErrors };
+  }
+
+  if (!(await getCustomerAuthProviders()).email) {
+    return failure("O acesso por e-mail não está disponível. Recarregue a página e escolha uma das opções de acesso.");
   }
 
   const client = await createServerSupabaseClient();

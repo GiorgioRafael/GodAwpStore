@@ -98,6 +98,23 @@ export class SupabaseLivePixPaymentRepository implements LivePixPaymentRepositor
     };
   }
 
+  async preserveCheckoutClaim(orderId: string, claimToken: string, paymentExpiresAt: string): Promise<void> {
+    // The existing RPC considers a claim reusable five minutes after claimed_at.
+    // Extend that lease through the payment deadline before a non-idempotent POST.
+    // Successful registration clears it normally; an uncertain invoice cannot be
+    // issued again while the order is payable, including after process restarts.
+    const { data, error } = await this.client.from("orders")
+      .update({ livepix_checkout_claimed_at: paymentExpiresAt })
+      .eq("id", orderId).eq("livepix_checkout_claim_token", claimToken)
+      .like("payment_reference", "web:%").eq("payment_provider", "livepix")
+      .eq("status", "awaiting_payment").in("payment_status", ["uninitialized", "pending"])
+      .is("payment_provider_reference", null).is("paid_at", null).is("stock_released_at", null)
+      .eq("payment_expires_at", paymentExpiresAt).gt("payment_expires_at", new Date().toISOString())
+      .select("id").maybeSingle();
+    assertQuery(error, "reserva persistente do checkout LivePix");
+    if (!data) throw new Error("A reserva do Pix mudou. Recarregue o pedido para continuar.");
+  }
+
   async releaseCheckoutClaim(orderId: string, claimToken: string): Promise<void> {
     const { error } = await this.client.rpc("release_livepix_checkout_claim", {
       p_order_id: orderId,

@@ -6,11 +6,13 @@ import { MessagesSquare, QrCode, Search, ShoppingBag, TriangleAlert, UserRound, 
 import { flattenShopCatalog, formatShopPrice, SHOP_CATEGORIES, type ShopProductView } from "@/lib/shop/catalog-view";
 import { encodeShopCartHandoff, hydrateShopCart, setShopCartQuantity, shopCartSubtotalCents, type ShopCartLine } from "@/lib/shop/cart";
 import type { ShopCatalogGame } from "@/lib/shop/types";
+import type { ShopInformation } from "@/lib/shop/information";
 import { CartCheckout } from "./cart-checkout";
 import { CategoryView } from "./category-view";
 import { HomeCatalog, HowItWorks, StoreHero } from "./home-sections";
 import { ProductDetail } from "./product-detail";
 import { ShopBrandLink } from "./shop-ui";
+import { BeforeBuying, ShopInformationLinks } from "./shop-information";
 import { CATEGORY_COVERS, type ShopCategory, type ShopCategoryId } from "./shop-visuals";
 import ui from "./shop.module.css";
 
@@ -20,8 +22,8 @@ const normalizeSearch = (value: string) => value.normalize("NFKD").replace(/[\u0
 const productHaystack = (product: ShopProductView) =>
   `${product.name} ${product.displayName} ${product.categoryLabel} ${product.gameName}${product.category === "up" ? ` ${product.groupName}` : ""}`;
 
-export function Storefront({ catalog, buyerName, catalogUnavailable = false }: {
-  catalog: ShopCatalogGame[]; buyerName: string | null; catalogUnavailable?: boolean;
+export function Storefront({ catalog, buyerName, catalogUnavailable = false, information }: {
+  catalog: ShopCatalogGame[]; buyerName: string | null; catalogUnavailable?: boolean; information?: ShopInformation;
 }) {
   const products = useMemo(() => flattenShopCatalog(catalog), [catalog]);
   const [search, setSearch] = useState("");
@@ -153,16 +155,17 @@ export function Storefront({ catalog, buyerName, catalogUnavailable = false }: {
               catalogUnavailable={catalogUnavailable} hasProducts={products.length > 0} />}
       </section>
       {!activeCategory && !query ? <HowItWorks /> : null}
+      {!activeCategory && !query ? <BeforeBuying information={information} /> : null}
     </main>
     <footer className={ui.footer}><div className={ui.footerInner}>
       <div className={ui.footerBrand}><ShopBrandLink onNavigate={returnHome} /><p>Frutas, skins, gamepasses e serviços de UP de Blox Fruits, além de Robux.</p></div>
-      <nav className={ui.footerNav} aria-label="Links da loja"><Link href="/minhas-compras">Minhas compras e atendimento</Link><Link href="/admin">Área administrativa</Link></nav>
+      <nav className={ui.footerNav} aria-label="Links da loja"><Link href="/minhas-compras">Minhas compras e atendimento</Link><ShopInformationLinks /><Link href="/admin">Área administrativa</Link></nav>
       <ul className={ui.footerFacts}><li><QrCode size={15} aria-hidden="true" />Pagamento via Pix</li><li><MessagesSquare size={15} aria-hidden="true" />Atendimento pelo chat do site</li></ul>
     </div></footer>
     {/* The page is inert behind an open product detail, so the page-level notice renders only without one. */}
     {notice && !selected ? <div className={ui.notice} role="alert"><TriangleAlert size={18} aria-hidden="true" /><span>{notice}</span>
       <button type="button" className={ui.iconButton} aria-label="Dispensar aviso" onClick={() => setNotice("")}><X size={16} aria-hidden="true" /></button></div> : null}
-    <ProductDetail key={selected?.id || "closed"} product={selected} notice={notice} onDismissNotice={() => setNotice("")} onClose={() => setSelected(null)} onAdd={addProduct} />
-    <CartCheckout open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} signedIn={Boolean(buyerName)} onQuantity={(id, quantity) => setCart(current => setShopCartQuantity(current, id, quantity, products))} />
+    <ProductDetail key={selected?.id || "closed"} product={selected} information={information} notice={notice} onDismissNotice={() => setNotice("")} onClose={() => setSelected(null)} onAdd={addProduct} />
+    <CartCheckout open={cartOpen} onClose={() => setCartOpen(false)} cart={cart} products={products} information={information} signedIn={Boolean(buyerName)} onQuantity={(id, quantity) => setCart(current => setShopCartQuantity(current, id, quantity, products))} />
   </div>;
 }

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { IS_GWSTORE } from "@/lib/brand";
 import { getSiteUrl } from "@/lib/env";
 import { getLivePixClient, type LivePixPayment } from "@/lib/livepix/client";
+import type { PaymentCreationOptions } from "@/lib/livepix/payment-service";
 import { eclipseCheckoutSchema, eclipseDatabase, eclipsePayEnabled, getEclipsePayClient } from "@/lib/eclipsepay/runtime";
 
 const referenceSchema = z.string().regex(/^ep:[0-9a-f-]{36}$/);
@@ -42,7 +43,7 @@ async function findEclipsePayment(reference: string): Promise<LivePixPayment | n
 
 export function getPaymentClient() {
   return {
-    async createPayment(input: { amountCents: number; redirectUrl: string }) {
+    async createPayment(input: { amountCents: number; redirectUrl: string }, options?: PaymentCreationOptions) {
       if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0) {
         throw new Error("Valor Pix inválido.");
       }
@@ -58,7 +59,12 @@ export function getPaymentClient() {
         const { data: existing, error: lookupError } = await db.from("eclipsepay_checkouts")
           .select("order_id,amount_cents").eq("order_id", id).maybeSingle();
         if (lookupError) throw new Error("Não foi possível verificar o Pix existente. Tente novamente.");
-        if (!existing) return getLivePixClient().createPayment(input);
+        if (!existing) {
+          // The callback durably retains a web order's claim before LivePix can
+          // issue an invoice. Eclipse uses its own persisted idempotent intent.
+          await options?.beforeNonIdempotentCreate();
+          return getLivePixClient().createPayment(input);
+        }
         if (Number(existing.amount_cents) !== input.amountCents) throw new Error("Valor Pix divergente do pedido.");
         // The intent is persisted before the provider call. Even operation_id
         // null may mean that Eclipse issued a charge but its response was lost.

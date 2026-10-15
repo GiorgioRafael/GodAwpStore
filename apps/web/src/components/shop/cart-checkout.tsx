@@ -2,20 +2,24 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowRight, Info, LoaderCircle, Minus, Plus, ShieldAlert, ShoppingBag, Trash2, UserRound } from "lucide-react";
 import { formatShopPrice, type ShopProductView } from "@/lib/shop/catalog-view";
 import { shopCheckoutLoginHref, shopCartSubtotalCents, type ShopCartLine } from "@/lib/shop/cart";
 import type { ShopCheckoutResponse } from "@/lib/shop/types";
+import type { ShopInformation } from "@/lib/shop/information";
 import { ProductImage } from "./product-image";
 import { ShopDialog } from "./shop-dialog";
+import { DeliveryInformation } from "./shop-information";
 import { Emblem, EmptyState } from "./shop-ui";
 import { categoryVisual, cssVars } from "./shop-visuals";
 import ui from "./shop.module.css";
 import styles from "./dialogs.module.css";
 
-export function CartCheckout({ open, onClose, cart, products, signedIn, onQuantity }: {
+export function CartCheckout({ open, onClose, cart, products, signedIn, onQuantity, information }: {
   open: boolean; onClose: () => void; cart: ShopCartLine[]; products: ShopProductView[]; signedIn: boolean;
   onQuantity: (productId: string, quantity: number) => void;
+  information?: ShopInformation;
 }) {
   const router = useRouter();
   const hintId = useId();
@@ -101,12 +105,15 @@ export function CartCheckout({ open, onClose, cart, products, signedIn, onQuanti
             <label className={`${ui.checkLabel} ${styles.confirm}`}><input type="checkbox" required checked={confirmed} disabled={busy} onChange={event => setConfirmed(event.target.checked)} />Li os requisitos e minha conta atende ao necessário.</label>
           </div> : null}
         </> : <div className={styles.loginNote}><Emblem icon={UserRound} size="m" />
-          <div><h3>Finalize com sua conta</h3><p>Entre com Google, Discord ou e-mail para pagar e acompanhar a entrega no chat do site. Seu carrinho será mantido.</p></div></div>}</div>
+          <div><h3>Finalize com sua conta</h3><p>Entre na sua conta para pagar e acompanhar a entrega no chat do site. Seu carrinho será mantido.</p></div></div>}
+          <DeliveryInformation information={information} hasServices={services.length > 0} hasRobux={lines.some(line => line.product.gameName.toLowerCase() === "robux")} />
+          <p className={styles.footNote}>Confira os <a href="/termos">termos de compra</a>, a <a href="/privacidade">privacidade</a> e como pedir <a href="/reembolsos">cancelamento ou reembolso</a>.</p>
+        </div>
         <div className={styles.cartFooter}>
           <div className={styles.totalRow}><span>Total dos produtos</span><strong>{formatShopPrice(total)}</strong></div>
           <p className={styles.footNote}>O valor final será confirmado no pedido.</p>
           {/* Inside the sticky footer, so a long cart can never scroll it out of sight. */}
-          {error ? <p id={errorId} className={`${ui.error} ${styles.cartError}`} role="alert">{error}</p> : null}
+          {error ? <div id={errorId} className={`${ui.error} ${styles.cartError}`} role="alert"><p>{error}</p><Link href="/minhas-compras">Ver minhas compras</Link> · <Link href="/atendimento">Falar com a loja</Link></div> : null}
           {signedIn
             ? <button ref={submitRef} type="submit" className={cta} disabled={busy || total <= 0} aria-describedby={error ? errorId : undefined}>{busy ? <><LoaderCircle className={ui.spinner} size={18} aria-hidden="true" /> Preparando pedido…</> : <>Continuar para o pagamento<ArrowRight size={18} aria-hidden="true" /></>}</button>
             : total > 0 ? <a href={loginHref} className={cta}>Entrar e finalizar<ArrowRight size={18} aria-hidden="true" /></a>

@@ -3,16 +3,19 @@
 import { MessagesSquare, Minus, Plus, QrCode, ShieldAlert, ShoppingBag, TriangleAlert, X } from "lucide-react";
 import { createElement, useId, useState } from "react";
 import { formatShopPrice, shopProductDescription, type ShopProductView } from "@/lib/shop/catalog-view";
+import type { ShopInformation } from "@/lib/shop/information";
 import { ShopDialog } from "./shop-dialog";
 import { ProductImage } from "./product-image";
+import { DeliveryInformation } from "./shop-information";
 import { categoryVisual, cssVars, productIcon } from "./shop-visuals";
 import ui from "./shop.module.css";
 import styles from "./dialogs.module.css";
 
 /** "Item inspect": showcase art beside price, stock, requirements and the add-to-cart bar (a pinned bar on phones). */
-export function ProductDetail({ product, onClose, onAdd, notice, onDismissNotice }: {
+export function ProductDetail({ product, onClose, onAdd, notice, onDismissNotice, information }: {
   product: ShopProductView | null; onClose: () => void; onAdd: (product: ShopProductView, quantity: number) => void;
   notice?: string; onDismissNotice?: () => void;
+  information?: ShopInformation;
 }) {
   const [quantity, setQuantity] = useState(1);
   const qtyId = useId();
@@ -30,6 +33,7 @@ export function ProductDetail({ product, onClose, onAdd, notice, onDismissNotice
         <strong className={styles.detailPrice}>{formatShopPrice(product.priceCents)}</strong>
         <p className={styles.stock} data-state={!available ? "out" : product.unlimitedStock ? "open" : "limited"}>{available ? product.unlimitedStock ? "Disponível para comprar" : `${product.availableStock} ${product.availableStock === 1 ? "unidade disponível" : "unidades disponíveis"}` : "Indisponível no momento"}</p>
         {description ? <p className={styles.description}>{description}</p> : null}
+        <DeliveryInformation information={information} hasServices={product.isUpService} hasRobux={product.gameName.toLowerCase() === "robux"} />
         {product.isUpService ? <div className={styles.requirements}><h3><ShieldAlert size={16} aria-hidden="true" />Antes de contratar</h3>
           {product.serviceRequirements.map((requirement, i) => <p key={i}>{requirement}</p>)}</div> : null}
         <div className={styles.detailActions} data-available={available ? "true" : "false"}>

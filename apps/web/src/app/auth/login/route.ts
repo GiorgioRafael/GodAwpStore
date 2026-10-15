@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getGwStoreLoginOrigin, getStoreAuthSiteUrl } from "@/lib/env";
+import { getCustomerAuthProviders } from "@/lib/customer-auth-providers";
 import { publicRequestOrigin } from "@/lib/public-request-origin";
 import { AUTH_NEXT_COOKIE, AUTH_NEXT_MAX_AGE } from "@/lib/auth-next";
 import { gwStoreCustomerLoginHref, isGwStoreCustomerDestination } from "@/lib/gwstore-customer-auth";
@@ -19,6 +20,9 @@ export async function GET(request: NextRequest) {
     target.searchParams.set("next", next);
     // Redirect before the SSR client can write a host-scoped PKCE verifier.
     return NextResponse.redirect(target);
+  }
+  if (isCustomer && !(await getCustomerAuthProviders()).discord) {
+    return NextResponse.redirect(new URL(gwStoreCustomerLoginHref(next, { setup: true }), siteOrigin));
   }
   const supabase = await createServerSupabaseClient();
   if (!supabase) {

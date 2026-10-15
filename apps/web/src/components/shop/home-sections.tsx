@@ -12,7 +12,7 @@ import styles from "./home.module.css";
 // Factual copy only: no counts, ratings or delivery promises.
 const STEPS = [
   { icon: ShoppingBag, title: "Escolha seus itens", text: "Navegue pelas categorias e monte seu carrinho com até 5 produtos diferentes por pedido." },
-  { icon: QrCode, title: "Pague com Pix", text: "Entre com Google, Discord ou e-mail e gere o Pix do pedido. Seu carrinho é mantido durante o login." },
+  { icon: QrCode, title: "Pague com Pix", text: "Entre na sua conta e gere o Pix do pedido. Seu carrinho é mantido durante o login." },
   { icon: MessagesSquare, title: "Combine a entrega no chat", text: "Depois do pagamento, o chat privado da compra abre aqui no site para você falar com a equipe." },
 ];
 
@@ -33,7 +33,7 @@ export function StoreHero() {
       <ul className={styles.heroFacts}>
         <li><QrCode size={16} aria-hidden="true" />Pagamento via Pix</li>
         <li><MessagesSquare size={16} aria-hidden="true" />Chat privado com a equipe</li>
-        <li><UserRound size={16} aria-hidden="true" />Entre com Google, Discord ou e-mail</li></ul>
+        <li><UserRound size={16} aria-hidden="true" />Acompanhe pela sua conta</li></ul>
     </div>
   </section>;
 }
