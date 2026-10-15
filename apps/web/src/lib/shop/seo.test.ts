@@ -99,6 +99,28 @@ describe("publicação e compartilhamento da GWStore", () => {
     expect((await socialImage(request("https://101devs.com"))).status).toBe(404);
   });
 
+  it("entrega a capa na Railway quando a ponte preserva o host público apesar do forwarded-host substituído", async () => {
+    const railwayHost = "gwstore-web-production.up.railway.app";
+    vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "environment");
+    vi.stubEnv("RAILWAY_SERVICE_ID", "service");
+    vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", railwayHost);
+    vi.stubEnv("PORT", "8080");
+    const response = await socialImage(new Request("http://0.0.0.0:8080/loja-compartilhar.png", { headers: {
+      host: railwayHost, "x-forwarded-host": railwayHost, "x-forwarded-proto": "https",
+      "x-gwstore-public-host": "gwstoreofc.com",
+    } }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("image/png");
+    expect(await sharp(Buffer.from(await response.arrayBuffer())).metadata())
+      .toMatchObject({ format: "png", width: 1200, height: 630 });
+    for (const host of ["101devs.com", "thstoreadm.vercel.app", "evil.example"]) {
+      expect((await socialImage(new Request("http://0.0.0.0:8080/loja-compartilhar.png", { headers: {
+        host: railwayHost, "x-forwarded-host": railwayHost, "x-forwarded-proto": "https",
+        "x-gwstore-public-host": host,
+      } }))).status).toBe(404);
+    }
+  });
+
   it.each([
     ["/atendimento", supportMetadata], ["/termos", termsMetadata],
     ["/privacidade", privacyMetadata], ["/reembolsos", refundsMetadata],

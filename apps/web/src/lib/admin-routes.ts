@@ -26,6 +26,7 @@ const PUBLIC_EXACT = new Set([
   "/pagar",
   "/favicon.ico",
   "/icon.png",
+  "/loja-compartilhar.png",
   "/robots.txt",
   "/sitemap.xml",
   "/admin/discordbots/login",

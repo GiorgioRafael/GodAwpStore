@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -24,7 +25,8 @@ vi.mock("@/lib/auth-identity", () => ({
   parseMasterAdminGoogleEmails: () => new Set(["admin@example.com"]),
 }));
 
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
+import { publicRequestOrigin } from "@/lib/public-request-origin";
 
 describe("link de pagamento compartilhado com compradores", () => {
   beforeEach(() => {
@@ -41,6 +43,46 @@ describe("link de pagamento compartilhado com compradores", () => {
   });
 
   afterEach(() => vi.unstubAllEnvs());
+
+  it("executa o proxy da capa gerada e mantém os demais PNGs estáticos fora dele", () => {
+    expect(unstable_doesMiddlewareMatch({ config, url: "https://gwstoreofc.com/loja-compartilhar.png" })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config, url: "https://gwstoreofc.com/loja-compartilhar.png?v=1" })).toBe(true);
+    expect(unstable_doesMiddlewareMatch({ config, url: "https://gwstoreofc.com/brands/example.png" })).toBe(false);
+  });
+
+  it("encaminha a capa pela ponte com origem validada e permite a requisição anônima na Railway", async () => {
+    const railwayHost = "gwstore-web-production.up.railway.app";
+    vi.stubEnv("VERCEL", "1");
+    vi.stubEnv("GWSTORE_RAILWAY_ORIGIN", `https://${railwayHost}`);
+    const edge = await proxy(new NextRequest("https://gwstoreofc.com/loja-compartilhar.png", {
+      headers: { "x-gwstore-public-host": "101devs.com", "x-forwarded-host": "evil.example" },
+    }));
+    expect(edge.headers.get("x-middleware-next")).toBe("1");
+    expect(edge.headers.get("x-middleware-request-x-gwstore-public-host")).toBe("gwstoreofc.com");
+    expect(mocks.getUser).not.toHaveBeenCalled();
+
+    vi.stubEnv("VERCEL", "");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("RAILWAY_ENVIRONMENT_ID", "railway-environment");
+    vi.stubEnv("RAILWAY_SERVICE_ID", "railway-service");
+    vi.stubEnv("RAILWAY_PUBLIC_DOMAIN", railwayHost);
+    vi.stubEnv("PORT", "8080");
+    mocks.getUser.mockResolvedValue({ data: { user: null } });
+    const forwarded = new NextRequest("http://0.0.0.0:8080/loja-compartilhar.png", { headers: {
+      host: railwayHost, "x-forwarded-host": railwayHost, "x-forwarded-proto": "https",
+      "x-gwstore-public-host": edge.headers.get("x-middleware-request-x-gwstore-public-host")!,
+    } });
+    expect(publicRequestOrigin(forwarded)).toBe("https://gwstoreofc.com");
+    const backend = await proxy(forwarded);
+    expect(backend.headers.get("x-middleware-next")).toBe("1");
+    expect(backend.headers.get("location")).toBeNull();
+    expect(backend.headers.get("x-middleware-rewrite")).toBeNull();
+
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "");
+    const noAuthSetup = await proxy(forwarded);
+    expect(noAuthSetup.headers.get("x-middleware-next")).toBe("1");
+    expect(noAuthSetup.headers.get("location")).toBeNull();
+  });
 
   it("delega sessão e rotas legadas à Railway sem alterar o URL na ponte Vercel", async () => {
     vi.stubEnv("VERCEL", "1");

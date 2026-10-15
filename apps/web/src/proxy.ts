@@ -147,6 +147,9 @@ function redirectPreservingSession(
 
 export const config = {
   matcher: [
+    // This generated PNG needs the validated public-origin header before the
+    // Vercel rewrite; Railway's edge may replace x-forwarded-host.
+    "/loja-compartilhar.png",
     "/((?!_next/static|_next/image|discordbots-assets/|vc-ap-dfea66/|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
