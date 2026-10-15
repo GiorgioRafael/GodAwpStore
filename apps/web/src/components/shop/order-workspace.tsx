@@ -2,13 +2,18 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import QRCode from "qrcode";
-import { Check, CheckCheck, Copy, ExternalLink, LoaderCircle, Send } from "lucide-react";
+import {
+  Check, CheckCheck, CircleCheck, CircleX, Clock, Copy, CopyCheck, ExternalLink, Hourglass, LoaderCircle, LockKeyhole,
+  MessagesSquare, QrCode, RotateCcw, Send, TriangleAlert, type LucideIcon,
+} from "lucide-react";
 import type { ShopMessage, ShopOrderStatus } from "@/lib/shop/types";
-import { formatShopPrice } from "@/lib/shop/catalog-view";
+import { formatShopPrice, shopProductDisplayName } from "@/lib/shop/catalog-view";
 import { ShopDialog } from "./shop-dialog";
-import styles from "./shop.module.css";
+import { EmptyState, Kicker } from "./shop-ui";
+import ui from "./shop.module.css";
+import styles from "./account.module.css";
 
 type Chat = { messages: ShopMessage[]; canSend: boolean; deliveredAt: string | null };
 export function shopOrderStatusLabel(order: Pick<ShopOrderStatus, "status" | "paymentStatus" | "deliveredAt">): string {
@@ -19,6 +24,18 @@ export function shopOrderStatusLabel(order: Pick<ShopOrderStatus, "status" | "pa
   if (order.status === "expired" || order.paymentStatus === "expired") return "Pagamento expirado";
   return order.paymentStatus === "paid" ? "Em atendimento" : "Aguardando pagamento";
 }
+
+/** Colour family of a status label, shared by the orders list and the workspace (and the admin remap). */
+export type ShopOrderTone = "pending" | "active" | "done" | "halted" | "refunded" | "review";
+export function shopOrderStatusTone(order: Parameters<typeof shopOrderStatusLabel>[0]): ShopOrderTone {
+  return ({ "Entregue": "done", "Reembolsado": "refunded", "Análise necessária": "review", "Cancelado": "halted",
+    "Pagamento expirado": "halted", "Em atendimento": "active", "Aguardando pagamento": "pending" } as Record<string, ShopOrderTone>)[shopOrderStatusLabel(order)] ?? "pending";
+}
+export const ORDER_TONE_ICON: Record<ShopOrderTone, LucideIcon> = { pending: Hourglass, active: MessagesSquare, done: CircleCheck, halted: CircleX, refunded: RotateCcw, review: TriangleAlert };
+
+// None of these equals a status label: each label appears once, in the summary pill.
+const STEPS = ["Pedido", "Pagamento", "Atendimento", "Entrega"];
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
 export function ShopOrderWorkspace({ orderId, admin = false }: { orderId: string; admin?: boolean }) {
   const [order, setOrder] = useState<ShopOrderStatus | null>(null);
@@ -32,6 +49,7 @@ export function ShopOrderWorkspace({ orderId, admin = false }: { orderId: string
   const controller = useRef<AbortController | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const pendingMessage = useRef<{ body: string; id: string } | null>(null);
+  const pixTitleId = useId();
   const base = `/api/loja/pedidos/${encodeURIComponent(orderId)}`;
 
   const refresh = useCallback(async () => {
@@ -96,42 +114,78 @@ export function ShopOrderWorkspace({ orderId, admin = false }: { orderId: string
   }
   const payable = order?.status === "awaiting_payment" && order.paymentStatus !== "paid";
   const paymentUrl = order?.checkoutUrl && /^https:\/\//.test(order.checkoutUrl) ? order.checkoutUrl : null;
+  const tone = order ? shopOrderStatusTone(order) : "pending";
+  const reached = tone === "pending" ? 1 : tone === "active" ? 2 : 4;
 
-  return <div className={`${styles.shop} ${styles.workspaceTheme}`}>
-    {error ? <p className={styles.error} role="alert">{error}<button className={styles.secondaryButton} onClick={() => void refresh()}>Atualizar</button></p> : null}
-    {!order ? <p className={styles.smallNote} role="status">{error ? "Não foi possível abrir esta compra." : "Carregando pedido…"}</p>
+  return <div className={`${ui.shop} ${ui.workspaceTheme}`} data-context={admin ? "admin" : "customer"}>
+    {error ? <p className={ui.error} role="alert">{error}<button className={ui.secondaryButton} onClick={() => void refresh()}>Atualizar</button></p> : null}
+    {!order ? <>
+        {error ? null : <div className={styles.workspaceSkeleton} aria-hidden="true"><div className={`${ui.skeleton} ${styles.skeletonAside}`} /><div className={`${ui.skeleton} ${styles.skeletonMain}`} /></div>}
+        <p className={ui.smallNote} role="status">{error ? "Não foi possível abrir esta compra." : "Carregando pedido…"}</p></>
       : <div className={styles.orderWorkspace}>
-        <aside className={styles.orderSummary}><h2>Pedido #{order.orderId.slice(0, 8).toUpperCase()}</h2><span className={styles.orderStatus}>{shopOrderStatusLabel(order)}</span>
-          <strong className={styles.orderAmount}>{formatShopPrice(order.totalPriceCents)}</strong>
-          <div className={styles.orderItems}>{order.items.map((item, i) => <div key={i}>{item.quantity}× {item.productName}</div>)}</div>
-          <p>Roblox: <strong>{order.gameNickname || "Não informado"}</strong></p><p>{new Date(order.createdAt).toLocaleString("pt-BR")}</p>
-          {admin ? <p>Comprador: {order.buyerName}</p> : null}
-          {payable ? <>
-            {order.pixCode && qr ? <>{/* The QR is generated locally; the payment code never goes to an external image service. */}
-              <Image unoptimized className={styles.paymentQr} src={qr} alt="QR Code Pix do seu pedido" width={280} height={280} /><code className={styles.paymentCode}>{order.pixCode}</code>
-              <button className={styles.secondaryButton} onClick={async () => { try { await navigator.clipboard.writeText(order.pixCode!); setCopied(true); } catch { setError("Copie o código Pix exibido acima."); } }}>{copied ? <Check size={16} /> : <Copy size={16} />}{copied ? "Código copiado" : "Copiar código Pix"}</button>
-            </> : paymentUrl ? <a className={styles.primaryButton} href={paymentUrl} target="_blank" rel="noopener noreferrer">Pagar com Pix <ExternalLink size={16} /></a> : <p className={styles.smallNote}>O Pix está sendo preparado. Retome pelo carrinho se necessário.</p>}
-            {order.paymentExpiresAt ? <p className={styles.smallNote}>Pix válido até {new Date(order.paymentExpiresAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.</p> : null}
-            <p className={styles.smallNote}>A confirmação aparece automaticamente aqui após o pagamento.</p>
-          </> : null}
-          {admin && order.paymentStatus === "paid" && !order.deliveredAt && !["cancelled", "canceled", "expired"].includes(order.status) ? <button className={styles.primaryButton} onClick={() => setDeliveryConfirm(true)} disabled={busy}><CheckCheck size={18} /> Concluir entrega</button> : null}
+        <aside className={styles.orderSummary} data-tone={tone}>
+          <div className={styles.orderSummaryHead}><h2>Pedido #{order.orderId.slice(0, 8).toUpperCase()}</h2>
+            <span className={styles.orderStatus} data-tone={tone}>{shopOrderStatusLabel(order)}</span></div>
+          {tone === "pending" || tone === "active" || tone === "done" ? <ol className={styles.stepper} aria-label="Etapas da compra">{STEPS.map((step, i) => {
+            const state = i < reached ? "done" : i === reached ? "current" : "todo";
+            return <li key={step} data-state={state} aria-current={state === "current" ? "step" : undefined}>
+              <span className={styles.stepDot} aria-hidden="true">{state === "done" ? <Check size={14} strokeWidth={3} aria-hidden="true" /> : i + 1}</span><span>{step}</span>
+              <span className="sr-only">{state === "done" ? " (concluída)" : state === "current" ? " (etapa atual)" : ""}</span></li>;
+          })}</ol> : null}
+          <div className={styles.orderAmount}><span>Total</span><strong>{formatShopPrice(order.totalPriceCents)}</strong></div>
+          <ul className={styles.orderItems}>{order.items.map((item, i) => <li key={i}><span className={styles.qtyBadge}>{item.quantity}×</span>{shopProductDisplayName(item.productName)}</li>)}</ul>
+          <dl className={styles.orderMeta}>
+            <dt>Roblox</dt><dd>{order.gameNickname ? <span className={styles.nickname}>{order.gameNickname}</span> : "Não informado"}</dd>
+            <dt>Data</dt><dd>{new Date(order.createdAt).toLocaleString("pt-BR")}</dd></dl>
+          {admin ? <p className={styles.orderBuyer}>{`Comprador: ${order.buyerName}`}</p> : null}
+          {admin && order.paymentStatus === "paid" && !order.deliveredAt && !["cancelled", "canceled", "expired"].includes(order.status) ? <button className={`${ui.primaryButton} ${styles.deliverButton}`} onClick={() => setDeliveryConfirm(true)} disabled={busy}><CheckCheck size={18} aria-hidden="true" /> Concluir entrega</button> : null}
         </aside>
-        <section className={styles.chatPanel} aria-label="Chat privado da compra"><header className={styles.chatHeader}><h2>Atendimento da compra</h2><p>Conversa privada entre o comprador e a equipe da GWStore.</p></header>
-          {!order.paidAt && order.paymentStatus !== "paid" ? <div className={styles.emptyState}><h3>Seu chat abre após o pagamento</h3><p>Assim que o Pix for confirmado, converse por aqui para combinar a entrega.</p><Link href="/" className={styles.secondaryButton}>Voltar à loja</Link></div>
-            : <><div className={styles.messages} ref={messagesRef} role="log" aria-label="Mensagens do atendimento" aria-live="polite">
-              {!chat?.messages.length ? <p className={styles.messageSystem}>Pagamento confirmado. Envie uma mensagem para combinar a entrega com a equipe.</p> : chat.messages.map(message => message.authorRole === "system" ? <p key={message.id} className={styles.messageSystem}>{message.body}</p>
-                : <div key={message.id} className={`${styles.message} ${(admin ? message.authorRole === "staff" : message.authorRole === "buyer") ? styles.messageOwn : ""}`}>
-                  <div className={styles.messageMeta}><strong>{message.authorRole === "staff" ? "Equipe GWStore" : message.authorName}</strong><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</time></div><div className={styles.messageBody}>{message.body}</div>
-                </div>)}
-            </div><form className={styles.composer} onSubmit={send}><label className="sr-only" htmlFor={`message-${orderId}`}>Sua mensagem</label>
-              <textarea id={`message-${orderId}`} maxLength={2000} placeholder={chat?.canSend ? "Escreva sua mensagem…" : "O atendimento desta compra está encerrado."} value={body} disabled={busy || !chat?.canSend} onChange={event => setBody(event.target.value)} />
-              <div className={styles.composerFooter}><p>{order.deliveredAt ? "Entrega concluída. O histórico fica salvo nesta compra." : "Combine a entrega e tire suas dúvidas por aqui."}</p><button className={styles.primaryButton} disabled={busy || !body.trim() || !chat?.canSend}>{busy ? <LoaderCircle className={styles.spinner} size={16} /> : <Send size={16} />} Enviar</button></div>
-            </form></>}
-        </section>
+        <div className={styles.workspaceMain}>
+          {payable ? <section className={styles.pixPanel} aria-labelledby={pixTitleId}>
+            <div className={styles.pixHead}><Kicker icon={QrCode}>Pagamento</Kicker><h2 id={pixTitleId}>Pague com Pix</h2>
+              {order.paymentExpiresAt ? <p className={styles.pixExpiry}><Clock size={14} aria-hidden="true" />Pix válido até {clock(order.paymentExpiresAt)}</p> : null}</div>
+            {order.pixCode && qr ? <div className={styles.pixBody}>{/* The QR is generated locally; the payment code never goes to an external image service. */}
+                <div className={styles.qrFrame}><Image unoptimized className={styles.paymentQr} src={qr} alt="QR Code Pix do seu pedido" width={280} height={280} /></div>
+                <div className={styles.pixCopy}>
+                  <p className={styles.pixMobileHint}>No celular? Copie o código e cole no app do seu banco, em Pix copia e cola.</p>
+                  <p className={styles.pixLabel}>Pix copia e cola</p>
+                  <div className={styles.codeBox}><code className={styles.paymentCode}>{order.pixCode}</code></div>
+                  <button className={`${ui.primaryButton} ${styles.copyButton}`} data-copied={copied || undefined} onClick={async () => { try { await navigator.clipboard.writeText(order.pixCode!); setCopied(true); } catch { setError("Copie o código Pix exibido acima."); } }}>
+                    {copied ? <CopyCheck size={18} aria-hidden="true" /> : <Copy size={18} aria-hidden="true" />}{copied ? "Código copiado" : "Copiar código Pix"}</button>
+                  <ol className={styles.pixSteps}><li>Abra o app do seu banco e escolha Pix.</li><li>Escaneie o QR Code ou use o Pix copia e cola.</li><li>Confirme o pagamento no app do banco.</li></ol>
+                </div></div>
+              : paymentUrl ? <a className={ui.primaryButton} href={paymentUrl} target="_blank" rel="noopener noreferrer">Pagar com Pix <ExternalLink size={16} aria-hidden="true" /></a>
+              : <p className={ui.smallNote}>O Pix está sendo preparado. Retome pelo carrinho se necessário.</p>}
+            <p className={styles.pixWaiting}><span className={styles.liveDot} aria-hidden="true" />A confirmação aparece automaticamente aqui após o pagamento.</p>
+          </section> : null}
+          <section className={styles.chatPanel} aria-label="Chat privado da compra"><header className={styles.chatHeader}>
+            <span className={styles.chatSeal} aria-hidden="true">GW</span>
+            <div className={styles.chatTitle}><h2>Atendimento da compra</h2><p>Conversa privada entre o comprador e a equipe da GWStore.</p></div>
+            {chat ? <span className={styles.chatState} data-open={chat.canSend || undefined}>{chat.canSend ? "Chat aberto" : "Chat encerrado"}</span> : null}
+          </header>
+            {!order.paidAt && order.paymentStatus !== "paid" ? <EmptyState icon={LockKeyhole} inset title="Seu chat abre após o pagamento"
+                text="Assim que o Pix for confirmado, converse por aqui para combinar a entrega." action={admin ? null : <Link href="/" className={ui.secondaryButton}>Voltar à loja</Link>} />
+              : <><div className={styles.messages} ref={messagesRef} role="log" aria-label="Mensagens do atendimento" aria-live="polite">
+                {!chat?.messages.length ? <p className={styles.messageSystem}>Pagamento confirmado. Envie uma mensagem para combinar a entrega com a equipe.</p> : chat.messages.map(message => {
+                  if (message.authorRole === "system") return <p key={message.id} className={styles.messageSystem}>{message.body}</p>;
+                  const own = admin ? message.authorRole === "staff" : message.authorRole === "buyer";
+                  return <div key={message.id} className={`${styles.message} ${own ? styles.messageOwn : ""}`}>
+                    {!own ? <span className={styles.messageAvatar} data-role={message.authorRole} aria-hidden="true">{message.authorRole === "staff" ? "GW" : (message.authorName.trim().charAt(0) || "?").toUpperCase()}</span> : null}
+                    <div className={styles.messageStack}><div className={styles.messageMeta}><strong>{message.authorRole === "staff" ? "Equipe GWStore" : message.authorName}</strong><time dateTime={message.createdAt}>{clock(message.createdAt)}</time></div>
+                      <div className={styles.messageBody}>{message.body}</div></div>
+                  </div>;
+                })}
+              </div><form className={styles.composer} onSubmit={send}><label className="sr-only" htmlFor={`message-${orderId}`}>Sua mensagem</label>
+                <textarea id={`message-${orderId}`} className={`${ui.input} ${styles.composerInput}`} maxLength={2000} placeholder={chat?.canSend ? "Escreva sua mensagem…" : "O atendimento desta compra está encerrado."} value={body} disabled={busy || !chat?.canSend} onChange={event => setBody(event.target.value)} />
+                <div className={styles.composerFooter}><p>{order.deliveredAt ? "Entrega concluída. O histórico fica salvo nesta compra." : "Combine a entrega e tire suas dúvidas por aqui."}</p>
+                  <button className={`${ui.primaryButton} ${styles.sendButton}`} disabled={busy || !body.trim() || !chat?.canSend}>{busy ? <LoaderCircle className={ui.spinner} size={16} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />} Enviar</button></div>
+              </form></>}
+          </section>
+        </div>
       </div>}
     <ShopDialog open={deliveryConfirm} onClose={() => { if (!busy) setDeliveryConfirm(false); }} title="Concluir entrega">
-      <p className={styles.description}>Confirme somente depois de entregar todos os itens deste pedido. A compra será marcada como entregue e o comprador verá a confirmação no chat.</p>
-      <button className={styles.primaryButton} onClick={() => void finishDelivery()} disabled={busy}>{busy ? "Concluindo…" : "Confirmar entrega"}</button>
+      <p className={styles.confirmText}>Confirme somente depois de entregar todos os itens deste pedido. A compra será marcada como entregue e o comprador verá a confirmação no chat.</p>
+      <button className={`${ui.primaryButton} ${styles.confirmButton}`} onClick={() => void finishDelivery()} disabled={busy}>{busy ? "Concluindo…" : "Confirmar entrega"}</button>
     </ShopDialog>
   </div>;
 }

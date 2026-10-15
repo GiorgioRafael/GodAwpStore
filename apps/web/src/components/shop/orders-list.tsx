@@ -2,11 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowRight, ReceiptText, RefreshCw } from "lucide-react";
 import type { ShopOrderSummary } from "@/lib/shop/types";
-import { formatShopPrice } from "@/lib/shop/catalog-view";
-import { shopOrderStatusLabel } from "./order-workspace";
-import styles from "./shop.module.css";
+import { formatShopPrice, shopProductDisplayName } from "@/lib/shop/catalog-view";
+import { ORDER_TONE_ICON, shopOrderStatusLabel, shopOrderStatusTone, type ShopOrderTone } from "./order-workspace";
+import { Emblem, EmptyState, Kicker } from "./shop-ui";
+import ui from "./shop.module.css";
+import styles from "./account.module.css";
+
+// The buyer's next step for each status tone.
+const ACTION: Record<ShopOrderTone, string> = { pending: "Pagar", active: "Abrir chat", review: "Abrir chat", done: "Ver conversa", halted: "Ver pedido", refunded: "Ver pedido" };
 
 export function ShopOrdersList() {
   const [orders, setOrders] = useState<ShopOrderSummary[] | null>(null);
@@ -30,14 +35,24 @@ export function ShopOrdersList() {
     return () => { active = false; controller.current?.abort(); controller.current = null; };
   }, [refresh]);
   return <>
-    <div className={styles.accountTitle}><div><h1>Minhas compras</h1><p>Acompanhe o pagamento e converse com a equipe para receber seus itens.</p></div>
-      <button className={styles.secondaryButton} onClick={() => void refresh()} disabled={busy}><RefreshCw size={16} /> Atualizar</button></div>
-    {error ? <p className={styles.error} role="alert">{error}</p> : null}
-    {!orders ? <p className={styles.smallNote} role="status">{busy ? "Carregando suas compras…" : "Atualize para consultar suas compras."}</p>
-      : !orders.length ? <div className={styles.emptyState}><h3>Sua primeira compra começa na loja</h3><p>Os pedidos e chats aparecerão aqui.</p><Link href="/#catalogo" className={styles.primaryButton}>Explorar produtos <ArrowRight size={17} /></Link></div>
-      : <div className={styles.orderList}>{orders.map(order => <Link href={`/minhas-compras/${order.orderId}`} key={order.orderId} className={styles.orderCard}>
-        <div><h2>{order.items.map(item => `${item.quantity}× ${item.productName}`).join(" · ")}</h2><span className={styles.orderStatus}>{shopOrderStatusLabel(order)}</span><p>Pedido #{order.orderId.slice(0, 8).toUpperCase()} · {new Date(order.createdAt).toLocaleDateString("pt-BR")}</p></div>
-        <div><strong>{formatShopPrice(order.totalPriceCents)}</strong><p>{order.paymentStatus === "paid" ? "Abrir chat" : "Ver pedido"} →</p></div>
-      </Link>)}</div>}
+    <div className={styles.accountTitle}><div><Kicker>Sua conta</Kicker><h1>Minhas compras</h1><p>Acompanhe o pagamento e converse com a equipe para receber seus itens.</p></div>
+      <button className={ui.secondaryButton} onClick={() => void refresh()} disabled={busy}><RefreshCw size={16} aria-hidden="true" className={busy ? ui.spinner : undefined} /> Atualizar</button></div>
+    {error ? <p className={ui.error} role="alert">{error}</p> : null}
+    {!orders ? <>
+        {busy ? <div className={styles.orderList} aria-hidden="true">{[0, 1, 2].map(i => <div key={i} className={`${ui.skeleton} ${styles.orderSkeleton}`} />)}</div> : null}
+        <p className={ui.smallNote} role="status">{busy ? "Carregando suas compras…" : "Atualize para consultar suas compras."}</p></>
+      : !orders.length ? <EmptyState icon={ReceiptText} title="Sua primeira compra começa na loja" text="Os pedidos e chats aparecerão aqui."
+          action={<Link href="/#catalogo" className={ui.primaryButton}>Explorar produtos <ArrowRight size={17} aria-hidden="true" /></Link>} />
+      : <div className={styles.orderList}>{orders.map(order => {
+        const tone = shopOrderStatusTone(order); const ToneIcon = ORDER_TONE_ICON[tone];
+        return <Link href={`/minhas-compras/${order.orderId}`} key={order.orderId} className={styles.orderCard} data-tone={tone}>
+          <Emblem icon={ToneIcon} size="m" hue="var(--tone)" className={styles.orderEmblem} />
+          <div className={styles.orderCardBody}><h2>{order.items.map(item => `${item.quantity}× ${shopProductDisplayName(item.productName)}`).join(" · ")}</h2>
+            <div className={styles.orderCardMeta}><span className={styles.orderStatus} data-tone={tone}>{shopOrderStatusLabel(order)}</span>
+              <p>Pedido #{order.orderId.slice(0, 8).toUpperCase()} · {new Date(order.createdAt).toLocaleDateString("pt-BR")}</p></div></div>
+          <div className={styles.orderCardAside}><strong>{formatShopPrice(order.totalPriceCents)}</strong>
+            <span className={styles.orderAction}>{ACTION[tone]}<ArrowRight size={15} aria-hidden="true" /></span></div>
+        </Link>;
+      })}</div>}
   </>;
 }

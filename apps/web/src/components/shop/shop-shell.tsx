@@ -1,14 +1,21 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowLeft, LogOut } from "lucide-react";
-import { BrandMark } from "@/components/layout/brand-mark";
-import styles from "./shop.module.css";
+import { ArrowLeft, LogOut, ReceiptText, Store } from "lucide-react";
+import { ShopBrandLink } from "./shop-ui";
+import ui from "./shop.module.css";
+import styles from "./account.module.css";
 
+/** Signed-in account chrome (orders list and order page): store header, centred main column, slim footer. */
 export function ShopShell({ children, buyerName }: { children: ReactNode; buyerName: string }) {
-  return <div className={styles.shop}><header className={styles.header}><div className={styles.headerInner}>
-    <Link href="/" className={styles.brand} aria-label="GWStore, início"><span className={styles.brandMark}><BrandMark /></span><span>GW<span>Store</span></span></Link>
-    <nav className={styles.headerActions} aria-label="Sua conta"><Link href="/minhas-compras" className={styles.accountLink}>Minhas compras</Link>
-      <form action="/auth/logout?next=%2F" method="POST"><button type="submit" className={styles.iconButton} aria-label={`Sair da conta de ${buyerName}`}><LogOut size={18} /></button></form>
-    </nav>
-  </div></header><main className={styles.accountContainer}>{children}</main><footer className={styles.footer}><div className={styles.footerInner}><Link href="/" className={styles.accountLink}><ArrowLeft size={15} /> Voltar à loja</Link><span className={styles.smallNote}>GWStore · Atendimento pelo site</span></div></footer></div>;
+  return <div className={`${ui.shop} ${styles.shell}`}><header className={ui.header}><div className={ui.headerInner}>
+    <ShopBrandLink label="GWStore, início" />
+    <nav className={ui.headerActions} aria-label="Sua conta">
+      <Link href="/" className={ui.accountLink}><Store size={18} aria-hidden="true" /><span className={ui.accountText}>Loja</span></Link>
+      <Link href="/minhas-compras" className={ui.accountLink}><ReceiptText size={18} aria-hidden="true" /><span className={ui.accountText}>Minhas compras</span></Link>
+      <form action="/auth/logout?next=%2F" method="POST"><button type="submit" className={ui.iconButton} title="Sair" aria-label={`Sair da conta de ${buyerName}`}><LogOut size={18} aria-hidden="true" /></button></form>
+    </nav></div></header>
+    <main className={`${ui.container} ${styles.accountContainer}`}>{children}</main>
+    <footer className={ui.footer}><div className={`${ui.footerInner} ${ui.footerSlim}`}>
+      <Link href="/" className={ui.accountLink}><ArrowLeft size={15} aria-hidden="true" /> Voltar à loja</Link><span className={ui.smallNote}>GWStore · Atendimento pelo site</span></div></footer>
+  </div>;
 }

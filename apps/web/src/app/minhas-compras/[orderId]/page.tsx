@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { ShopShell } from "@/components/shop/shop-shell";
 import { ShopOrderWorkspace } from "@/components/shop/order-workspace";
-import styles from "@/components/shop/shop.module.css";
+import { Kicker } from "@/components/shop/shop-ui";
+import account from "@/components/shop/account.module.css";
 import { requireShopBuyer } from "@/lib/shop/request";
 import { ShopError } from "@/lib/shop/errors";
 
@@ -15,5 +16,9 @@ export default async function CustomerOrderPage({ params }: { params: Promise<{ 
     if (error instanceof ShopError && error.code === "unauthenticated") redirect(`/entrar?next=${encodeURIComponent(`/minhas-compras/${orderId}`)}`);
     throw error;
   });
-  return <ShopShell buyerName={buyer.displayName}><div className={styles.accountTitle}><div><h1>Sua compra</h1><p>Pagamento, conversa e entrega em um só lugar.</p></div><Link href="/minhas-compras" className={styles.accountLink}><ArrowLeft size={16} /> Minhas compras</Link></div><ShopOrderWorkspace orderId={orderId} /></ShopShell>;
+  return <ShopShell buyerName={buyer.displayName}>
+    <Link href="/minhas-compras" className={account.crumb}><ArrowLeft size={16} aria-hidden="true" /> Minhas compras</Link>
+    <div className={account.accountTitle}><div><Kicker>Pedido</Kicker><h1>Sua compra</h1><p>Pagamento, conversa e entrega em um só lugar.</p></div></div>
+    <ShopOrderWorkspace orderId={orderId} />
+  </ShopShell>;
 }

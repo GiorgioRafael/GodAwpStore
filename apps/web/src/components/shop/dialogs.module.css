@@ -1,0 +1,548 @@
+/* Product detail and cart drawer contents (owner: C, spec section 7). The dialog shell lives in shop.module.css.
+   Import the foundation as `ui` from ./shop.module.css; tokens come from .shop. The product stage is B's
+   ProductImage: it is sized here only through its stable data-variant attribute. */
+
+/* ── Product detail ("item inspect") ────────────────────────────────────── */
+
+.detailGrid {
+  display:grid;
+  grid-template-columns:1.05fr 1fr;
+  gap:28px;
+  align-items:start;
+}
+
+.detailShowcase {
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(236,0,156,.3);
+  border:1px solid color-mix(in srgb,var(--hue) 30%,transparent);
+  border-radius:18px;
+  box-shadow:0 30px 60px -40px color-mix(in srgb,var(--hue) 70%,transparent);
+}
+/* One fixed track, so the stage's img (height:100%) resolves against it at every aspect ratio. */
+.detailShowcase [data-variant="showcase"] { grid-template:minmax(0,1fr) / minmax(0,1fr); border-radius:0; }
+
+.showcaseChip {
+  position:absolute;
+  left:12px;
+  bottom:12px;
+  z-index:2;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  max-width:calc(100% - 24px);
+  height:28px;
+  padding:0 10px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:999px;
+  background:rgba(7,5,10,.7);
+  color:var(--text-1);
+  font:600 12px/1 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.showcaseChip svg { flex:none; color:var(--hue); }
+/* Fallback art already names the group or category in large type; the chip only labels real photos. */
+.detailShowcase:has([data-variant="showcase"] > [aria-hidden="true"]) .showcaseChip { display:none; }
+
+.detailContent {
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  padding-top:4px;
+}
+
+.detailKicker {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0;
+  color:var(--text-3);
+  font:600 12px/1.4 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.14em;
+}
+.detailKicker::before { /* hue diamond */
+  content:"";
+  flex:none;
+  width:7px;
+  height:7px;
+  transform:rotate(45deg);
+  border-radius:1px;
+  background:var(--hue);
+  box-shadow:0 0 10px color-mix(in srgb,var(--hue) 70%,transparent);
+}
+
+.detailPrice {
+  display:block;
+  margin:12px 0 0;
+  color:var(--text-1);
+  font:700 40px/1 var(--font-display);
+  font-variant-numeric:tabular-nums;
+  letter-spacing:-.01em;
+}
+
+.stock {
+  display:inline-flex;
+  align-items:center;
+  align-self:flex-start;
+  gap:8px;
+  height:28px;
+  margin:14px 0 0;
+  padding:0 12px;
+  border-radius:999px;
+  font-size:13px;
+  line-height:1;
+}
+.stock::before { content:""; flex:none; width:8px; height:8px; border-radius:50%; background:currentColor; }
+.stock[data-state="open"] { border:1px solid rgba(111,224,168,.35); background:rgba(111,224,168,.10); color:var(--success); }
+.stock[data-state="limited"] { border:1px solid rgba(255,209,102,.35); background:rgba(255,209,102,.10); color:var(--warning); }
+.stock[data-state="out"] { border:1px solid var(--line-2); background:rgba(255,255,255,.04); color:var(--text-2); }
+
+.description {
+  margin:16px 0 0;
+  color:var(--text-2);
+  font-size:14.5px;
+  line-height:1.65;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+/* Callout shared by the detail ("Antes de contratar") and the cart ("Requisitos dos serviços"). */
+.requirements {
+  margin:16px 0 0;
+  padding:14px 16px;
+  border:1px solid rgba(236,0,156,.35);
+  border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);
+  border-left:3px solid var(--accent);
+  border-radius:14px;
+  background:#22102a;
+  background:color-mix(in srgb,var(--accent) 9%,var(--ink-2));
+}
+.requirements h3 {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:0 0 8px;
+  color:var(--accent-ink);
+  font:700 14px/1.2 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+.requirements h3 svg { flex:none; color:var(--accent-text); }
+.requirements p {
+  margin:6px 0 0;
+  color:var(--text-2);
+  font-size:13.5px;
+  line-height:1.55;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+}
+
+/* Stepper and CTA share a row; the CTA drops below when the column is narrow (tablet). */
+.detailActions {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:12px;
+  margin-top:22px;
+}
+.detailActions[data-available="false"] .qtyField { opacity:.5; }
+/* The storefront notice, in flow at the top of the add-to-cart bar (ui.notice is a fixed toast on the page). */
+.detailActions .detailNotice { flex-basis:100%; grid-column:1 / -1; position:static; translate:none; width:auto; max-width:none; margin:0; box-shadow:none; }
+.detailNotice > span { flex:1; }
+
+.qtyField label {
+  display:block;
+  margin-bottom:8px;
+  color:var(--text-2);
+  font:600 12px/1 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.1em;
+}
+
+.qtyField { flex:none; }
+.qtyField .quantityControl button { width:42px; }
+.qtyField .quantityControl input { width:52px; }
+
+.detailActions .addButton { flex:1 1 248px; min-height:48px; padding-inline:16px; gap:8px; letter-spacing:.05em; }
+.addButton svg { flex:none; }
+
+.subtotal {
+  flex-basis:100%;
+  grid-column:1/-1;
+  margin:0;
+  color:var(--text-2);
+  font-size:13.5px;
+  font-variant-numeric:tabular-nums;
+}
+
+.perks {
+  display:grid;
+  gap:10px;
+  margin:20px 0 0;
+  padding:16px 0 0;
+  border-top:1px solid var(--line-1);
+  color:var(--text-2);
+  font-size:13px;
+  line-height:1.4;
+  list-style:none;
+}
+.perks li { display:flex; align-items:center; gap:10px; }
+.perks svg { flex:none; color:var(--accent-text); }
+
+/* ── Quantity stepper (detail and cart lines) ───────────────────────────── */
+
+.quantityControl {
+  display:inline-flex;
+  height:48px;
+  overflow:hidden;
+  border:1px solid var(--line-input);
+  border-radius:12px;
+  background:var(--ink-3);
+  transition:border-color var(--dur-2),box-shadow var(--dur-2);
+}
+.quantityControl button {
+  display:grid;
+  place-items:center;
+  flex:none;
+  width:44px;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--text-2);
+  transition:background var(--dur-2),color var(--dur-2);
+}
+/* The control clips its children, so their rings are drawn inside. */
+.quantityControl button:focus-visible { outline-offset:-3px; border-radius:10px; }
+.quantityControl input {
+  width:56px;
+  min-width:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:var(--text-1);
+  font:700 16px/1 var(--font-display);
+  font-variant-numeric:tabular-nums;
+  text-align:center;
+  appearance:textfield;
+  -moz-appearance:textfield;
+}
+.quantityControl input::-webkit-inner-spin-button,
+.quantityControl input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.quantityControl input:focus-visible { outline-offset:-3px; border-radius:8px; }
+@supports selector(:has(*)) {
+  .quantityControl input:focus-visible { outline:none; }
+  .quantityControl:has(input:focus) {
+    border-color:var(--accent-hi);
+    box-shadow:0 0 0 3px rgba(236,0,156,.22);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 25%,transparent);
+  }
+}
+
+.quantityControl[data-size="sm"] { height:36px; border-radius:10px; }
+.quantityControl[data-size="sm"] button { width:34px; }
+.quantityControl[data-size="sm"] input { width:44px; font-size:14px; }
+
+@media (hover:hover) and (pointer:fine) {
+  .quantityControl button:hover:not(:disabled) { background:var(--ink-4); color:var(--text-1); }
+}
+
+/* ── Cart drawer ────────────────────────────────────────────────────────── */
+
+.cartEmpty { flex:1; display:grid; align-content:center; }
+
+.cartForm { flex:1; display:flex; flex-direction:column; }
+
+.checkoutSteps {
+  display:flex;
+  gap:6px;
+  margin:0 0 16px;
+  padding:0;
+  list-style:none;
+  counter-reset:step;
+}
+.checkoutSteps li {
+  flex:1 1 auto;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  height:32px;
+  padding:0 10px;
+  border:1px solid var(--line-1);
+  border-radius:999px;
+  background:rgba(255,255,255,.03);
+  color:var(--text-3);
+  font:600 12px/1 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  white-space:nowrap;
+}
+.checkoutSteps li::before {
+  counter-increment:step;
+  content:counter(step);
+  flex:none;
+  display:grid;
+  place-items:center;
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:var(--ink-3);
+  color:var(--text-2);
+  font-size:12px;
+  letter-spacing:0;
+}
+.checkoutSteps li[data-state="done"] { color:var(--text-2); }
+.checkoutSteps li[data-state="done"]::before {
+  content:"✓";
+  content:"✓" / ""; /* decorative: not read out */
+  background:rgba(111,224,168,.16);
+  color:var(--success);
+}
+.checkoutSteps li[data-state="current"] {
+  border-color:rgba(236,0,156,.5);
+  border-color:color-mix(in srgb,var(--accent) 50%,transparent);
+  background:var(--accent-tint);
+  color:var(--text-1);
+}
+.checkoutSteps li[data-state="current"]::before { background:var(--accent-fill); color:var(--on-accent); }
+
+.cartLines { display:flex; flex-direction:column; gap:10px; }
+
+/* thumb | name ........ remove
+   thumb | unit price
+   thumb | stepper ..... line total   (the two wrappers are display:contents) */
+.cartLine {
+  display:grid;
+  grid-template-columns:64px minmax(0,1fr) auto;
+  grid-template-rows:auto auto 1fr;
+  column-gap:12px;
+  padding:12px;
+  border:1px solid var(--line-1);
+  border-radius:14px;
+  background:var(--ink-1);
+}
+.cartLine > [data-variant="thumb"] { grid-area:1 / 1 / 4 / 2; width:64px; align-self:start; }
+
+.cartLineContent,
+.cartLinePrice { display:contents; }
+.cartLineContent h3 {
+  grid-area:1 / 2;
+  align-self:center;
+  display:-webkit-box;
+  min-width:0;
+  margin:0;
+  overflow:hidden;
+  font:600 14px/1.35 var(--font-body);
+  overflow-wrap:anywhere;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+}
+.cartLineContent p { grid-area:2 / 2 / 3 / 4; margin:2px 0 10px; color:var(--text-3); font-size:12.5px; line-height:1.4; }
+.cartLineContent .quantityControl { grid-area:3 / 2; justify-self:start; align-self:end; }
+
+.cartLinePrice strong {
+  grid-area:3 / 3;
+  align-self:center;
+  justify-self:end;
+  color:var(--text-1);
+  font:700 16px/1.2 var(--font-display);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+/* Negative margins tuck the 36px target into the corner without growing the name row. */
+.cartLinePrice .remove { grid-area:1 / 3; justify-self:end; width:36px; height:36px; margin:-8px -8px -6px 0; }
+@media (hover:hover) and (pointer:fine) {
+  .cartLinePrice .remove:hover:not(:disabled) { color:var(--danger); }
+}
+
+.limitNote {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:12px 0 0;
+  padding:10px 12px;
+  border:1px solid rgba(158,197,255,.3);
+  border-radius:12px;
+  background:rgba(158,197,255,.08);
+  color:var(--info);
+  font-size:13px;
+  line-height:1.45;
+}
+.limitNote svg { flex:none; }
+
+.cartSection { margin:18px 0 24px; }
+
+.requirementItem + .requirementItem {
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid rgba(236,0,156,.18);
+  border-top:1px solid color-mix(in srgb,var(--accent) 18%,transparent);
+}
+.requirementItem strong { display:block; margin-top:2px; color:var(--text-1); font:600 13.5px/1.35 var(--font-body); }
+.requirements .confirm { margin-top:14px; }
+
+.loginNote {
+  display:grid;
+  grid-template-columns:52px minmax(0,1fr);
+  align-items:center;
+  gap:12px;
+  padding:16px;
+  border:1px solid rgba(236,0,156,.35);
+  border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);
+  border-radius:14px;
+  background:var(--accent-tint);
+}
+.loginNote h3 {
+  margin:0 0 4px;
+  color:var(--text-1);
+  font:700 15px/1.2 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+.loginNote p { margin:0; color:var(--text-2); font-size:13.5px; line-height:1.5; }
+
+/* Pinned to the drawer bottom (margin-top:auto) and sticky while the lines scroll. */
+.cartFooter {
+  position:sticky;
+  bottom:0;
+  z-index:3;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  column-gap:16px;
+  margin:auto -22px -22px;
+  padding:16px 22px calc(18px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line-1);
+  background:var(--ink-2);
+  box-shadow:0 -22px 32px -24px rgba(0,0,0,.9);
+}
+/* Focus scrolling keeps each control clear of the sticky header (~82px) and this footer (~185px). */
+dialog:has(.cartFooter) { scroll-padding:88px 0 210px; }
+/* The error grows the footer by up to ~90px (short screens keep the 210px so some room is left). */
+@media (min-height:521px) { dialog:has(.cartError) { scroll-padding-bottom:300px; } }
+
+/* The checkout error sits right above the CTA, inside the pinned footer. */
+.cartFooter .cartError { grid-column:1 / -1; margin:12px 0 0; }
+
+/* Label over the footnote on the left, the total centred across both on the right. */
+.totalRow { display:contents; }
+.totalRow span {
+  grid-area:1 / 1;
+  align-self:end;
+  color:var(--text-3);
+  font:600 12px/1.2 var(--font-display);
+  text-transform:uppercase;
+  letter-spacing:.1em;
+}
+.totalRow strong {
+  grid-area:1 / 2 / 3;
+  color:var(--text-1);
+  font:700 28px/1 var(--font-display);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+.footNote { grid-area:2 / 1; margin:4px 0 0; color:var(--text-3); font-size:12.5px; line-height:1.4; }
+
+.cartFooter .cta { grid-column:1 / -1; width:100%; min-height:52px; margin-top:14px; }
+
+.checkoutNote {
+  grid-column:1 / -1;
+  margin:10px 0 0;
+  color:var(--text-3);
+  font-size:12.5px;
+  line-height:1.5;
+  text-align:center;
+  text-wrap:balance;
+}
+
+/* ── Desktop-only motion: the showcase float (motion budget, C) ────────── */
+
+/* The product image only: the fallback art's GW seal is an img too. */
+@media (min-width:701px) {
+  .detailShowcase [data-variant="showcase"] > img { animation:dlgFloat 5.5s ease-in-out infinite alternate; }
+}
+
+/* ── Pinned action bar: phones and short screens ────────────────────────── */
+
+/* Sticky, so the CTA stays in reach while the sheet (or a short landscape dialog) scrolls. */
+@media (max-width:700px), (max-height:520px) {
+  .detailActions {
+    position:sticky;
+    bottom:0;
+    z-index:3;
+    display:grid;
+    grid-template-columns:124px minmax(0,1fr);
+    gap:10px;
+    margin:18px -17px 0;
+    padding:12px 17px calc(12px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--line-1);
+    background:var(--ink-2);
+    box-shadow:0 -22px 32px -24px rgba(0,0,0,.9);
+  }
+  .qtyField label { margin-bottom:6px; }
+  .qtyField .quantityControl { width:100%; height:52px; }
+  .qtyField .quantityControl button { width:40px; }
+  .qtyField .quantityControl input { flex:1; width:auto; }
+  .detailActions .addButton { min-height:52px; padding-inline:12px; font-size:13.5px; letter-spacing:.03em; }
+  .addButton svg { display:none; } /* decorative; the full label needs the room */
+  .perks { margin-top:4px; padding-bottom:8px; border-top:0; }
+}
+
+/* Wide but short (landscape phones): the square stage outgrows the dialog anyway, so the content column
+   takes the room the bar needs, and the bar spans that column only (no bleed into the grid gap). */
+@media (min-width:701px) and (max-height:520px) {
+  .detailGrid { grid-template-columns:minmax(0,.8fr) minmax(0,1fr); gap:22px; }
+  .detailActions { margin-inline:0; padding:12px 0; }
+}
+
+/* ── Phones: inside the foundation's bottom sheet (17px body padding) ───── */
+
+@media (max-width:700px) {
+  .detailGrid { grid-template-columns:1fr; gap:16px; }
+  .detailShowcase { aspect-ratio:16/11; max-height:34dvh; }
+  .detailShowcase [data-variant="showcase"] { height:100%; aspect-ratio:auto; }
+  /* Percent padding follows the width, so the wide stage needs less of it. */
+  .detailShowcase [data-variant="showcase"] > img { padding:5% 10% 6%; }
+  .detailShowcase [data-variant="showcase"] > [aria-hidden="true"] { padding:5% 8% 4%; gap:8px; }
+  .detailContent { padding-top:0; }
+  .detailPrice { font-size:34px; }
+
+  .quantityControl[data-size="sm"] { height:40px; }
+  .quantityControl[data-size="sm"] button { width:40px; }
+  .quantityControl[data-size="sm"] input { font-size:16px; } /* no iOS zoom */
+  .cartLinePrice .remove { width:40px; height:40px; margin:-10px -10px -8px 0; }
+
+  .cartSection { margin-bottom:20px; }
+  .cartFooter {
+    margin:0 -17px -17px;
+    padding:12px 17px calc(12px + env(safe-area-inset-bottom));
+  }
+  /* label ...... total, then the footnote across: keeps the pinned bar short */
+  .totalRow span { align-self:center; }
+  .totalRow strong { grid-area:1 / 2; font-size:24px; }
+  .footNote { grid-column:1 / -1; }
+  .cartFooter .cta { margin-top:12px; }
+  .checkoutNote { margin-top:8px; }
+}
+
+@media (max-width:380px) {
+  .checkoutSteps li { gap:6px; padding:0 6px; letter-spacing:.03em; }
+  .detailActions { grid-template-columns:116px minmax(0,1fr); gap:8px; }
+  .qtyField .quantityControl button { width:38px; }
+  .detailActions .addButton { padding-inline:10px; font-size:13px; letter-spacing:.02em; }
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+
+@keyframes dlgFloat { from { transform:translateY(0); } to { transform:translateY(-8px); } }
+
+@media (prefers-reduced-motion:reduce) {
+  .detailShowcase [data-variant="showcase"] > img { animation:none; }
+}

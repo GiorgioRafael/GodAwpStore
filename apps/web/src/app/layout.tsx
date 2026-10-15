@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Chakra_Petch, Geist, Geist_Mono } from "next/font/google";
 
 import { STORE_LOGO_URL, STORE_NAME, STORE_SLUG } from "@/lib/brand";
 
@@ -13,6 +13,14 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Display face of the storefront ("Coringa Neon"); only the shop CSS uses it.
+const shopDisplay = Chakra_Petch({
+  weight: ["600", "700"],
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-shop-display",
 });
 
 export const metadata: Metadata = {
@@ -47,7 +55,7 @@ export default function RootLayout({
       lang="pt-BR"
       data-store={STORE_SLUG}
       data-scroll-behavior="smooth"
-      className={`${geistSans.variable} ${geistMono.variable} h-full bg-background antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${shopDisplay.variable} h-full bg-background antialiased`}
     >
       <body className="min-h-full bg-background text-foreground">{children}</body>
     </html>
