@@ -32,7 +32,7 @@ describe("Railway Next launcher", () => {
     try {
       expect(startRailwayWeb()).toBe(child);
       expect(defaultSpawn).toHaveBeenCalledWith(process.execPath,
-        [expect.stringMatching(/next[\/]dist[\/]bin[\/]next$/), "start", "--hostname", "0.0.0.0", "--port", "8091"],
+        [expect.stringMatching(/next[\\/]dist[\\/]bin[\\/]next$/), "start", "--hostname", "0.0.0.0", "--port", "8091"],
         expect.objectContaining({ env: expect.objectContaining({ NODE_ENV: "production" }), stdio: "inherit" }));
     } finally {
       child.emit("exit", 0);
@@ -45,8 +45,8 @@ describe("Railway Next launcher", () => {
     const fetcher = vi.fn();
     startRailwayWeb({ ...fixture.options, env: { NODE_ENV: "production", PORT: "8080", GW_CRON_ENABLED: "false" }, fetcher });
     expect(fixture.spawnProcess).toHaveBeenCalledWith(process.execPath,
-      [expect.stringMatching(/next[\/]dist[\/]bin[\/]next$/), "start", "--hostname", "0.0.0.0", "--port", "8080"],
-      expect.objectContaining({ cwd: expect.stringMatching(/apps[\/]web[\/]$/), stdio: "inherit", env: expect.objectContaining({ NODE_ENV: "production" }) }));
+      [expect.stringMatching(/next[\\/]dist[\\/]bin[\\/]next$/), "start", "--hostname", "0.0.0.0", "--port", "8080"],
+      expect.objectContaining({ cwd: expect.stringMatching(/apps[\\/]web[\\/]$/), stdio: "inherit", env: expect.objectContaining({ NODE_ENV: "production" }) }));
     expect(fetcher).not.toHaveBeenCalled();
     fixture.child.emit("exit", 0);
   });
