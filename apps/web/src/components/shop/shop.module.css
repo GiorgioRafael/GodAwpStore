@@ -1,5 +1,5 @@
 /* GWStore storefront foundation, "Coringa Neon" (owner: F).
-   Tokens, base, primitives, header + floating cart pill, footer, notice and the
+   Tokens, base, primitives, header + cart, footer, notice and the
    dialog shell. Workstream modules import this file as `ui` and read the tokens
    through inheritance: every <dialog> renders inside .shop, so it gets them too.
    Rules: no stylesheet-order reliance across modules, tokens instead of literal
@@ -57,6 +57,16 @@
   min-height:0;
   background:transparent;
 }
+
+/* Homepage treatment stays out of account pages and the embedded admin workspace. */
+.storefront {
+  background:
+    radial-gradient(ellipse 55% 420px at 90% 180px,rgba(150,32,175,.065),transparent),
+    radial-gradient(ellipse 60% 420px at 10% 75%,rgba(236,0,156,.035),transparent),
+    var(--ink-0);
+}
+.storefront .footer { padding-bottom:calc(128px + env(safe-area-inset-bottom)); }
+.storefront .notice { bottom:calc(138px + env(safe-area-inset-bottom)); }
 
 /* Admin: the workspace sits inside the gold AppShell. Gold replaces magenta, Geist replaces Chakra Petch. */
 .shop[data-context="admin"] {
@@ -768,7 +778,7 @@ textarea.input,
   .catalog[data-view="home"] { padding-top:28px; }
 }
 
-/* ── Phones: static header, floating cart pill, bottom sheets ───────────── */
+/* ── Phones: static header and bottom sheets ──────────────────────────── */
 
 @media (max-width:1000px) {
   .container,
@@ -821,31 +831,8 @@ textarea.input,
     white-space:nowrap;
   }
 
-  /* Same element, moved by CSS: a non-empty cart floats as a pill with the subtotal. */
-  .cartButton:not([data-count="0"]) {
-    position:fixed;
-    z-index:45;
-    right:16px;
-    bottom:calc(16px + env(safe-area-inset-bottom));
-    min-height:56px;
-    padding:0 18px;
-    border:0;
-    border-radius:999px;
-    background:var(--accent-fill);
-    box-shadow:0 16px 36px -10px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.25);
-    animation:uiRise 260ms var(--ease-out);
-  }
-  /* The subtotal is an attribute, not a DOM text node (one price node per product rule). */
-  .cartButton[data-subtotal]:not([data-count="0"])::after {
-    content:attr(data-subtotal);
-    padding:4px 0 4px 12px;
-    border-left:1px solid rgba(255,255,255,.35);
-    font:700 15px/1 var(--font-display);
-    font-variant-numeric:tabular-nums;
-    letter-spacing:0;
-  }
-  .shop:has(.cartButton:not([data-count="0"])) .footer { padding-bottom:88px; }
-  .shop:has(.cartButton:not([data-count="0"])) .notice { bottom:calc(88px + env(safe-area-inset-bottom)); }
+  .storefront .footer { padding-bottom:calc(104px + env(safe-area-inset-bottom)); }
+  .storefront .notice { bottom:calc(112px + env(safe-area-inset-bottom)); }
 
   .footerInner { grid-template-columns:1fr; gap:24px; padding:32px 0; }
   .footerNav a { min-height:44px; }

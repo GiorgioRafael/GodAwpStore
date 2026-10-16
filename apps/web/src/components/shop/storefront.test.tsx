@@ -159,6 +159,48 @@ describe("catálogo e carrinho da GWStore", () => {
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
   });
 
+  it("volta da categoria ao guia pela navegação rápida, limpando a busca e focando o título", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, "", "/?categoria=skin");
+    await act(async () => { render(<Storefront catalog={CATALOG} buyerName={null} />); });
+    expect(screen.getByRole("region", { name: "Skins" })).toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Buscar em Skins" });
+    await user.type(search, "kitsune");
+    const dock = screen.getByRole("navigation", { name: "Navegação rápida da loja" });
+
+    await user.click(within(dock).getByRole("link", { name: "Como comprar" }));
+
+    const guide = await screen.findByRole("heading", { name: /Do carrinho ao chat\s*em 3 passos\./ });
+    expect(new URL(window.location.href).searchParams.has("categoria")).toBe(false);
+    expect(window.location.hash).toBe("#como-funciona");
+    expect(search).toHaveValue("");
+    expect(screen.queryByRole("region", { name: "Skins" })).not.toBeInTheDocument();
+    expect(guide).toHaveAttribute("id", "how-title");
+    await waitFor(() => expect(guide).toHaveFocus());
+  });
+
+  it("abre o carrinho pela navegação rápida e retorna da categoria ao início com foco no hero", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState(null, "", "/?categoria=skin");
+    await act(async () => { render(<Storefront catalog={CATALOG} buyerName={null} />); });
+    expect(screen.getByRole("region", { name: "Skins" })).toBeInTheDocument();
+    const dock = screen.getByRole("navigation", { name: "Navegação rápida da loja" });
+
+    await user.click(within(dock).getByRole("button", { name: /^Ver carrinho,/ }));
+    const cart = screen.getByRole("dialog", { name: "Seu carrinho" });
+    expect(within(cart).getByRole("heading", { name: "O carrinho está vazio" })).toBeInTheDocument();
+    await user.click(within(cart).getByRole("button", { name: "Fechar janela" }));
+    expect(screen.queryByRole("dialog", { name: "Seu carrinho" })).not.toBeInTheDocument();
+    await user.click(within(dock).getByRole("button", { name: "Ir para o início" }));
+
+    const hero = await screen.findByRole("heading", { level: 1, name: /Seu próximo\s*upgrade\s*começa aqui\./ });
+    expect(new URL(window.location.href).searchParams.has("categoria")).toBe(false);
+    expect(window.location.hash).toBe("");
+    expect(screen.getByRole("region", { name: "Categorias" })).toBeInTheDocument();
+    expect(hero).toHaveAttribute("id", "shop-title");
+    await waitFor(() => expect(hero).toHaveFocus());
+  });
+
   it("troca imagem ausente ou quebrada pela marca sem remover o produto", async () => {
     const user = userEvent.setup();
     render(<Storefront catalog={CATALOG} buyerName={null} />);

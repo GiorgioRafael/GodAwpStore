@@ -1,531 +1,136 @@
-/* Home: hero, category directory and "Como funciona" (owner: A, spec section 5).
-   Import the foundation as `ui` from ./shop.module.css; tokens come from .shop.
-   Selectors that restyle a foundation primitive on the same element are qualified
-   (e.g. `.heroActions > a`, `.categoryCover .coverBadge`) so module order never matters. */
-
-/* ── Hero ───────────────────────────────────────────────────────────────── */
-
-.hero {
-  position:relative;
-  isolation:isolate;
-  display:grid;
-  align-items:center;
-  min-height:clamp(540px,66vh,660px);
-  overflow:hidden; /* fine here: nothing sticky lives inside the hero */
-  background:var(--ink-0);
-}
-
+/* Scoped home styles; shared product and account components keep their own layout. */
+.hero { position:relative; width:min(1220px,calc(100% - 96px)); margin:32px auto 0; }
+.heroBillboard { position:relative; isolation:isolate; min-height:420px; overflow:hidden; border:1px solid rgba(255,79,196,.55); border-radius:22px; background:var(--ink-1); box-shadow:0 0 0 5px rgba(236,0,156,.025),0 0 65px -24px rgba(236,0,156,.4),0 24px 70px -40px #000; }
 .heroArt { position:absolute; inset:0; z-index:-2; pointer-events:none; }
-.heroArt img { object-fit:cover; object-position:72% 28%; }
-.heroArt::after { /* scrim: text side, bottom fade into the page, top under the header */
-  content:"";
-  position:absolute;
-  inset:0;
-  background:
-    linear-gradient(90deg,#07050a 0%,rgba(7,5,10,.94) 24%,rgba(7,5,10,.55) 44%,rgba(7,5,10,0) 64%),
-    linear-gradient(0deg,#07050a 0%,rgba(7,5,10,0) 30%),
-    linear-gradient(180deg,rgba(7,5,10,.55) 0%,rgba(7,5,10,0) 18%);
-}
-
-/* No z-index or mask on purpose: either isolates the glow's screen blend from the art.
-   Both layers fade out inside the hero instead, so its overflow never cuts them in a line. */
-.heroFx { position:absolute; inset:0; pointer-events:none; }
-
-.heroPattern {
-  position:absolute;
-  inset:0 auto 0 0;
-  width:54%;
-  background:var(--harlequin) 0 0 / 22px 32px;
-  -webkit-mask-image:radial-gradient(120% 68% at 0% 50%,#000 0%,transparent 70%);
-  mask-image:radial-gradient(120% 68% at 0% 50%,#000 0%,transparent 70%);
-}
-
-/* Height-bound so the gradient is clear before the bottom edge; centred where a 44vw glow sat. */
-.heroGlow {
-  position:absolute;
-  top:4%;
-  right:calc(6% + 22vw);
-  height:min(44vw,92%);
-  aspect-ratio:1;
-  transform:translateX(50%);
-  background:radial-gradient(closest-side,rgba(236,0,156,.28),transparent);
-  background:radial-gradient(closest-side,color-mix(in srgb,var(--accent) 28%,transparent),transparent);
-  mix-blend-mode:screen;
-  animation:homeBreath 7s ease-in-out infinite alternate;
-}
-
-/* The suits sit in the dark gap between the cube and the jester's hat. .suits copies
-   the art's cover crop (12:5, 72% across), so their offsets are fractions of the
-   picture and hold at any hero height; hero percentages would land them on the bells. */
-.suits {
-  position:absolute;
-  top:0;
-  left:72%;
-  height:100%;
-  min-width:100%;
-  aspect-ratio:12/5;
-  transform:translateX(-72%);
-}
-.suitA,
-.suitB { position:absolute; color:var(--accent-hi); }
-.suitA {
-  top:15%;
-  left:45.3%;
-  width:28px;
-  height:28px;
-  opacity:.55;
-  animation:homeFloat 6s ease-in-out infinite alternate;
-}
-.suitB { top:11%; left:47.85%; width:14px; height:14px; opacity:.4; }
-
-/* Short enough that the first row of covers peeks above the fold on laptops. */
-.heroInner { position:relative; padding:80px 0 64px; }
-.heroInner > * { max-width:600px; }
-/* Block-level kickers: no inherited line-box strut above the headings. */
-.heroInner > .heroKicker,
-.catalogHead > .headKicker,
-.howItWorks .headKicker { display:flex; width:fit-content; }
-
-.heroInner h1 {
-  max-width:13ch;
-  margin:6px 0 0;
-  color:var(--text-1);
-  font:700 clamp(40px,5.2vw,68px)/.96 var(--font-display);
-  text-transform:uppercase;
-  letter-spacing:-.01em;
-}
-/* Gradient text. inline-block keeps the gradient on the words; the padding/negative
-   margin pair extends the painted box under the "Ç" without moving the layout. */
-.heroInner h1 span {
-  display:inline-block;
-  padding-bottom:.16em;
-  margin-bottom:-.16em;
-  background:linear-gradient(90deg,var(--accent-hi),var(--accent) 45%,var(--violet));
-  -webkit-background-clip:text;
-  background-clip:text;
-  color:transparent;
-  filter:drop-shadow(0 0 22px rgba(236,0,156,.45));
-}
-
-.heroLead {
-  max-width:520px;
-  margin:20px 0 0;
-  color:var(--text-2);
-  font-size:17px;
-  line-height:1.6;
-}
-
-.heroActions {
-  display:flex;
-  flex-wrap:wrap;
-  gap:12px;
-  margin-top:28px;
-}
-.heroActions > a { min-height:56px; padding:0 28px; }
-/* The ghost button can sit over the jester's hand: give it a dark glass of its own. */
-.heroActions > .heroGhost { background:rgba(7,5,10,.62); }
-
-.heroFacts {
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px 22px;
-  margin:28px 0 0;
-  padding:0;
-  list-style:none;
-  color:var(--text-2);
-  font-size:13.5px;
-  line-height:1.4;
-}
+.heroArt img { object-fit:cover; object-position:72% 35%; }
+.heroArt::after { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(7,5,10,.95),rgba(7,5,10,.82) 28%,rgba(7,5,10,.2) 54%,transparent 72%),linear-gradient(0deg,rgba(7,5,10,.7),transparent 30%); }
+.heroFx { position:absolute; inset:0; z-index:-1; pointer-events:none; }
+.heroPattern { position:absolute; inset:0; width:48%; background:var(--harlequin) 0 0 / 32px 46px; mask-image:linear-gradient(90deg,rgba(0,0,0,.7),transparent); }
+.suits { position:absolute; inset:0; }
+.suitA,.suitB { position:absolute; color:var(--accent-hi); opacity:.35; }
+.suitA { width:22px; height:22px; top:26px; left:48%; transform:rotate(-18deg); }
+.suitB { width:13px; height:13px; bottom:65px; left:46%; transform:rotate(15deg); }
+.heroInner { padding:38px 46px 32px; }
+.heroInner > .heroKicker { display:flex; width:fit-content; margin-bottom:18px; font-size:11px; letter-spacing:.13em; }
+.heroInner h1 { margin:0; color:var(--text-1); font:700 clamp(42px,4.8vw,64px)/.98 var(--font-display); text-transform:uppercase; letter-spacing:-.035em; }
+.heroInner h1 span { display:inline-block; padding-bottom:.1em; margin-bottom:-.1em; background:linear-gradient(105deg,#ffb2ed,#ff4fc4 50%,#c45eff); background-clip:text; color:transparent; filter:drop-shadow(0 0 24px rgba(236,0,156,.3)); }
+.heroLead { margin:18px 0 0; color:var(--text-2); font-size:15px; line-height:1.65; }
+.heroSignature { display:inline-flex; align-items:center; gap:8px; margin-top:20px; color:var(--text-2); font:600 11px/1 var(--font-display); text-transform:uppercase; letter-spacing:.1em; }
+.heroSignature > span { width:5px; height:5px; border-radius:50%; background:var(--accent-hi); box-shadow:0 0 12px var(--accent); }
+.heroEdition { position:absolute; bottom:20px; right:24px; color:rgba(255,255,255,.65); font:600 9px/1 var(--font-display); letter-spacing:.16em; }
+.heroActions { display:flex; align-items:center; justify-content:center; gap:28px; margin-top:26px; }
+.heroActions > a:first-child { min-height:52px; padding:0 26px; border-radius:10px; background:linear-gradient(110deg,#d80091,#a92dd1); box-shadow:0 6px 30px -12px var(--accent-glow); }
+.heroGuide { display:grid; gap:2px; color:var(--text-3); font-size:11px; line-height:1.5; text-decoration:none; }
+.heroGuide > span { display:flex; align-items:center; gap:8px; color:var(--text-2); font-size:12px; }
+.heroGuide:hover > span { color:var(--accent-text); }
+.heroFacts { display:flex; flex-wrap:wrap; justify-content:center; gap:12px 28px; margin:22px 0 0; padding:0; list-style:none; color:var(--text-3); font-size:11.5px; }
 .heroFacts li { display:inline-flex; align-items:center; gap:8px; }
-.heroFacts svg { flex:none; color:var(--accent-text); }
+.heroFacts svg { color:var(--accent-text); }
+.scrollHint { display:grid; place-items:center; width:44px; height:36px; margin:12px auto -12px; color:var(--accent-hi); }
 
-/* Entrance: copy only, once, staggered. `backwards` so nothing keeps holding transform. */
-.heroKicker { animation:homeRise 520ms var(--ease-out) 60ms backwards; }
-.heroLead { animation:homeRise 520ms var(--ease-out) 140ms backwards; }
-.heroActions { animation:homeRise 520ms var(--ease-out) 220ms backwards; }
-.heroFacts { animation:homeRise 520ms var(--ease-out) 300ms backwards; }
-
-@media (forced-colors:active) {
-  .heroInner h1 span { background:none; color:CanvasText; filter:none; }
-}
-
-/* ── Catalog heading ────────────────────────────────────────────────────── */
-
-.catalogHead { margin-bottom:24px; }
-
-.catalogTitle,
-.howItWorks h2 {
-  margin:0;
-  color:var(--text-1);
-  font:700 clamp(26px,3vw,36px)/1.05 var(--font-display);
-  text-transform:uppercase;
-  letter-spacing:.005em;
-}
-/* Receives programmatic focus on "Voltar às categorias": ring only for keyboard users. */
+.catalogHead { margin-bottom:28px; text-align:center; }
+.catalogHead > .headKicker,.sectionHeading > .headKicker { display:flex; align-items:center; justify-content:center; gap:10px; margin:0 0 12px; font-size:10px; letter-spacing:.17em; }
+.catalogTitle,.howItWorks h2 { margin:0; color:var(--text-1); font:700 clamp(28px,3.2vw,40px)/1.1 var(--font-display); text-transform:uppercase; letter-spacing:-.025em; }
 .catalogTitle:focus:not(:focus-visible) { outline:none; }
+.catalogIntro { margin:10px 0 0; color:var(--text-3); font-size:13px; }
+.categoryGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; }
+.categoryCover { position:relative; isolation:isolate; display:block; width:100%; aspect-ratio:1.6; padding:0; overflow:hidden; border:1px solid color-mix(in srgb,var(--hue) 46%,var(--line-1)); border-radius:14px; background:var(--ink-2); color:var(--text-1); text-align:left; box-shadow:0 12px 32px -22px #000; transition:transform .3s var(--ease-out),box-shadow .3s,border-color .3s; }
+.categoryCover > img { z-index:-2; object-fit:cover; object-position:var(--pos); transition:transform .65s var(--ease-out); }
+.categoryCover::before,.categoryCover::after { content:""; position:absolute; inset:0; z-index:-1; pointer-events:none; }
+.categoryCover::before { background:linear-gradient(180deg,rgba(7,5,10,.22),transparent 28%,rgba(7,5,10,.4) 52%,rgba(7,5,10,.96) 100%); }
+.categoryCover::after { background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.12) 50%,transparent 65%); transform:translateX(-130%); }
+.categoryCover .coverBadge { position:absolute; top:12px; left:12px; border-radius:50%; background:rgba(7,5,10,.7); }
+.coverCount { position:absolute; top:14px; right:14px; padding:4px 9px; border:1px solid rgba(255,255,255,.18); border-radius:6px; background:rgba(7,5,10,.7); color:var(--text-1); font:600 10px/1.4 var(--font-display); text-transform:uppercase; letter-spacing:.05em; }
+.coverContent { position:absolute; inset:auto 18px 16px; display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
+.coverText { display:grid; gap:5px; min-width:0; }
+.coverTitle { font:700 clamp(18px,1.8vw,24px)/1.1 var(--font-display); text-transform:uppercase; letter-spacing:-.02em; text-shadow:0 2px 12px #000; }
+.coverDescription { color:var(--text-2); font-size:11.5px; line-height:1.4; }
+.coverArrow { display:grid; place-items:center; flex:none; width:32px; height:32px; border:1px solid rgba(255,79,196,.5); border-radius:8px; background:var(--accent-tint); color:var(--accent-text); transition:background .2s,color .2s; }
 
-.catalogIntro {
-  margin:8px 0 0;
-  color:var(--text-2);
-  font-size:15px;
-  line-height:1.5;
-}
-
-/* ── Category directory ─────────────────────────────────────────────────── */
-
-.categoryGrid {
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:20px;
-}
-
-.categoryCover {
-  position:relative;
-  isolation:isolate;
-  display:block;
-  width:100%;
-  aspect-ratio:3/2;
-  padding:0;
-  overflow:hidden;
-  border:1px solid transparent;
-  border-radius:18px;
-  background:
-    linear-gradient(var(--ink-2),var(--ink-2)) padding-box,
-    linear-gradient(155deg,rgba(255,255,255,.18),rgba(255,255,255,.07) 38%,rgba(255,255,255,.04) 62%,rgba(236,0,156,.5)) border-box;
-  background:
-    linear-gradient(var(--ink-2),var(--ink-2)) padding-box,
-    linear-gradient(155deg,color-mix(in srgb,var(--hue) 70%,transparent),rgba(255,255,255,.07) 38%,rgba(255,255,255,.04) 62%,color-mix(in srgb,var(--accent) 50%,transparent)) border-box;
-  box-shadow:0 18px 40px -24px rgba(0,0,0,.9);
-  color:var(--text-1);
-  text-align:left;
-  transition:transform var(--dur-3) var(--ease-out),box-shadow var(--dur-3) var(--ease-out);
-  animation:homeRise 480ms var(--ease-out) backwards;
-  animation-delay:calc(var(--i,0) * 60ms);
-}
-
-.categoryCover > img {
-  z-index:-2;
-  object-fit:cover;
-  object-position:var(--pos);
-  transition:transform 650ms var(--ease-out);
-}
-
-/* Scrim, then the sheen above it; both stay under the text. */
-.categoryCover::before,
-.categoryCover::after {
-  content:"";
-  position:absolute;
-  inset:0;
-  z-index:-1;
-  pointer-events:none;
-}
-.categoryCover::before {
-  background:linear-gradient(180deg,rgba(7,5,10,.10) 0%,rgba(7,5,10,0) 35%,rgba(7,5,10,.72) 70%,rgba(7,5,10,.96) 100%);
-}
-.categoryCover::after {
-  background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.13) 50%,transparent 65%);
-  transform:translateX(-130%);
-}
-
-.categoryCover .coverBadge {
-  position:absolute;
-  top:14px;
-  left:14px;
-  border-radius:50%;
-  background:rgba(7,5,10,.7);
-}
-
-.coverCount {
-  position:absolute;
-  top:14px;
-  right:14px;
-  height:28px;
-  padding:0 10px;
-  border:1px solid rgba(255,255,255,.12);
-  border-radius:999px;
-  background:rgba(7,5,10,.66);
-  color:var(--text-1);
-  font:600 12px/26px var(--font-display);
-  text-transform:uppercase;
-  letter-spacing:.08em;
-  white-space:nowrap;
-}
-
-.coverContent {
-  position:absolute;
-  inset:auto 20px 18px;
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:14px;
-}
-
-.coverText { display:grid; gap:4px; min-width:0; }
-
-.coverTitle {
-  font:700 24px/1.05 var(--font-display);
-  text-transform:uppercase;
-  letter-spacing:.01em;
-  text-shadow:0 2px 12px rgba(0,0,0,.6);
-}
-
-.coverDescription {
-  color:var(--text-2);
-  font-size:13.5px;
-  line-height:1.45;
-}
-
-.coverArrow {
-  display:grid;
-  place-items:center;
-  flex:none;
-  width:44px;
-  height:44px;
-  border:1px solid rgba(255,255,255,.22);
-  border-radius:50%;
-  background:rgba(7,5,10,.5);
-  color:var(--text-1);
-  transition:background var(--dur-2),border-color var(--dur-2),box-shadow var(--dur-2);
-}
-
-.categoryCover:focus-visible {
-  box-shadow:0 28px 60px -24px rgba(0,0,0,.9),0 0 44px -10px color-mix(in srgb,var(--hue) 55%,transparent);
-}
+.howItWorks { position:relative; padding:24px 0 70px; }
+.sectionHeading { text-align:center; }
+.sectionHeading h2 { font-size:clamp(30px,4vw,48px); }
+.sectionHeading h2 span { color:var(--accent-hi); }
+.sectionHeading > p { margin:14px 0 0; color:var(--text-3); font-size:13px; }
+.steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin:38px 0 0; padding:0; list-style:none; }
+.step { position:relative; isolation:isolate; overflow:hidden; padding:28px; border:1px solid var(--line-1); border-radius:18px; background:linear-gradient(145deg,rgba(236,0,156,.055),transparent 70%),var(--ink-1); }
+.step::before { content:""; position:absolute; z-index:-1; inset:0; background:var(--harlequin) right top / 26px 38px; mask-image:radial-gradient(ellipse at 100% 0%,#000,transparent 65%); pointer-events:none; }
+.stepNumber { position:absolute; top:15px; right:22px; color:rgba(255,79,196,.1); font:700 70px/1 var(--font-display); letter-spacing:-.06em; }
+.step h3 { margin:20px 0 8px; color:var(--text-1); font:700 17px/1.3 var(--font-display); text-transform:uppercase; letter-spacing:-.01em; }
+.step p { margin:0; color:var(--text-3); font-size:13px; line-height:1.7; text-wrap:pretty; }
 
 @media (hover:hover) and (pointer:fine) {
-  .categoryCover:hover {
-    transform:translateY(-6px);
-    box-shadow:
-      0 28px 60px -24px rgba(0,0,0,.9),
-      0 0 0 1px color-mix(in srgb,var(--hue) 55%,transparent),
-      0 0 44px -10px color-mix(in srgb,var(--hue) 55%,transparent);
-  }
-  .categoryCover:hover > img { transform:scale(1.06); }
-  /* One sweep on enter; leaving resets instantly (no transition outside :hover). */
-  .categoryCover:hover::after { transform:translateX(130%); transition:transform 900ms var(--ease-out); }
-  .categoryCover:hover .coverArrow { border-color:transparent; background:var(--accent-fill); box-shadow:var(--shadow-btn); }
-  .heroActions > .heroGhost:hover:not(:disabled) { background:rgba(38,27,51,.78); }
-  .categoryCover:active { transform:translateY(-2px) scale(.99); }
+  .categoryCover:hover { transform:translateY(-5px); border-color:var(--hue); box-shadow:0 18px 45px -22px color-mix(in srgb,var(--hue) 42%,transparent); }
+  .categoryCover:hover > img { transform:scale(1.05); }
+  .categoryCover:hover::after { transform:translateX(130%); transition:transform .9s var(--ease-out); }
+  .categoryCover:hover .coverArrow { background:var(--accent); color:#fff; }
 }
-
-@media (hover:none) {
-  .categoryCover:active { transform:scale(.98); } /* press feedback on touch */
-}
-
-/* ── Como funciona ──────────────────────────────────────────────────────── */
-
-.howItWorks { padding:8px 0 80px; scroll-margin-top:24px; }
-
-.steps {
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:16px;
-  margin:24px 0 0;
-  padding:0;
-  list-style:none;
-}
-
-.step {
-  position:relative;
-  isolation:isolate;
-  overflow:hidden;
-  padding:24px;
-  border:1px solid var(--line-1);
-  border-radius:20px;
-  background:linear-gradient(180deg,var(--ink-2),var(--ink-1));
-}
-.step::before { /* faint lattice behind the number */
-  content:"";
-  position:absolute;
-  inset:0 0 auto auto;
-  z-index:-1;
-  width:60%;
-  height:100%;
-  background:var(--harlequin) 0 0 / 22px 32px;
-  -webkit-mask-image:radial-gradient(100% 90% at 100% 0%,#000,transparent 70%);
-  mask-image:radial-gradient(100% 90% at 100% 0%,#000,transparent 70%);
-  pointer-events:none;
-}
-
-.stepNumber {
-  position:absolute;
-  top:8px;
-  right:18px;
-  color:transparent;
-  font:700 56px/1 var(--font-display);
-  -webkit-text-stroke:1px rgba(236,0,156,.35);
-  -webkit-text-stroke:1px color-mix(in srgb,var(--accent) 35%,transparent);
-  pointer-events:none;
-}
-
-.step h3 {
-  margin:16px 0 6px;
-  color:var(--text-1);
-  font:700 18px/1.2 var(--font-display);
-  text-transform:uppercase;
-  letter-spacing:.02em;
-}
-
-.step p {
-  margin:0;
-  color:var(--text-2);
-  font-size:14px;
-  line-height:1.6;
-  text-wrap:pretty;
-}
-
-/* ── Small desktop (1001–1100): nudge the art right so the hand clears the copy ─ */
-
-@media (min-width:1001px) and (max-width:1100px) {
-  .heroArt img { object-position:62% 28%; }
-  .suits { left:62%; transform:translateX(-62%); }
-}
-
-/* ── Short desktop (≤860 tall, i.e. most laptops): compact hero, covers above the fold ─ */
-
-@media (min-width:1001px) and (max-height:860px) {
-  .hero { min-height:0; }
-  .heroInner { padding:36px 0 28px; }
-  .heroInner h1 { font-size:clamp(40px,min(5.2vw,7.5vh),68px); }
-  .heroLead { margin-top:14px; }
-  .heroActions { margin-top:20px; }
-  .heroFacts { margin-top:16px; }
-  .catalogHead { margin-bottom:20px; } /* section#catalogo drops to 28px top padding (shop.module.css) */
-}
-
-/* ── Tablet (701–1000) ──────────────────────────────────────────────────── */
-
-@media (min-width:701px) and (max-width:1000px) {
-  .hero { min-height:480px; }
-  .heroArt img { object-position:66% 30%; }
-  .heroArt::after {
-    background:
-      linear-gradient(90deg,#07050a 0%,rgba(7,5,10,.96) 46%,rgba(7,5,10,.62) 64%,rgba(7,5,10,.12) 88%,rgba(7,5,10,0) 100%),
-      linear-gradient(0deg,#07050a 0%,rgba(7,5,10,0) 30%),
-      linear-gradient(180deg,rgba(7,5,10,.55) 0%,rgba(7,5,10,0) 18%);
-  }
-  .heroInner { padding-bottom:56px; }
-  .heroInner h1 { font-size:clamp(38px,5.6vw,52px); }
-  .heroLead { max-width:430px; } /* keeps the copy on the dark side of the scrim */
-  /* The art is cropped to the face here: the cube/hat gap falls behind the copy. */
-  .suits { display:none; }
-
-  .categoryGrid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
-}
-
-/* ── Tablet and phones (≤1000): "Como funciona" becomes a list ──────────── */
-
 @media (max-width:1000px) {
-  .steps { grid-template-columns:1fr; gap:10px; }
-  .step {
-    display:grid;
-    grid-template-columns:52px minmax(0,1fr);
-    column-gap:16px;
-    align-items:start;
-    padding:18px 20px;
-  }
-  .step .stepEmblem { grid-row:span 2; }
-  .step h3 { margin:2px 0 4px; padding-right:44px; }
-  .stepNumber { top:10px; right:14px; font-size:36px; }
+  .hero { width:calc(100% - 48px); margin-top:24px; }
+  .heroBillboard { min-height:390px; }
+  .heroInner { padding:34px; }
+  .heroInner h1 { font-size:52px; }
+  .categoryGrid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+  .steps { gap:12px; }
+  .step { padding:22px 18px; }
+  .stepNumber { font-size:56px; right:14px; }
+  .step h3 { font-size:15px; }
 }
-
-/* ── Wide (≥1600): keep the art from stretching past its composition ─────── */
-
-@media (min-width:1600px) {
-  .heroArt {
-    left:50%;
-    width:min(100%,1680px);
-    transform:translateX(-50%);
-    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 10%,#000 90%,transparent 100%);
-    mask-image:linear-gradient(90deg,transparent 0,#000 10%,#000 90%,transparent 100%);
-  }
-  /* Follow the centred art box, which is width-bound here. */
-  .suits { left:50%; min-width:min(100%,1680px); transform:translateX(-50%); }
-}
-
-/* ── Phones (≤700): stacked poster, 2-column deck ───────────────────────── */
-
 @media (max-width:700px) {
-  .hero { display:block; min-height:0; }
-  .heroArt { position:relative; inset:auto; height:232px; }
-  .heroArt img { object-position:76% 30%; }
-  .heroArt::after {
-    background:
-      linear-gradient(0deg,#07050a 0%,rgba(7,5,10,.88) 28%,rgba(7,5,10,0) 60%),
-      linear-gradient(180deg,rgba(7,5,10,.5),transparent 25%);
-  }
-  .heroFx { display:none; }
-
-  /* Compact poster: the first row of covers starts above the fold (y ≤ 760 at 390×844). */
-  .heroInner { margin-top:-68px; padding:0 0 20px; }
-  .heroInner h1 { margin-top:4px; font-size:clamp(30px,8.4vw,36px); line-height:1; }
-  .heroLead { margin-top:10px; font-size:14.5px; line-height:1.55; }
-  .heroActions { margin-top:16px; }
-  .heroActions > a { min-height:48px; }
-  .heroActions > a:first-child { width:100%; }
-  .heroActions .heroGhost { display:none; } /* the deck sits right below */
-  .heroFacts { gap:6px 14px; margin-top:12px; font-size:12.5px; }
-
-  .catalogHead { margin-bottom:16px; }
-  .catalogTitle,
-  .howItWorks h2 { font-size:26px; }
-  .catalogIntro { margin-top:6px; font-size:14px; }
-
-  .categoryGrid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-  .categoryCover { aspect-ratio:4/5; border-radius:16px; }
+  .hero { width:calc(100% - 32px); margin-top:16px; }
+  .heroBillboard { min-height:310px; border-radius:16px; }
+  .heroArt img { object-position:67% 32%; }
+  .heroArt::after { background:linear-gradient(90deg,rgba(7,5,10,.85),rgba(7,5,10,.58) 44%,rgba(7,5,10,.08) 80%),linear-gradient(0deg,rgba(7,5,10,.95),transparent 70%); }
+  .heroInner { padding:28px 22px; }
+  .heroInner > .heroKicker { font-size:8px; letter-spacing:.1em; margin-bottom:20px; }
+  .heroInner h1 { font-size:clamp(34px,10vw,46px); }
+  .heroLead { margin-top:16px; font-size:12px; }
+  .heroSignature { margin-top:22px; font-size:9px; }
+  .heroEdition { right:14px; bottom:14px; font-size:7px; }
+  .heroActions { margin-top:18px; gap:0; }
+  .heroActions > a:first-child { min-height:48px; font-size:12px; width:100%; }
+  .heroGuide { display:none; }
+  .heroFacts { gap:7px 15px; margin-top:15px; font-size:10px; }
+  .heroFacts svg { width:13px; height:13px; }
+  .heroFacts li:last-child { display:none; }
+  .scrollHint { margin-top:8px; }
+  .catalogHead { margin-bottom:20px; }
+  .catalogHead > .headKicker { font-size:8px; letter-spacing:.12em; margin-bottom:10px; }
+  .catalogTitle { font-size:26px; }
+  .catalogIntro { margin-top:8px; font-size:11px; }
+  .categoryGrid { gap:10px; }
+  .categoryCover { aspect-ratio:4/5; border-radius:12px; }
   .categoryCover > img { object-position:var(--pos-sm); }
   .categoryCover:last-child:nth-child(odd) { grid-column:1/-1; aspect-ratio:2/1; }
   .categoryCover:last-child:nth-child(odd) > img { object-position:var(--pos); }
-  .categoryCover .coverBadge { top:10px; left:10px; transform:scale(.8); transform-origin:0 0; }
-  .coverCount { top:12px; right:10px; height:24px; padding:0 8px; font-size:12px; line-height:22px; letter-spacing:.05em; }
-  .coverContent { inset:auto 12px 12px; }
-  .coverText { gap:3px; }
-  .coverTitle { font-size:16px; letter-spacing:0; }
-  .coverDescription {
-    display:-webkit-box;
-    overflow:hidden;
-    font-size:12.5px;
-    line-height:1.4;
-    -webkit-box-orient:vertical;
-    -webkit-line-clamp:2;
-    line-clamp:2;
-  }
+  .categoryCover .coverBadge { top:8px; left:8px; transform:scale(.8); transform-origin:0 0; }
+  .coverCount { top:10px; right:9px; padding:3px 6px; font-size:9px; }
+  .coverContent { inset:auto 12px 14px; }
+  .coverTitle { font-size:17px; }
+  .coverDescription { display:-webkit-box; overflow:hidden; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; font-size:11px; }
   .coverArrow { display:none; }
-
-  .howItWorks { padding:0 0 56px; }
-  .steps { margin-top:18px; }
-  .step { column-gap:14px; padding:16px; }
-  .step h3 { font-size:16px; }
-  .step p { font-size:13.5px; }
+  .howItWorks { padding:12px 0 40px; }
+  .sectionHeading h2 { font-size:32px; }
+  .sectionHeading > .headKicker { font-size:9px; }
+  .sectionHeading > p { max-width:28ch; margin:12px auto 0; font-size:12px; }
+  .steps { grid-template-columns:1fr; gap:10px; margin-top:26px; }
+  .step { display:grid; grid-template-columns:52px minmax(0,1fr); align-items:start; gap:0 16px; padding:20px; }
+  .step .stepEmblem { grid-row:span 2; }
+  .step h3 { margin:1px 0 6px; padding-right:25px; font-size:15px; }
+  .step p { font-size:12px; }
+  .stepNumber { top:14px; right:14px; font-size:42px; }
 }
-
 @media (max-width:380px) {
-  .catalogIntro { display:none; }
-  /* "12 resultados" needs the whole top edge of a 158px cover: the count wins over the emblem. */
   .categoryCover[data-found] .coverBadge { display:none; }
+  .coverTitle { font-size:15px; }
+  .heroFacts { gap:8px; font-size:9px; }
 }
-
-@media (max-width:350px) {
-  .coverTitle { font-size:14px; } /* "Frutas físicas" stays on one line on 320px phones */
-}
-
-/* ── Motion ─────────────────────────────────────────────────────────────── */
-
-@keyframes homeRise { from { opacity:0; transform:translateY(14px); } }
-@keyframes homeBreath { from { opacity:.65; } to { opacity:1; } }
-@keyframes homeFloat { from { transform:translateY(0); } to { transform:translateY(-8px); } }
-
 @media (prefers-reduced-motion:reduce) {
-  .heroKicker,
-  .heroLead,
-  .heroActions,
-  .heroFacts,
-  .heroGlow,
-  .suitA,
-  .categoryCover { animation:none; }
-  /* Hover keeps colour and border changes only. */
-  .categoryCover:hover,
-  .categoryCover:active,
+  .categoryCover,.categoryCover > img { transition:none; }
+  .categoryCover:hover { transform:none; }
   .categoryCover:hover > img { transform:none; }
   .categoryCover::after { content:none; }
+}
+@media (forced-colors:active) {
+  .heroInner h1 span { background:none; color:CanvasText; filter:none; }
 }

@@ -10,6 +10,8 @@ import type { ShopInformation } from "@/lib/shop/information";
 import { CartCheckout } from "./cart-checkout";
 import { CategoryView } from "./category-view";
 import { HomeCatalog, HowItWorks, StoreHero } from "./home-sections";
+import { StoreBenefits } from "./store-benefits";
+import { StoreDock } from "./store-dock";
 import { ProductDetail } from "./product-detail";
 import { ShopBrandLink } from "./shop-ui";
 import { BeforeBuying, ShopInformationLinks } from "./shop-information";
@@ -100,6 +102,19 @@ export function Storefront({ catalog, buyerName, catalogUnavailable = false, inf
     setCategory(null); setSearch(""); setSort("default"); setSelected(null);
   }
 
+  function navigateHome(section?: string) {
+    returnHome();
+    const url = new URL(window.location.href);
+    url.searchParams.delete("categoria");
+    url.hash = section || "";
+    window.history.pushState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    requestAnimationFrame(() => {
+      const target = document.getElementById(section || "inicio");
+      target?.scrollIntoView({ block: "start" });
+      document.getElementById(section ? "how-title" : "shop-title")?.focus({ preventScroll: true });
+    });
+  }
+
   function navigateCategory(id: ShopCategory["id"] | null) {
     setCategory(id); setSearch(""); setSort("default"); setSelected(null);
     const url = new URL(window.location.href);
@@ -123,7 +138,7 @@ export function Storefront({ catalog, buyerName, catalogUnavailable = false, inf
 
   const openProduct = (product: ShopProductView) => { setSelected(product); setNotice(""); };
 
-  return <div className={ui.shop}>
+  return <div className={`${ui.shop} ${ui.storefront}`}>
     <header className={ui.header}><div className={ui.headerInner}>
       <ShopBrandLink label="GWStore, início" onNavigate={returnHome} priority />
       <label className={ui.search}><Search size={18} aria-hidden="true" />
@@ -133,7 +148,6 @@ export function Storefront({ catalog, buyerName, catalogUnavailable = false, inf
         <Link href={buyerName ? "/minhas-compras" : "/entrar"} className={ui.accountLink} aria-label={buyerName ? "Minhas compras" : "Entrar na sua conta"}>
           {buyerName ? <span className={ui.avatar} aria-hidden="true">{(buyerName.trim().charAt(0) || "?").toUpperCase()}</span> : <UserRound size={19} aria-hidden="true" />}
           <span className={ui.accountText}>{buyerName ? "Minhas compras" : "Entrar"}</span></Link>
-        {/* On phones a non-empty cart floats as a pill; the subtotal is drawn from data-subtotal by CSS (no extra price text node). */}
         <button type="button" className={ui.cartButton} data-count={cartCount}
           data-subtotal={cartCount && subtotal != null ? formatShopPrice(subtotal) : undefined}
           aria-label={cartCount ? `Abrir carrinho, ${cartCount} ${cartCount === 1 ? "item" : "itens"}${subtotal != null ? `, total ${formatShopPrice(subtotal)}` : ""}` : "Abrir carrinho"}
@@ -155,6 +169,7 @@ export function Storefront({ catalog, buyerName, catalogUnavailable = false, inf
               catalogUnavailable={catalogUnavailable} hasProducts={products.length > 0} />}
       </section>
       {!activeCategory && !query ? <HowItWorks /> : null}
+      {!activeCategory && !query ? <StoreBenefits information={information} /> : null}
       {!activeCategory && !query ? <BeforeBuying information={information} /> : null}
     </main>
     <footer className={ui.footer}><div className={ui.footerInner}>
@@ -162,6 +177,8 @@ export function Storefront({ catalog, buyerName, catalogUnavailable = false, inf
       <nav className={ui.footerNav} aria-label="Links da loja"><Link href="/minhas-compras">Minhas compras e atendimento</Link><ShopInformationLinks /><Link href="/admin">Área administrativa</Link></nav>
       <ul className={ui.footerFacts}><li><QrCode size={15} aria-hidden="true" />Pagamento via Pix</li><li><MessagesSquare size={15} aria-hidden="true" />Atendimento pelo chat do site</li></ul>
     </div></footer>
+    <StoreDock buyerName={buyerName} cartCount={cartCount} information={information}
+      onHome={() => navigateHome()} onHowItWorks={() => navigateHome("como-funciona")} onCart={() => setCartOpen(true)} />
     {/* The page is inert behind an open product detail, so the page-level notice renders only without one. */}
     {notice && !selected ? <div className={ui.notice} role="alert"><TriangleAlert size={18} aria-hidden="true" /><span>{notice}</span>
       <button type="button" className={ui.iconButton} aria-label="Dispensar aviso" onClick={() => setNotice("")}><X size={16} aria-hidden="true" /></button></div> : null}

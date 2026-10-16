@@ -1,0 +1,149 @@
+.dock {
+  position:fixed;
+  z-index:40;
+  left:50%;
+  bottom:calc(18px + env(safe-area-inset-bottom,0px));
+  translate:-50% 0;
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  width:min(680px,calc(100% - 32px));
+  height:88px;
+  padding:0 12px;
+  border:1px solid transparent;
+  border-radius:26px;
+  background:linear-gradient(115deg,rgba(39,14,44,.94),rgba(27,13,43,.96) 52%,rgba(48,10,42,.94)) padding-box,
+    linear-gradient(110deg,rgba(255,117,211,.7),rgba(132,76,223,.45) 48%,rgba(236,0,156,.7)) border-box;
+  box-shadow:0 14px 48px -12px rgba(0,0,0,.8),0 0 40px -22px var(--accent-glow),inset 0 1px 0 rgba(255,255,255,.06);
+  -webkit-backdrop-filter:blur(20px) saturate(150%);
+  backdrop-filter:blur(20px) saturate(150%);
+}
+
+.action {
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-width:0;
+  min-height:44px;
+  padding:9px 4px;
+  border:0;
+  border-radius:18px;
+  background:transparent;
+  color:var(--text-2);
+  text-decoration:none;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+  transition:color var(--dur-2),background var(--dur-2);
+}
+
+.icon {
+  position:relative;
+  display:grid;
+  place-items:center;
+  flex:none;
+  width:38px;
+  height:38px;
+  border:1px solid rgba(224,164,250,.14);
+  border-radius:50%;
+  background:rgba(255,255,255,.035);
+  color:var(--text-1);
+  transition:background var(--dur-2),border-color var(--dur-2),transform var(--dur-2);
+}
+
+.label {
+  max-width:100%;
+  font:600 11px/1.2 var(--font-display);
+  letter-spacing:.035em;
+  text-align:center;
+  white-space:nowrap;
+}
+
+.home {
+  justify-content:flex-end;
+  padding-bottom:11px;
+  color:var(--text-1);
+}
+
+.emblem {
+  position:absolute;
+  top:-25px;
+  left:50%;
+  translate:-50% 0;
+  display:grid;
+  place-items:center;
+  width:78px;
+  height:78px;
+  padding:5px;
+  border:1px solid rgba(255,173,234,.85);
+  border-radius:50%;
+  background:linear-gradient(135deg,#fc7ed6,#ad3fc8 43%,#54207d);
+  box-shadow:0 0 0 6px rgba(100,28,105,.24),0 6px 24px rgba(0,0,0,.5),0 0 30px -6px var(--accent-glow),inset 0 1px 2px rgba(255,255,255,.55);
+  transition:transform var(--dur-2),box-shadow var(--dur-2);
+}
+
+.logo {
+  display:block;
+  width:100%;
+  height:100%;
+  overflow:hidden;
+  border:2px solid rgba(17,5,23,.85);
+  border-radius:50%;
+  background:var(--ink-1);
+  font-size:62px;
+}
+
+.logoImage { display:block; width:100%; height:100%; object-fit:cover; }
+
+.count {
+  position:absolute;
+  top:-5px;
+  right:-7px;
+  display:grid;
+  place-items:center;
+  min-width:18px;
+  height:18px;
+  padding:0 4px;
+  border:2px solid #27102c;
+  border-radius:999px;
+  background:var(--accent-hi);
+  color:var(--ink-1);
+  font:700 10px/1 var(--font-body);
+  font-variant-numeric:tabular-nums;
+}
+
+.action:focus-visible {
+  outline:2px solid var(--accent-hi);
+  outline-offset:3px;
+  color:var(--text-1);
+  background:rgba(236,0,156,.1);
+}
+
+@media (hover:hover) and (pointer:fine) {
+  .action:hover { color:#fff; background:rgba(255,255,255,.045); }
+  .action:hover .icon { border-color:rgba(255,125,213,.45); background:rgba(236,0,156,.14); transform:translateY(-2px); }
+  .home:hover .emblem { transform:translateY(-3px); box-shadow:0 0 0 7px rgba(100,28,105,.26),0 8px 28px rgba(0,0,0,.5),0 0 36px -4px var(--accent-glow); }
+}
+
+@media (max-width:700px) {
+  .dock {
+    bottom:calc(12px + env(safe-area-inset-bottom,0px));
+    width:calc(100% - 24px);
+    height:72px;
+    padding:0 3px;
+    border-radius:22px;
+  }
+  .action { gap:5px; padding:7px 2px; border-radius:16px; }
+  .icon { width:32px; height:32px; }
+  .icon > svg { width:19px; height:19px; }
+  .label { font-size:10px; letter-spacing:0; }
+  .home { padding-bottom:9px; }
+  .emblem { top:-19px; width:64px; height:64px; padding:4px; }
+  .logo { font-size:50px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .action,.icon,.emblem { transition:none; }
+  .action:hover .icon,.home:hover .emblem { transform:none; }
+}
